@@ -131,6 +131,7 @@
 #define GIC_DIST_BASE			(GIC_BASE + GICD_OFFSET)
 #define UART1_BASE			0x02020000
 #define UART2_BASE			0x021E8000
+#define GPIO_BASE           0x0209C000
 
 /* Central Security Unit register values */
 #define CSU_BASE			0x021C0000

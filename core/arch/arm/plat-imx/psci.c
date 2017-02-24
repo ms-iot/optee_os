@@ -47,6 +47,10 @@ struct gpio_regs {
     uint32_t gpio_psr;/* pad satus */
 };
 
+extern void imx_resume (uint32_t r0);
+extern uint8_t imx_resume_start;
+extern uint8_t imx_resume_end;
+
 static vaddr_t src_base(void)
 {
 	static void *va __data; /* in case it's used before .bss is cleared */
@@ -57,6 +61,19 @@ static vaddr_t src_base(void)
 		return (vaddr_t)va;
 	}
 	return SRC_BASE;
+}
+
+/*
+ * phys_base - physical base address of peripheral
+ * mem_area - MEM_AREA_IO_SEC or MEM_AREA_IO_NSEC
+ */
+static vaddr_t periph_base(uint32_t phys_base, uint32_t mem_area)
+{
+
+	if (cpu_mmu_enabled()) {
+	    return (vaddr_t)phys_to_virt(phys_base, mem_area);
+	}
+	return phys_base;
 }
 
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
@@ -89,8 +106,27 @@ int psci_cpu_suspend (
     uint32_t context_id __unused
     )
 {
+    vaddr_t gpio_base;
+    //uint32_t dr;
+
     DMSG("Hello from psci_cpu_suspend (power_state = %d)\n", power_state);  
 
+    DMSG(
+        "Length of imx_resume = %d\n",
+        &imx_resume_end - &imx_resume_start);
+
+    gpio_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC);
+
+    DMSG("gpio_base = 0x%x\n", (uint32_t)gpio_base);
+
+    //dr = read32(gpio_base + 0);
+    //dr &= ~(1 << 2);
+    //write32(dr, gpio_base + 0);
+
+    imx_resume((uint32_t)gpio_base);
+
+    DMSG("Successfully turned off LED\n");
+    
     // need to copy resume code into OCRAM
     // First prove that we can run LED blink code from OCRAM
     // Then program the resume address into GPR1 and execute WFI

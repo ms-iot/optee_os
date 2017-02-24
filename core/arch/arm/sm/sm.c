@@ -33,6 +33,7 @@
 #include <sm/sm.h>
 #include <sm/std_smc.h>
 #include <string.h>
+#include <trace.h>
 #include "sm_private.h"
 
 bool sm_from_nsec(struct sm_ctx *ctx)

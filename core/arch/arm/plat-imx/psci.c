@@ -41,6 +41,12 @@
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
 
+struct gpio_regs {
+    uint32_t gpio_dr;/* data */
+    uint32_t gpio_dir;/* direction */
+    uint32_t gpio_psr;/* pad satus */
+};
+
 static vaddr_t src_base(void)
 {
 	static void *va __data; /* in case it's used before .bss is cleared */
@@ -76,3 +82,28 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 
 	return PSCI_RET_SUCCESS;
 }
+
+int psci_cpu_suspend (
+    uint32_t power_state,
+    uintptr_t entry __unused,
+    uint32_t context_id __unused
+    )
+{
+    DMSG("Hello from psci_cpu_suspend (power_state = %d)\n", power_state);  
+
+    // need to copy resume code into OCRAM
+    // First prove that we can run LED blink code from OCRAM
+    // Then program the resume address into GPR1 and execute WFI
+
+    return PSCI_RET_SUCCESS;
+
+    //struct gpio_regs* gpio = (struct gpio_regs*)0x0209C000;
+
+    //uint32_t dr = read32((vaddr_t)&gpio->gpio_dr);
+   // dr &= ~(1 << 2);
+    //dr |= ((power_state != 0) << 2);
+    //write32(dr, (vaddr_t)&gpio->gpio_dr);
+    
+    //return 0;
+}
+

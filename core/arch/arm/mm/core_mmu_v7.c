@@ -160,7 +160,7 @@
 #define TTB_L1_MASK		(~(L1_ALIGNMENT - 1))
 
 #ifndef MAX_XLAT_TABLES
-#define MAX_XLAT_TABLES		4
+#define MAX_XLAT_TABLES		10 //4
 #endif
 
 enum desc_type {
@@ -218,6 +218,12 @@ static void *core_mmu_alloc_l2(size_t size)
 	static uint32_t tables_used __early_bss;
 	uint32_t to_alloc = ROUNDUP(size, NUM_L2_ENTRIES * SMALL_PAGE_SIZE) /
 		(NUM_L2_ENTRIES * SMALL_PAGE_SIZE);
+
+    DMSG(
+            "size = %d, to_alloc = %d, tables_used = %d\n",
+            size,
+            to_alloc,
+            tables_used);
 
 	if (tables_used + to_alloc > MAX_XLAT_TABLES)
 		return NULL;

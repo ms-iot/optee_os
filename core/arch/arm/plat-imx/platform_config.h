@@ -132,6 +132,8 @@
 #define UART1_BASE			0x02020000
 #define UART2_BASE			0x021E8000
 #define GPIO_BASE           0x0209C000
+#define OCRAM_BASE          0x00900000
+#define OCRAM_SIZE          0x00040000
 
 /* Central Security Unit register values */
 #define CSU_BASE			0x021C0000

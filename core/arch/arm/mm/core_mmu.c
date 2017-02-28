@@ -325,7 +325,7 @@ uint32_t core_mmu_type_to_attr(enum teecore_memtypes t)
 	case MEM_AREA_RAM_NSEC:
 		return attr | cached;
 	case MEM_AREA_RAM_SEC:
-		return attr | TEE_MATTR_SECURE | cached;
+		return attr | TEE_MATTR_SECURE | TEE_MATTR_PX | cached;
 	case MEM_AREA_RES_VASPACE:
 		return 0;
 	default:
@@ -449,8 +449,10 @@ void core_init_mmu_map(void)
 			panic("Invalid memory access config: sec/nsec");
 	}
 
-	if (!mem_map_inited)
+	if (!mem_map_inited) {
 		init_mem_map(static_memory_map, ARRAY_SIZE(static_memory_map));
+        DMSG("init_mem_map succeeded\n");
+    }
 
 	map = static_memory_map;
 	while (map->type != MEM_AREA_NOTYPE) {

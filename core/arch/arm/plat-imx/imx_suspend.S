@@ -27,10 +27,10 @@ UNWIND(	.fnstart)
     // read gpio_dr register
     ldr     r1, [r0, #0]            // read gpio_dr register
 
-//    bic     r1, r1, #(1 << 2)
-//    str     r1, [r0, #0]
-
-//    b end
+    // following 3 lines will turn off LED then return
+    //bic     r1, r1, #(1 << 2)
+    //str     r1, [r0, #0]
+    //b end
     
 loop:
     eor     r1, r1, #(1 << 2)       // toggle bit 2 (onboard LED)

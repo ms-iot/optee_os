@@ -34,8 +34,10 @@
 #include <kernel/pm_stubs.h>
 #include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
+#include <mm/tee_pager.h>
 #include <platform_config.h>
 #include <stdint.h>
+#include <string.h>
 #include <sm/optee_smc.h>
 #include <sm/psci.h>
 #include <tee/entry_std.h>
@@ -107,6 +109,12 @@ int psci_cpu_suspend (
     )
 {
     vaddr_t gpio_base;
+    vaddr_t ocram_base;
+    struct gpio_regs* gpio;
+    uint32_t gpio_dir;
+    uint32_t gpio_dr;
+    uint32_t resume_fn_len;
+
     //uint32_t dr;
 
     DMSG("Hello from psci_cpu_suspend (power_state = %d)\n", power_state);  
@@ -116,14 +124,47 @@ int psci_cpu_suspend (
         &imx_resume_end - &imx_resume_start);
 
     gpio_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC);
+    ocram_base = periph_base(OCRAM_BASE, MEM_AREA_RAM_SEC);
 
-    DMSG("gpio_base = 0x%x\n", (uint32_t)gpio_base);
+    DMSG(
+        "gpio_base = 0x%x, ocram_base = 0x%x, imx_resume = 0x%x, "
+        "&imx_resume_start = 0x%x",
+        (uint32_t)gpio_base,
+        (uint32_t)ocram_base,
+        (uint32_t)imx_resume,
+        (uint32_t)&imx_resume_start);
+    
+    DMSG("Setting LED pin to output in ON state\n");
+    gpio = (struct gpio_regs*)gpio_base;
+    gpio_dir = read32((vaddr_t)&gpio->gpio_dir);
+    gpio_dir |= (1 << 2);
+    write32(gpio_dir, (vaddr_t)&gpio->gpio_dir);
+
+    gpio_dr = read32((vaddr_t)&gpio->gpio_dr);
+    gpio_dr |= (1 << 2);
+    write32(gpio_dr, (vaddr_t)&gpio->gpio_dr);
+
+    DMSG("Successfully configured LED\n");
+
+    // copy imx_resume to ocram
+    resume_fn_len = &imx_resume_end - &imx_resume_start;
+    memcpy(
+        (void*)ocram_base,
+        &imx_resume_start,
+        resume_fn_len);
+  
+    cache_maintenance_l1(DCACHE_AREA_CLEAN, (void*)ocram_base, resume_fn_len);
+    cache_maintenance_l1(ICACHE_AREA_INVALIDATE, (void*)ocram_base, resume_fn_len);
+
+    DMSG("Successfully copied memory to OCRAM and flushed cache, jumping to OCRAM\n");
+
+    ((void (*)(uint32_t r0))ocram_base)((uint32_t)gpio_base);
 
     //dr = read32(gpio_base + 0);
     //dr &= ~(1 << 2);
     //write32(dr, gpio_base + 0);
 
-    imx_resume((uint32_t)gpio_base);
+    //imx_resume((uint32_t)gpio_base);
 
     DMSG("Successfully turned off LED\n");
     
@@ -132,14 +173,5 @@ int psci_cpu_suspend (
     // Then program the resume address into GPR1 and execute WFI
 
     return PSCI_RET_SUCCESS;
-
-    //struct gpio_regs* gpio = (struct gpio_regs*)0x0209C000;
-
-    //uint32_t dr = read32((vaddr_t)&gpio->gpio_dr);
-   // dr &= ~(1 << 2);
-    //dr |= ((power_state != 0) << 2);
-    //write32(dr, (vaddr_t)&gpio->gpio_dr);
-    
-    //return 0;
 }
 

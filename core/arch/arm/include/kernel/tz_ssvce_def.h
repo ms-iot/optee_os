@@ -127,6 +127,10 @@
 #define SCU_NSAC_PTIMER_SHIFT		4
 #define SCU_NSAC_GTIMER_SHIFT		8
 
+/* SCU CTRL register bit definitions */
+#define SCU_CTRL_ENABLE             BIT32(0)
+#define SCU_CTRL_STANDBY_ENABLE     BIT32(5)
+
 /*
  * GIC iomem
  */

@@ -134,6 +134,8 @@
 #define GPIO_BASE           0x0209C000
 #define OCRAM_BASE          0x00900000
 #define OCRAM_SIZE          0x00040000
+#define CCM_BASE            0x020C4000
+#define IOMUXC_BASE         0x020E0000
 
 /* Central Security Unit register values */
 #define CSU_BASE			0x021C0000
@@ -143,6 +145,41 @@
 #define CSU_CSL16			0x40
 #define	CSU_ACCESS_ALL			0x00FF00FF
 #define CSU_SETTING_LOCK		0x01000100
+
+/* IMX6DQ CCM register offsets */
+#define CCM_CGPR_OFFSET     0x64
+#define CCM_CLPCR_OFFSET    0x54
+
+/* CGPR register bit definitions */
+#define CCM_CGPR_MUST_BE_ONE        BIT32(1)
+#define CCM_CGPR_INT_MEM_CLK_LPM    BIT32(17)
+
+/* CLPCR register bit definitions */
+#define CCM_CLPCR_LPM_SHIFT                     0
+#define CCM_CLPCR_LPM_MASK                      0x3
+#define CCM_CLPCR_ARM_CLK_DIS_ON_LPM            BIT32(5)
+#define CCM_CLPCR_SBYOS                         BIT32(6)
+#define CCM_CLPCR_DIS_REF_OSC                   BIT32(7)
+#define CCM_CLPCR_VSTBY                         BIT32(8)
+#define CCM_CLPCR_STBY_COUNT_SHIFT              9
+#define CCM_CLPCR_STBY_COUNT_MASK               SHIFT_U32(0x3, 9)
+#define CCM_CLPCR_COSC_PWRDOWN                  BIT32(11)
+#define CCM_CLPCR_WB_PER_AT_LPM                 BIT32(16)
+#define CCM_CLPCR_BYPASS_MMDC_CH0_LPM_HS        BIT32(19)
+#define CCM_CLPCR_BYPASS_MMDC_CH1_LPM_HS        BIT32(21)
+#define CCM_CLPCR_MASK_CORE0_WFI                BIT32(22)
+#define CCM_CLPCR_MASK_CORE1_WFI                BIT32(23)
+#define CCM_CLPCR_MASK_CORE2_WFI                BIT32(24)
+#define CCM_CLPCR_MASK_CORE3_WFI                BIT32(25)
+#define CCM_CLPCR_MASK_SCU_IDLE                 BIT32(26)
+#define CCM_CLPCR_MASK_L2CC_IDLE                BIT32(27)
+
+
+/* IMX6DQ IOMUXC register offsets */
+#define IOMUXC_GPR1_OFFSET  0x04
+
+/* GPR1 register bit definitions */
+#define IOMUXC_GPR1_GINT    BIT32(12)
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE

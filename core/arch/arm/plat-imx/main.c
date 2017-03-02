@@ -90,9 +90,74 @@ static void main_fiq(void)
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
     defined(PLATFORM_FLAVOR_mx6qsabresd) || \
     defined(PLATFORM_FLAVOR_mx6qhmbedge)
+
+static vaddr_t ccm_base(void)
+{
+	if (cpu_mmu_enabled()) {
+	    return (vaddr_t)phys_to_virt(CCM_BASE, MEM_AREA_IO_SEC);
+	}
+
+	return CCM_BASE;
+}
+
+static vaddr_t iomuxc_base(void)
+{
+	if (cpu_mmu_enabled()) {
+	    return (vaddr_t)phys_to_virt(IOMUXC_BASE, MEM_AREA_IO_SEC);
+	}
+
+	return IOMUXC_BASE;
+}
+
+static void setup_low_power_modes(void)
+{
+    vaddr_t ccm;
+    vaddr_t iomuxc;
+    uint32_t cgpr;
+    uint32_t gpr1;
+    uint32_t clpcr;
+
+    ccm = ccm_base();
+    iomuxc = iomuxc_base();
+
+    DMSG(
+        "Configuring CCM for low power modes. "
+        "(ccm = 0x%08x, iomuxc = 0x%08x)\n",
+        (uint32_t)ccm,
+        (uint32_t)iomuxc);
+    
+    /* set required bits in CGPR */
+    cgpr = read32(ccm + CCM_CGPR_OFFSET);
+    cgpr |= CCM_CGPR_MUST_BE_ONE;
+    cgpr |= CCM_CGPR_INT_MEM_CLK_LPM;
+    write32(cgpr, ccm + CCM_CGPR_OFFSET);
+
+    /* configure IOMUXC GINT to be always asserted */
+    gpr1 = read32(iomuxc + IOMUXC_GPR1_OFFSET);
+    gpr1 |= IOMUXC_GPR1_GINT;
+    write32(gpr1, iomuxc + IOMUXC_GPR1_OFFSET);
+
+    /* configure CLPCR for low power modes */
+    clpcr = read32(ccm + CCM_CLPCR_OFFSET);
+    clpcr &= ~CCM_CLPCR_LPM_MASK;
+    clpcr |= CCM_CLPCR_ARM_CLK_DIS_ON_LPM;
+    clpcr &= ~CCM_CLPCR_SBYOS;
+    clpcr &= ~CCM_CLPCR_VSTBY;
+    clpcr &= ~CCM_CLPCR_BYPASS_MMDC_CH0_LPM_HS;
+    clpcr |= CCM_CLPCR_BYPASS_MMDC_CH1_LPM_HS;
+    clpcr &= ~CCM_CLPCR_MASK_CORE0_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE1_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE2_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE3_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_SCU_IDLE;
+    clpcr &= ~CCM_CLPCR_MASK_L2CC_IDLE;
+    write32(clpcr, ccm + CCM_CLPCR_OFFSET);
+}
+
 void plat_cpu_reset_late(void)
 {
 	uintptr_t addr;
+    uint32_t scu_ctrl;
 
 	if (!get_core_pos()) {
 		/* primary core */
@@ -111,8 +176,14 @@ void plat_cpu_reset_late(void)
 		write32(SCU_NSAC_CTRL_INIT, SCU_BASE + SCU_NSAC);
 
 		/* SCU enable */
-		write32(read32(SCU_BASE + SCU_CTRL) | 0x1,
-			SCU_BASE + SCU_CTRL);
+        scu_ctrl = read32(SCU_BASE + SCU_CTRL);
+        scu_ctrl |= SCU_CTRL_ENABLE;
+
+#ifdef CFG_PSCI_ARM32
+        scu_ctrl |= SCU_CTRL_STANDBY_ENABLE;
+#endif /* CFG_PSCI_ARM32 */
+
+		write32(scu_ctrl, SCU_BASE + SCU_CTRL);
 
 		/* configure imx6 CSU */
 
@@ -184,6 +255,10 @@ void main_init_gic(void)
 	/* Initialize GIC */
 	gic_init(&gic_data, gicc_base, gicd_base);
 	itr_init(&gic_data.chip);
+
+#ifdef CFG_PSCI_ARM32
+    setup_low_power_modes();
+#endif
 }
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
@@ -209,15 +284,15 @@ void main_secondary_init_gic(void)
 
 void init_sec_mon(unsigned long nsec_entry)
 {
-struct sm_nsec_ctx *nsec_ctx;
+    struct sm_nsec_ctx *nsec_ctx;
 
-        assert(nsec_entry != PADDR_INVALID);
+    assert(nsec_entry != PADDR_INVALID);
 
 	/* Initialize secure monitor */
 	nsec_ctx = sm_get_nsec_ctx();
 	nsec_ctx->mon_lr = nsec_entry;
 	nsec_ctx->mon_spsr = CPSR_MODE_SVC | CPSR_I;
 
-	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n",nsec_entry, nsec_ctx->mon_spsr);
+	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n", nsec_entry, nsec_ctx->mon_spsr);
 }
 

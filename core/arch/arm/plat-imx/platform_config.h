@@ -121,6 +121,7 @@
 #define SRC_BASE			0x020D8000
 #define SRC_SCR				0x000
 #define SRC_GPR1			0x020
+#define SRC_GPR2            0x024
 #define SRC_SCR_CPU_ENABLE_ALL		SHIFT_U32(0x7, 22)
 #define SRC_SCR_CORE1_RST_OFFSET	14
 #define SRC_SCR_CORE1_ENABLE_OFFSET	22
@@ -136,6 +137,8 @@
 #define OCRAM_SIZE          0x00040000
 #define CCM_BASE            0x020C4000
 #define IOMUXC_BASE         0x020E0000
+#define ANATOP_BASE         0x020C8000
+#define GPC_BASE            0x020DC000
 
 /* Central Security Unit register values */
 #define CSU_BASE			0x021C0000
@@ -145,6 +148,30 @@
 #define CSU_CSL16			0x40
 #define	CSU_ACCESS_ALL			0x00FF00FF
 #define CSU_SETTING_LOCK		0x01000100
+
+/* IMX6DQ GPIO register offsets */
+#define GPIO_BANK_SIZE          0x4000
+#define GPIO_BANK_COUNT         7 
+#define GPIO_IT_START           98
+#define GPIO_IT_COUNT           (GPIO_BANK_COUNT * 2) 
+#define BANK_FROM_PIN(pin)      ((pin) / 32)
+#define BIT_FROM_PIN(pin)       BIT32((pin) % 32)
+
+#define GPIO_DR_OFFSET          0x00
+#define GPIO_DIR_OFFSET         0x04
+#define GPIO_PSR_OFFSET         0x08
+#define GPIO_ICR1_OFFSET        0x0C
+#define GPIO_ICR2_OFFSET        0x10
+#define GPIO_IMR_OFFSET         0x14
+#define GPIO_ISR_OFFSET         0x18
+#define GPIO_EDGE_SEL_OFFSET    0x1C
+#define GPIO_ICR_OFFSET(pin)    (GPIO_ICR1_OFFSET + (((pin) % 32) / 16) * 4)
+#define GPIO_ICR_SHIFT(pin)     (((pin) % 16) * 2);
+
+#define GPIO_ICR_LOW_LEVEL      0
+#define GPIO_ICR_HIGH_LEVEL     1
+#define GPIO_ICR_RISING_EDGE    2
+#define GPIO_ICR_FALLING_EDGE   3
 
 /* IMX6DQ CCM register offsets */
 #define CCM_CGPR_OFFSET     0x64
@@ -174,12 +201,27 @@
 #define CCM_CLPCR_MASK_SCU_IDLE                 BIT32(26)
 #define CCM_CLPCR_MASK_L2CC_IDLE                BIT32(27)
 
-
 /* IMX6DQ IOMUXC register offsets */
 #define IOMUXC_GPR1_OFFSET  0x04
 
 /* GPR1 register bit definitions */
 #define IOMUXC_GPR1_GINT    BIT32(12)
+
+/* IMX6DQ Anatop register offsets */
+#define ANATOP_MISC0_SET_OFFSET     0x154
+
+/* Anatop MISC0 register bit definitions */
+#define ANATOP_MISC0_STOP_MODE_CONFIG           BIT32(12)
+
+/* GPC register offsets */
+#define GPC_IMR1_OFFSET                 0x008
+#define GPC_IMR2_OFFSET                 0x00C
+#define GPC_IMR3_OFFSET                 0x010
+#define GPC_IMR4_OFFSET                 0x014
+#define GPC_PGC_CPU_CTRL_OFFSET         0x2A0
+
+/* GPC PGC CTRL register bit definitions */
+#define GPC_PGC_CTRL_PCR                BIT32(0)
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE

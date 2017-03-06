@@ -32,6 +32,7 @@
 #include <drivers/gic.h>
 #include <drivers/imx_uart.h>
 #include <io.h>
+#include <keep.h>
 #include <kernel/generic_boot.h>
 #include <kernel/misc.h>
 #include <kernel/panic.h>
@@ -280,6 +281,96 @@ void main_secondary_init_gic(void)
 {
 	gic_cpu_init(&gic_data);
 }
+
+static vaddr_t gpio_base(void)
+{
+	static void *va __early_bss;
+
+	if (cpu_mmu_enabled()) {
+		if (!va)
+			va = phys_to_virt(GPIO_BASE, MEM_AREA_IO_NSEC);
+		return (vaddr_t)va;
+	}
+	return GPIO_BASE;
+}
+
+/*
+ * Get GPIO bank index from IRQ number
+ */
+static int gpio_bank_from_it(size_t it)
+{
+    if ((it < GPIO_IT_START) || (it > (GPIO_IT_START + GPIO_IT_COUNT)))
+        panic("Invalid GPIO IRQ number");
+
+    return (it - GPIO_IT_START) / 2;
+}
+
+static enum itr_return gpio_itr_cb(struct itr_handler *h)
+{
+    int bank;
+    uint32_t mask;
+    uint32_t isr;
+    vaddr_t gpio;
+    vaddr_t bank_base;
+
+    bank = gpio_bank_from_it(h->it);
+    mask = 0xffff << (((h->it - GPIO_IT_START) % 2) * 16);
+    gpio = gpio_base();
+    bank_base = gpio + GPIO_BANK_SIZE * bank;
+
+    // Only look at the pins associated with IRQ
+    isr = read32(bank_base + GPIO_ISR_OFFSET) & mask;
+
+    if (isr == 0) {
+        return ITRR_NONE;
+    }
+
+    // here we would do something with the pins that are interrupting,
+    // but I don't think we can write the console from an ISR
+
+    // acknowledge interrupts
+    write32(isr, bank_base + GPIO_ISR_OFFSET);
+
+    return ITRR_HANDLED;
+}
+
+static struct itr_handler gpio_itr[GPIO_IT_COUNT];
+KEEP_PAGER(gpio_itr);
+
+static TEE_Result init_gpio_itr(void)
+{
+    vaddr_t gpio;
+    unsigned i;
+
+    gpio = gpio_base();
+
+    DMSG("Initializing GPIO. (gpio = 0x%08x)\n", (uint32_t)gpio);
+
+    // Disable and acknowledge all interrupts
+    for (i = 0; i < GPIO_BANK_COUNT; ++i) {
+        vaddr_t bank_base;
+
+        bank_base = gpio + GPIO_BANK_SIZE * i;
+        write32(0, bank_base + GPIO_IMR_OFFSET);
+        write32(0xffffffff, bank_base + GPIO_ISR_OFFSET);
+    }
+
+    // register interrupt handlers
+    for (i = 0; i < (sizeof(gpio_itr) / sizeof(gpio_itr[0])); ++i) {
+        struct itr_handler* h = &gpio_itr[i];
+
+        h->it = GPIO_IT_START + i;
+        h->flags = ITRF_TRIGGER_LEVEL;
+        h->handler = gpio_itr_cb;
+
+        itr_add(h);
+        itr_enable(h->it);
+    }
+    
+    return TEE_SUCCESS;
+}
+driver_init(init_gpio_itr);
+
 #endif
 
 void init_sec_mon(unsigned long nsec_entry)

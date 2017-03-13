@@ -43,13 +43,12 @@
 #include <sm/psci.h>
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
+#include "imx_suspend.h"
 
 #define POWER_BTN_GPIO          93
 #define LED_GPIO                2
 
-extern void imx_resume (uint32_t r0);
-extern uint8_t imx_resume_start;
-extern uint8_t imx_resume_end;
+static void do_suspend (void);
 
 static vaddr_t src_base(void)
 {
@@ -99,7 +98,6 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 
 	return PSCI_RET_SUCCESS;
 }
-
 
 static void enable_power_btn_int(void)
 {
@@ -151,11 +149,7 @@ static void init_led(void)
     DMSG("Successfully configured LED\n");
 }
 
-int psci_cpu_suspend (
-    uint32_t power_state,
-    uintptr_t entry __unused,
-    uint32_t context_id __unused
-    )
+void do_suspend (void)
 {
     vaddr_t gpio_base;
     vaddr_t ocram_base;
@@ -167,7 +161,7 @@ int psci_cpu_suspend (
 
     //uint32_t dr;
 
-    DMSG("Hello from psci_cpu_suspend (power_state = %d)\n", power_state);  
+    DMSG("Suspending CPU\n");  
 
     DMSG(
         "Length of imx_resume = %d\n",
@@ -244,6 +238,7 @@ int psci_cpu_suspend (
     write32(OCRAM_BASE, src + SRC_GPR1);
     write32(GPIO_BASE, src + SRC_GPR2);
 
+    // XXX this should be done once at initialization
     // copy imx_resume to ocram
     DMSG("Copying resume stub to ocram\n");
     resume_fn_len = &imx_resume_end - &imx_resume_start;
@@ -254,7 +249,7 @@ int psci_cpu_suspend (
   
     cache_maintenance_l1(DCACHE_AREA_CLEAN, (void*)ocram_base, resume_fn_len);
     cache_maintenance_l2(
-        DCACHE_AREA_CLEAN,
+        L2CACHE_AREA_CLEAN,
         virt_to_phys((void*)ocram_base),
         resume_fn_len);
 
@@ -262,16 +257,60 @@ int psci_cpu_suspend (
 
     DMSG("Successfully copied memory to OCRAM and flushed cache, executing wfi\n");
 
-    wfi();
-
     //((void (*)(uint32_t r0))ocram_base)((uint32_t)gpio_base);
 
+    wfi();
     DMSG("WFI should not have returned!\n");
-    
-    // need to copy resume code into OCRAM
-    // First prove that we can run LED blink code from OCRAM
-    // Then program the resume address into GPR1 and execute WFI
+}
+
+int psci_cpu_suspend (
+    uint32_t power_state,
+    uintptr_t entry,
+    uint32_t context_id
+    )
+{
+    vaddr_t ocram_base;
+    struct armv7_processor_state* resume_state;
+    bool waking;
+
+    DMSG(
+        "Hello from psci_cpu_suspend (power_state = %d, "
+        "entry = 0x%08x, context_id - 0x%x)\n",
+        power_state,
+        (unsigned)entry,
+        context_id);  
+
+    ocram_base = periph_base(OCRAM_BASE, MEM_AREA_RAM_SEC);
+    resume_state = (struct armv7_processor_state*)ocram_base;
+
+    waking = save_state_for_suspend(resume_state);
+    if (!waking) {
+        // Normally this should not return
+        do_suspend();
+
+        DMSG("Failed to suspend, most likely due to pending interrupt\n");
+        
+    }
 
     return PSCI_RET_SUCCESS;
+}
+
+void armv7_save_arch_state (struct armv7_arch_state* state)
+{
+    state->cp15_sctlr = read_sctlr();
+    state->cp15_actlr = read_actlr();
+    state->cp15_cpacr = read_cpacr();
+    state->cp15_ttbcr = read_ttbcr();
+    state->cp15_ttbr0 = read_ttbr0();
+    state->cp15_ttbr1 = read_ttbr1();
+    state->cp15_dacr = read_dacr();
+    state->cp15_dfsr = read_dfsr();
+    state->cp15_ifsr = read_ifsr();
+    state->cp15_dfar = read_dfar();
+    state->cp15_ifar = read_ifar();
+    state->cp15_prrr = read_prrr();
+    state->cp15_nmrr = read_nmrr();
+    state->cp15_vbar = read_vbar();
+    state->cp15_contextidr = read_contextidr();
 }
 

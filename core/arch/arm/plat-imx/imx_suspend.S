@@ -5,6 +5,7 @@
 #include <kernel/tz_ssvce_def.h>
 #include <kernel/unwind.h>
 #include <platform_config.h>
+#include <imx_suspend.h>
 
 .section .text
 .balign 4
@@ -51,4 +52,73 @@ END_FUNC imx_resume
 
 .global imx_resume_end
 imx_resume_end:
+
+/*
+ * bool save_state_for_suspend (struct armv7_processor_state* state);
+ *
+ * Returns FALSE when spending, returns TRUE when resuming.
+ */
+FUNC save_state_for_suspend , :
+    UNWIND(	.fnstart)
+    push    {r4, lr}
+
+    // XXX need to disable interrupts?
+
+    // compute address of context structure
+    mov     r4, r0
+    add     r0, r0, #ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET
+    bl      armv7_capture_context
+    
+    // fixup captured r0, sp, lr, and pc so that when context is restored,
+    // execution resumes at the call site of this function,
+    // with true in r0
+    add     r0, r4, #ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET
+
+    // store 'true' into context record's r0
+    mov     r1, #1
+    str     r1, [r0, #ARMV7_CONTEXT_R0_OFFSET]
+    
+    // adjust context record's stack pointer to its value on entry
+    add     r1, sp, #8
+    str     r1, [r0, #ARMV7_CONTEXT_SP_OFFSET]
+
+    // we want execution to resume at lr
+    ldr     r1, [sp, #0]                        // load saved value of lr
+    str     r1, [r0, #ARMV7_CONTEXT_PC_OFFSET]
+    
+    // lr is a callee-saved register, so it must be restored to its
+    // value on entry
+    str     r1, [r0, #ARMV7_CONTEXT_LR_OFFSET]
+
+    // Save architectural state
+    add     r0, r4, #ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET
+    bl      armv7_save_arch_state
+    
+    // XXX save special registers
+    
+
+    // return false in suspend path
+    mov     r0, #0
+
+    pop     {r4, lr}
+    bx      lr 
+
+	UNWIND(	.fnend)
+END_FUNC save_state_for_suspend
+
+/*
+ * void armv7_capture_context (struct arm7_context* context);
+ */
+FUNC armv7_capture_context , :
+    UNWIND( .fnstart)
+    
+    stm     r0, {r0-r14}
+    str     lr, [r0, #ARMV7_CONTEXT_PC_OFFSET]
+    mrs     r1, cpsr
+    str     r1, [r0, #ARMV7_CONTEXT_CPSR_OFFSET]
+    bx      lr
+
+    UNWIND( .fnend)
+END_FUNC armv7_capture_context
+
 

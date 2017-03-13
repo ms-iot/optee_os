@@ -307,6 +307,17 @@ static inline void write_dacr(uint32_t dacr)
 	);
 }
 
+static inline uint32_t read_dacr(void)
+{
+	uint32_t dacr;
+
+	asm volatile ("mrc	p15, 0, %[dacr], c3, c0, 0"
+			: [dacr] "=r" (dacr)
+	);
+
+	return dacr;
+}
+
 static inline uint32_t read_ifar(void)
 {
 	uint32_t ifar;
@@ -356,6 +367,17 @@ static inline void write_scr(uint32_t scr)
 	asm volatile ("mcr	p15, 0, %[scr], c1, c1, 0"
 			: : [scr] "r" (scr)
 	);
+}
+
+static inline uint32_t read_vbar(void)
+{
+	uint32_t vbar;
+
+	asm volatile ("mrc	p15, 0, %[vbar], c12, c0, 0"
+			: [vbar] "=r" (vbar)
+	);
+
+	return vbar;
 }
 
 static inline void isb(void)
@@ -446,6 +468,17 @@ static inline void write_prrr(uint32_t prrr)
 	write_mair0(prrr);
 }
 
+static inline uint32_t read_prrr(void)
+{
+	uint32_t prrr;
+
+	asm volatile ("mrc	p15, 0, %[prrr], c10, c2, 0"
+			: [prrr] "=r" (prrr)
+	);
+
+	return prrr;
+}
+
 static inline void write_mair1(uint32_t mair1)
 {
 	asm volatile ("mcr	p15, 0, %[mair1], c10, c2, 1"
@@ -463,6 +496,17 @@ static inline void write_nmrr(uint32_t nmrr)
 	 * translation table formats, MAIR1 replaces the NMRR
 	 */
 	write_mair1(nmrr);
+}
+
+static inline uint32_t read_nmrr(void)
+{
+	uint32_t nmrr;
+
+	asm volatile ("mrc	p15, 0, %[nmrr], c10, c2, 1"
+			: [nmrr] "=r" (nmrr)
+	);
+
+	return nmrr;
 }
 
 static inline uint32_t read_contextidr(void)

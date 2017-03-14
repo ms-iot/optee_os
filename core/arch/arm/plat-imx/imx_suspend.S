@@ -90,11 +90,15 @@ FUNC save_state_for_suspend , :
     // value on entry
     str     r1, [r0, #ARMV7_CONTEXT_LR_OFFSET]
 
+    // restore the caller-saved register r4 which we saved on the stack
+    ldr     r1, [sp, #4]                        // load saved value of r4
+    str     r1, [r0, #ARMV7_CONTEXT_R4_OFFSET]
+
     // Save architectural state
     add     r0, r4, #ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET
     bl      armv7_save_arch_state
     
-    // XXX save special registers
+    // save special registers
     add     r0, r4, #ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET
     bl      armv7_save_special_regs    
 
@@ -128,15 +132,20 @@ END_FUNC armv7_capture_context
 FUNC armv7_save_special_regs , :
     UNWIND( .fnstart)
     
-    mrc     p15, 0, r1, c13, c0, 2   // TPIDRURW
+    //mrc     p15, 0, r1, c13, c0, 2   // TPIDRURW
+    read_tpidrurw r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURW_OFFSET]
     
-    mrc     p15, 0, r1, c13, c0, 3   // TPIDRURO
+    //mrc     p15, 0, r1, c13, c0, 3   // TPIDRURO
+    read_tpidruro r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURO_OFFSET]
     
-    mrc     p15, 0, r1, c13, c0, 4   // TPIDRPRW
+    //mrc     p15, 0, r1, c13, c0, 4   // TPIDRPRW
+    read_tpidrprw r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRPRW_OFFSET]
 
+    // save banked registers
+    //yyy cps     # 
 
     bx      lr
     UNWIND( .fnend)

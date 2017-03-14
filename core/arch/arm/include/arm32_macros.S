@@ -204,6 +204,15 @@
 	mrc	p15, 0, \reg, c13, c0, 3
 	.endm
 
+    .macro read_tpidrurw reg
+	mrc	p15, 0, \reg, c13, c0, 2
+	.endm
+
+    .macro read_tpidrprw reg
+	mrc	p15, 0, \reg, c13, c0, 4
+	.endm
+
+
 	.macro mov_imm reg, val
 		.if ((\val) & 0xffff0000) == 0
 			mov	\reg, #(\val)

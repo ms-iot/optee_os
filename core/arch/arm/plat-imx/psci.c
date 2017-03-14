@@ -48,7 +48,15 @@
 #define POWER_BTN_GPIO          93
 #define LED_GPIO                2
 
-static void do_suspend (void);
+
+static void do_suspend(void);
+static void setup_low_power_modes(void);
+static void enable_power_btn_int(void);
+static void init_led(void);
+static void init_suspend_resume_stub(void);
+
+struct armv7_processor_state* resume_state;
+vaddr_t suspend_resume_stub;
 
 static vaddr_t src_base(void)
 {
@@ -73,6 +81,60 @@ static vaddr_t periph_base(uint32_t phys_base, uint32_t mem_area)
 	    return (vaddr_t)phys_to_virt(phys_base, mem_area);
 	}
 	return phys_base;
+}
+
+void imx_psci_init(void)
+{
+    setup_low_power_modes();
+
+    init_suspend_resume_stub();
+
+    init_led();
+}
+
+void setup_low_power_modes(void)
+{
+    vaddr_t ccm;
+    vaddr_t iomuxc;
+    uint32_t cgpr;
+    uint32_t gpr1;
+    uint32_t clpcr;
+
+    ccm = periph_base(CCM_BASE, MEM_AREA_IO_SEC); 
+    iomuxc = periph_base(IOMUXC_BASE, MEM_AREA_IO_NSEC); 
+
+    DMSG(
+        "Configuring CCM for low power modes. "
+        "(ccm = 0x%08x, iomuxc = 0x%08x)\n",
+        (uint32_t)ccm,
+        (uint32_t)iomuxc);
+
+    /* set required bits in CGPR */
+    cgpr = read32(ccm + CCM_CGPR_OFFSET);
+    cgpr |= CCM_CGPR_MUST_BE_ONE;
+    cgpr |= CCM_CGPR_INT_MEM_CLK_LPM;
+    write32(cgpr, ccm + CCM_CGPR_OFFSET);
+
+    /* configure IOMUXC GINT to be always asserted */
+    gpr1 = read32(iomuxc + IOMUXC_GPR1_OFFSET);
+    gpr1 |= IOMUXC_GPR1_GINT;
+    write32(gpr1, iomuxc + IOMUXC_GPR1_OFFSET);
+
+    /* configure CLPCR for low power modes */
+    clpcr = read32(ccm + CCM_CLPCR_OFFSET);
+    clpcr &= ~CCM_CLPCR_LPM_MASK;
+    clpcr |= CCM_CLPCR_ARM_CLK_DIS_ON_LPM;
+    clpcr &= ~CCM_CLPCR_SBYOS;
+    clpcr &= ~CCM_CLPCR_VSTBY;
+    clpcr &= ~CCM_CLPCR_BYPASS_MMDC_CH0_LPM_HS;
+    clpcr |= CCM_CLPCR_BYPASS_MMDC_CH1_LPM_HS;
+    clpcr &= ~CCM_CLPCR_MASK_CORE0_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE1_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE2_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_CORE3_WFI;
+    clpcr &= ~CCM_CLPCR_MASK_SCU_IDLE;
+    clpcr &= ~CCM_CLPCR_MASK_L2CC_IDLE;
+    write32(clpcr, ccm + CCM_CLPCR_OFFSET);
 }
 
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
@@ -149,6 +211,27 @@ static void init_led(void)
     DMSG("Successfully configured LED\n");
 }
 
+void init_suspend_resume_stub(void)
+{
+    vaddr_t ocram_base;
+    uint32_t resume_fn_len;
+
+    ocram_base = periph_base(OCRAM_BASE, MEM_AREA_RAM_SEC);
+    
+    resume_state = (struct armv7_processor_state*)ocram_base;
+    suspend_resume_stub = 
+        (((vaddr_t)resume_state + sizeof(*resume_state) + 0x7) & ~0x7);
+
+    // copy imx_resume to ocram
+    // XXX this will end up overwriting the saved context structure
+    DMSG("Copying resume stub to ocram\n");
+    resume_fn_len = &imx_resume_end - &imx_resume_start;
+    memcpy(
+        (void*)suspend_resume_stub,
+        &imx_resume_start,
+        resume_fn_len);
+}
+
 void do_suspend (void)
 {
     vaddr_t gpio_base;
@@ -157,7 +240,6 @@ void do_suspend (void)
     vaddr_t anatop_base;
     vaddr_t gpc_base;
     vaddr_t src;
-    uint32_t resume_fn_len;
 
     //uint32_t dr;
 
@@ -173,8 +255,6 @@ void do_suspend (void)
     anatop_base = periph_base(ANATOP_BASE, MEM_AREA_IO_SEC);
     gpc_base = periph_base(GPC_BASE, MEM_AREA_IO_SEC);
     src = src_base();
-
-    init_led();
 
     DMSG(
         "gpio_base = 0x%08x, ocram_base = 0x%08x, anatop_base = 0x%08x, "
@@ -234,30 +314,23 @@ void do_suspend (void)
     enable_power_btn_int();
 
     // Program resume address into SRC
+    // XXX use virt_to_phys and suspend_resume_stub. This should really be
+    // programmed from the assembly side
     DMSG("Configuring resume address\n");
-    write32(OCRAM_BASE, src + SRC_GPR1);
+    write32(virt_to_phys((void*)suspend_resume_stub), src + SRC_GPR1);
     write32(GPIO_BASE, src + SRC_GPR2);
 
-    // XXX this should be done once at initialization
-    // copy imx_resume to ocram
-    DMSG("Copying resume stub to ocram\n");
-    resume_fn_len = &imx_resume_end - &imx_resume_start;
-    memcpy(
-        (void*)ocram_base,
-        &imx_resume_start,
-        resume_fn_len);
-  
-    cache_maintenance_l1(DCACHE_AREA_CLEAN, (void*)ocram_base, resume_fn_len);
-    cache_maintenance_l2(
-        L2CACHE_AREA_CLEAN,
-        virt_to_phys((void*)ocram_base),
-        resume_fn_len);
+    // Flush cache
+    cache_maintenance_l1(DCACHE_CLEAN, NULL, 0);
+    cache_maintenance_l2(L2CACHE_CLEAN, 0, 0);
 
-    cache_maintenance_l1(ICACHE_AREA_INVALIDATE, (void*)ocram_base, resume_fn_len);
+    // Invalidate icache before jumping to code in OCRAM
+    cache_maintenance_l1(ICACHE_INVALIDATE, NULL, 0);
 
-    DMSG("Successfully copied memory to OCRAM and flushed cache, executing wfi\n");
+    DMSG("Successfully flushed cache, executing wfi\n");
 
-    //((void (*)(uint32_t r0))ocram_base)((uint32_t)gpio_base);
+    // XXX here's where we would jump to the suspend stub
+    // to put DDR in self-refresh and execute WFI
 
     wfi();
     DMSG("WFI should not have returned!\n");
@@ -269,8 +342,6 @@ int psci_cpu_suspend (
     uint32_t context_id
     )
 {
-    vaddr_t ocram_base;
-    struct armv7_processor_state* resume_state;
     bool waking;
 
     DMSG(
@@ -279,9 +350,6 @@ int psci_cpu_suspend (
         power_state,
         (unsigned)entry,
         context_id);  
-
-    ocram_base = periph_base(OCRAM_BASE, MEM_AREA_RAM_SEC);
-    resume_state = (struct armv7_processor_state*)ocram_base;
 
     waking = save_state_for_suspend(resume_state);
     if (!waking) {

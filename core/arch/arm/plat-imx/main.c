@@ -45,6 +45,7 @@
 #include <sm/sm.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
+#include "imx_suspend.h"
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
 	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
@@ -91,69 +92,6 @@ static void main_fiq(void)
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
     defined(PLATFORM_FLAVOR_mx6qsabresd) || \
     defined(PLATFORM_FLAVOR_mx6qhmbedge)
-
-static vaddr_t ccm_base(void)
-{
-	if (cpu_mmu_enabled()) {
-	    return (vaddr_t)phys_to_virt(CCM_BASE, MEM_AREA_IO_SEC);
-	}
-
-	return CCM_BASE;
-}
-
-static vaddr_t iomuxc_base(void)
-{
-	if (cpu_mmu_enabled()) {
-	    return (vaddr_t)phys_to_virt(IOMUXC_BASE, MEM_AREA_IO_SEC);
-	}
-
-	return IOMUXC_BASE;
-}
-
-static void setup_low_power_modes(void)
-{
-    vaddr_t ccm;
-    vaddr_t iomuxc;
-    uint32_t cgpr;
-    uint32_t gpr1;
-    uint32_t clpcr;
-
-    ccm = ccm_base();
-    iomuxc = iomuxc_base();
-
-    DMSG(
-        "Configuring CCM for low power modes. "
-        "(ccm = 0x%08x, iomuxc = 0x%08x)\n",
-        (uint32_t)ccm,
-        (uint32_t)iomuxc);
-    
-    /* set required bits in CGPR */
-    cgpr = read32(ccm + CCM_CGPR_OFFSET);
-    cgpr |= CCM_CGPR_MUST_BE_ONE;
-    cgpr |= CCM_CGPR_INT_MEM_CLK_LPM;
-    write32(cgpr, ccm + CCM_CGPR_OFFSET);
-
-    /* configure IOMUXC GINT to be always asserted */
-    gpr1 = read32(iomuxc + IOMUXC_GPR1_OFFSET);
-    gpr1 |= IOMUXC_GPR1_GINT;
-    write32(gpr1, iomuxc + IOMUXC_GPR1_OFFSET);
-
-    /* configure CLPCR for low power modes */
-    clpcr = read32(ccm + CCM_CLPCR_OFFSET);
-    clpcr &= ~CCM_CLPCR_LPM_MASK;
-    clpcr |= CCM_CLPCR_ARM_CLK_DIS_ON_LPM;
-    clpcr &= ~CCM_CLPCR_SBYOS;
-    clpcr &= ~CCM_CLPCR_VSTBY;
-    clpcr &= ~CCM_CLPCR_BYPASS_MMDC_CH0_LPM_HS;
-    clpcr |= CCM_CLPCR_BYPASS_MMDC_CH1_LPM_HS;
-    clpcr &= ~CCM_CLPCR_MASK_CORE0_WFI;
-    clpcr &= ~CCM_CLPCR_MASK_CORE1_WFI;
-    clpcr &= ~CCM_CLPCR_MASK_CORE2_WFI;
-    clpcr &= ~CCM_CLPCR_MASK_CORE3_WFI;
-    clpcr &= ~CCM_CLPCR_MASK_SCU_IDLE;
-    clpcr &= ~CCM_CLPCR_MASK_L2CC_IDLE;
-    write32(clpcr, ccm + CCM_CLPCR_OFFSET);
-}
 
 void plat_cpu_reset_late(void)
 {
@@ -258,7 +196,7 @@ void main_init_gic(void)
 	itr_init(&gic_data.chip);
 
 #ifdef CFG_PSCI_ARM32
-    setup_low_power_modes();
+    imx_psci_init();
 #endif
 }
 

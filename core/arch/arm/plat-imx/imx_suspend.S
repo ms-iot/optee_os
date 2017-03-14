@@ -1,3 +1,4 @@
+#include <arm.h>
 #include <arm32.h>
 #include <arm32_macros.S>
 #include <arm32_macros_cortex_a9.S>
@@ -38,7 +39,7 @@ loop:
     str     r1, [r0, #0]            // write gpio_dr register
     
     mov     r2, #1
-    lsl     r2, r2, #23             // load 2^23 in r2
+    lsl     r2, r2, #22             // load 2^22 in r2
 delay:
     subs    r2, r2, #1
     bne     delay
@@ -128,24 +129,52 @@ END_FUNC armv7_capture_context
 
 /*
  * void armv7_save_special_regs (struct armv7_special_registers* state);
+ *
+ * Must be running in monitor mode and IRQ/FIQ must be disabled.
  */
 FUNC armv7_save_special_regs , :
     UNWIND( .fnstart)
-    
-    //mrc     p15, 0, r1, c13, c0, 2   // TPIDRURW
+   
+    // XXX assert precondition: current mode must be monitor mode
+ 
     read_tpidrurw r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURW_OFFSET]
     
-    //mrc     p15, 0, r1, c13, c0, 3   // TPIDRURO
     read_tpidruro r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURO_OFFSET]
     
-    //mrc     p15, 0, r1, c13, c0, 4   // TPIDRPRW
     read_tpidrprw r1
     str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRPRW_OFFSET]
 
+    add     r0, r0, #ARMV7_SPECIAL_REGISTERS_USR_SP_OFFSET
+    
     // save banked registers
-    //yyy cps     # 
+    cps     #CPSR_MODE_SYS
+    stm     r0!, {sp, lr}
+
+    cps     #CPSR_MODE_IRQ
+    mrs     r2, spsr
+    stm     r0!, {r2, sp, lr}
+
+    cps     #CPSR_MODE_FIQ
+    mrs     r2, spsr
+    stm     r0!, {r2, r8-r12, sp, lr}
+
+    cps     #CPSR_MODE_SVC
+    mrs     r2, spsr
+    stm     r0!, {r2, sp, lr}
+
+    cps     #CPSR_MODE_ABT
+    mrs     r2, spsr
+    stm     r0!, {r2, sp, lr}
+
+    cps     #CPSR_MODE_UND
+    mrs     r2, spsr
+    stm     r0!, {r2, sp, lr}
+
+    cps     #CPSR_MODE_MON 
+    mrs     r2, spsr
+    stm     r0!, {r2} 
 
     bx      lr
     UNWIND( .fnend)

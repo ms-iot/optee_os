@@ -51,8 +51,19 @@ struct armv7_special_registers {
     uint32_t irq_sp;
     uint32_t irq_lr;
     uint32_t irq_spsr;
+    
+    uint32_t svc_sp;
+    uint32_t svc_lr;
+    uint32_t svc_spsr;
 
-    // XXX need to store FIQ state? monitor state?
+    uint32_t fiq_r8;
+    uint32_t fiq_r9;
+    uint32_t fiq_r10;
+    uint32_t fiq_r11;
+    uint32_t fiq_r12;
+    uint32_t fiq_sp;
+    uint32_t fiq_lr;
+    uint32_t fiq_spsr;
 };
 
 struct armv7_arch_state {
@@ -103,8 +114,8 @@ extern uint8_t imx_resume_end;
 #endif /* ASM */
 
 #define ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET 0x0
-#define ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET 0x38
-#define ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET 0x74
+#define ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET 0x64
+#define ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET 0xa0
 
 #define ARMV7_CONTEXT_R0_OFFSET 0x0
 #define ARMV7_CONTEXT_R1_OFFSET 0x4
@@ -137,6 +148,17 @@ extern uint8_t imx_resume_end;
 #define ARMV7_SPECIAL_REGISTERS_IRQ_SP_OFFSET 0x2C
 #define ARMV7_SPECIAL_REGISTERS_IRQ_LR_OFFSET 0x30
 #define ARMV7_SPECIAL_REGISTERS_IRQ_SPSR_OFFSET 0x34
+#define ARMV7_SPECIAL_REGISTERS_SVC_SP_OFFSET 0x38
+#define ARMV7_SPECIAL_REGISTERS_SVC_LR_OFFSET 0x3C
+#define ARMV7_SPECIAL_REGISTERS_SVC_SPSR_OFFSET 0x40
+#define ARMV7_SPECIAL_REGISTERS_FIQ_R8_OFFSET 0x44
+#define ARMV7_SPECIAL_REGISTERS_FIQ_R9_OFFSET 0x48
+#define ARMV7_SPECIAL_REGISTERS_FIQ_R10_OFFSET 0x4C
+#define ARMV7_SPECIAL_REGISTERS_FIQ_R11_OFFSET 0x50
+#define ARMV7_SPECIAL_REGISTERS_FIQ_R12_OFFSET 0x54
+#define ARMV7_SPECIAL_REGISTERS_FIQ_SP_OFFSET 0x58
+#define ARMV7_SPECIAL_REGISTERS_FIQ_LR_OFFSET 0x5C
+#define ARMV7_SPECIAL_REGISTERS_FIQ_SPSR_OFFSET 0x60
 
 #define ARMV7_ARCH_STATE_CP15_SCTLR_OFFSET 0x0
 #define ARMV7_ARCH_STATE_CP15_ACTLR_OFFSET 0x4

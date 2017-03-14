@@ -95,7 +95,8 @@ FUNC save_state_for_suspend , :
     bl      armv7_save_arch_state
     
     // XXX save special registers
-    
+    add     r0, r4, #ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET
+    bl      armv7_save_special_regs    
 
     // return false in suspend path
     mov     r0, #0
@@ -120,5 +121,25 @@ FUNC armv7_capture_context , :
 
     UNWIND( .fnend)
 END_FUNC armv7_capture_context
+
+/*
+ * void armv7_save_special_regs (struct armv7_special_registers* state);
+ */
+FUNC armv7_save_special_regs , :
+    UNWIND( .fnstart)
+    
+    mrc     p15, 0, r1, c13, c0, 2   // TPIDRURW
+    str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURW_OFFSET]
+    
+    mrc     p15, 0, r1, c13, c0, 3   // TPIDRURO
+    str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURO_OFFSET]
+    
+    mrc     p15, 0, r1, c13, c0, 4   // TPIDRPRW
+    str     r1, [r0, #ARMV7_SPECIAL_REGISTERS_CP15_TPIDRPRW_OFFSET]
+
+
+    bx      lr
+    UNWIND( .fnend)
+END_FUNC armv7_save_special_regs 
 
 

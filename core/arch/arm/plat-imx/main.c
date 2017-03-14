@@ -41,11 +41,13 @@
 #include <platform_config.h>
 #include <stdint.h>
 #include <sm/optee_smc.h>
+#include <sm/sm.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd)
+	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+	defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #include <kernel/tz_ssvce_pl310.h>
 #endif
 
@@ -68,7 +70,8 @@ register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_DEVICE_SIZE);
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd)
+	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+	defined(PLATFORM_FLAVOR_mx6qhmbedge)
 register_phys_mem(MEM_AREA_IO_SEC, PL310_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 #endif
@@ -84,7 +87,8 @@ static void main_fiq(void)
 }
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd)
+    defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge)
 void plat_cpu_reset_late(void)
 {
 	uintptr_t addr;
@@ -182,7 +186,8 @@ void main_init_gic(void)
 }
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd)
+    defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge)
 vaddr_t pl310_base(void)
 {
 	static void *va __early_bss;
@@ -200,3 +205,18 @@ void main_secondary_init_gic(void)
 	gic_cpu_init(&gic_data);
 }
 #endif
+
+void init_sec_mon(unsigned long nsec_entry)
+{
+struct sm_nsec_ctx *nsec_ctx;
+
+        assert(nsec_entry != PADDR_INVALID);
+
+	/* Initialize secure monitor */
+	nsec_ctx = sm_get_nsec_ctx();
+	nsec_ctx->mon_lr = nsec_entry;
+	nsec_ctx->mon_spsr = CPSR_MODE_SVC | CPSR_I;
+
+	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n",nsec_entry, nsec_ctx->mon_spsr);
+}
+

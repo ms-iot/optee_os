@@ -3,7 +3,7 @@ PLATFORM_FLAVOR ?= mx6ulevk
 ifeq ($(PLATFORM_FLAVOR),mx6ulevk)
 arm32-platform-cpuarch		:= cortex-a7
 endif
-ifeq ($(PLATFORM_FLAVOR),$(filter $(PLATFORM_FLAVOR),mx6qsabrelite mx6qsabresd))
+ifeq ($(PLATFORM_FLAVOR),$(filter $(PLATFORM_FLAVOR),mx6qsabrelite mx6qsabresd mx6qhmbedge))
 arm32-platform-cpuarch		:= cortex-a9
 endif
 arm32-platform-cflags		+= -mcpu=$(arm32-platform-cpuarch)
@@ -19,13 +19,13 @@ $(call force,CFG_WITH_SOFTWARE_PRNG,y)
 ifeq ($(PLATFORM_FLAVOR),mx6ulevk)
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 endif
-ifeq ($(PLATFORM_FLAVOR),$(filter $(PLATFORM_FLAVOR),mx6qsabrelite mx6qsabresd))
+ifeq ($(PLATFORM_FLAVOR),$(filter $(PLATFORM_FLAVOR),mx6qsabrelite mx6qsabresd mx6qhmbedge))
 $(call force,CFG_PL310,y)
 $(call force,CFG_PL310_LOCKED,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 
-CFG_BOOT_SYNC_CPU ?= y
-CFG_BOOT_SECONDARY_REQUEST ?= y
+//CFG_BOOT_SYNC_CPU ?= y
+//CFG_BOOT_SECONDARY_REQUEST ?= y
 endif
 
 ta-targets = ta_arm32

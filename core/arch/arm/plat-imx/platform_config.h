@@ -110,10 +110,11 @@
 #define CSU_ACCESS_ALL			0x00FF00FF
 #define CSU_SETTING_LOCK		0x01000100
 
-/* For i.MX6 Quad SABRE Lite and Smart Device board */
+/* For i.MX6 Quad SABRE SD/Lite, Hummingboard-Edge, Smart Device boards */
 
 #elif defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd)
+	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+        defined(PLATFORM_FLAVOR_mx6qhmbedge)
 
 #define SCU_BASE			0x00A00000
 #define PL310_BASE			0x00A02000
@@ -143,7 +144,8 @@
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
-#if defined(PLATFORM_FLAVOR_mx6qsabresd)
+#if defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
 #define DRAM0_BASE			0x10000000
@@ -151,7 +153,10 @@
 
 #define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
 
-#define CFG_TEE_CORE_NB_CORE		4
+//
+//  For initial bring-up we temporarily disable secondary cores
+//
+#define CFG_TEE_CORE_NB_CORE		1 //4
 
 #define DDR_PHYS_START			DRAM0_BASE
 #define DDR_SIZE			DRAM0_SIZE
@@ -268,14 +273,19 @@
 
 /* emulated SRAM, at start of secure DDR */
 
+#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
+#define CFG_CORE_TZSRAM_EMUL_START	0x8E000000
+#define CFG_DDR_TEETZ_RESERVED_START	0x8E100000
+#else
 #define CFG_CORE_TZSRAM_EMUL_START	0x4E000000
+#define CFG_DDR_TEETZ_RESERVED_START	0x4E100000
+#endif
 
 #define TZSRAM_BASE			CFG_CORE_TZSRAM_EMUL_START
 #define TZSRAM_SIZE			CFG_CORE_TZSRAM_EMUL_SIZE
 
 /* Location of trusted dram */
 
-#define CFG_DDR_TEETZ_RESERVED_START	0x4E100000
 #define CFG_DDR_TEETZ_RESERVED_SIZE	0x01F00000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)
@@ -317,7 +327,12 @@
  *  TA_RAM  : all what is left
  */
 
+#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
+#define CFG_DDR_TEETZ_RESERVED_START	0x8E000000
+#else
 #define CFG_DDR_TEETZ_RESERVED_START	0x4E000000
+#endif
+
 #define CFG_DDR_TEETZ_RESERVED_SIZE	0x02000000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)

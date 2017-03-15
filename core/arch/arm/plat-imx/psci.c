@@ -223,7 +223,6 @@ void init_suspend_resume_stub(void)
         (((vaddr_t)resume_state + sizeof(*resume_state) + 0x7) & ~0x7);
 
     // copy imx_resume to ocram
-    // XXX this will end up overwriting the saved context structure
     DMSG("Copying resume stub to ocram\n");
     resume_fn_len = &imx_resume_end - &imx_resume_start;
     memcpy(
@@ -318,7 +317,7 @@ void do_suspend (void)
     // programmed from the assembly side
     DMSG("Configuring resume address\n");
     write32(virt_to_phys((void*)suspend_resume_stub), src + SRC_GPR1);
-    write32(GPIO_BASE, src + SRC_GPR2);
+    write32(virt_to_phys(resume_state), src + SRC_GPR2);
 
     // Flush cache
     cache_maintenance_l1(DCACHE_CLEAN, NULL, 0);

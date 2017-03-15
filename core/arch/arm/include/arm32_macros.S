@@ -204,8 +204,16 @@
 	mrc	p15, 0, \reg, c13, c0, 3
 	.endm
 
+    .macro write_tpidrurw reg
+	mcr	p15, 0, \reg, c13, c0, 2
+	.endm
+
     .macro read_tpidrurw reg
 	mrc	p15, 0, \reg, c13, c0, 2
+	.endm
+
+    .macro write_tpidrprw reg
+	mcr	p15, 0, \reg, c13, c0, 4
 	.endm
 
     .macro read_tpidrprw reg

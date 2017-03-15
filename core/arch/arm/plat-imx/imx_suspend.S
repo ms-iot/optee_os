@@ -26,8 +26,97 @@ UNWIND(	.fnstart)
     // We do this so that we don't have to do an LDR (pc-relative) load
     // instruction, because this code must be location independent.
     
-    // read gpio_dr register
-    ldr     r1, [r0, #0]            // read gpio_dr register
+    // toggle state of LED
+    //ldr     r1, [r0, #0]            // read gpio_dr register
+    //eor     r1, r1, #(1 << 2)       // toggle bit 2 (onboard LED)
+    //str     r1, [r0, #0]
+
+    cpsid   if                      // disable interrupts
+
+    // XXX are all the ISB's necessary? Should not be necessary until MMU
+    // and branch prediction are enabled
+
+    // restore DACR
+    ldr     r1, [r0, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                       ARMV7_ARCH_STATE_CP15_DACR_OFFSET)]
+    write_dacr  r1
+    isb
+
+    mov     r1, #0xff               // TRANSITION_ASID
+    dsb
+    write_contextidr    r1
+    isb
+
+    // Restore TTBCR
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_TTBCR_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_ttbcr r1
+ 
+    // Restore TTBR0
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_TTBR0_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_ttbr0 r1
+
+    // Restore TTBR1
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_TTBR1_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_ttbr1 r1
+    
+    // Restore NMRR
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_NMRR_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_nmrr r1
+
+    // Restore PRRR
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_PRRR_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_prrr r1
+    
+    // Restore TPIDRURW
+    movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
+                  ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURW_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_tpidrurw r1
+ 
+    // Restore TPIDRURO
+    movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
+                  ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURO_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_tpidruro r1
+ 
+    // Restore TPIDRPRW
+    movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
+                  ARMV7_SPECIAL_REGISTERS_CP15_TPIDRPRW_OFFSET)
+
+    ldr     r1, [r0, r2]
+    write_tpidrprw r1
+ 
+    write_tlbiall                   // invalidate tlb
+    dsb
+    isb
+    
+    write_iciallu                   // invalidate icache
+    dsb
+    isb
+
+    write_bpiall                    // invalidate btac
+    dsb
+    isb
+
+    movw    r0, #0xC000             // load GPIO physical address to r0
+    movt    r0, #0x0209
 
     // following 3 lines will turn off LED then return
     //bic     r1, r1, #(1 << 2)
@@ -39,7 +128,7 @@ loop:
     str     r1, [r0, #0]            // write gpio_dr register
     
     mov     r2, #1
-    lsl     r2, r2, #22             // load 2^22 in r2
+    lsl     r2, r2, #21             // load 2^21 in r2
 delay:
     subs    r2, r2, #1
     bne     delay

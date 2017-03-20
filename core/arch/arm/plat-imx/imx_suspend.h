@@ -101,6 +101,8 @@ struct armv7_processor_state {
     struct armv7_special_registers special_registers;
     struct armv7_arch_state arch_state;
     struct armv7_context context;
+    uint32_t gpio_virt_base;
+    uint32_t resume_state_virt_base;
 };
 
 bool save_state_for_suspend (struct armv7_processor_state* state);

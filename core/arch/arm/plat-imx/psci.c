@@ -53,6 +53,7 @@ static void do_suspend(void);
 static void setup_low_power_modes(void);
 static void enable_power_btn_int(void);
 static void init_led(void);
+static void set_led(bool on);
 static void init_suspend_resume_stub(void);
 
 struct armv7_processor_state* resume_state;
@@ -190,7 +191,7 @@ static void enable_power_btn_int(void)
     write32(value, bank_base + GPIO_IMR_OFFSET);
 }
 
-static void init_led(void)
+void init_led(void)
 {
     vaddr_t bank_base;
     uint32_t value;
@@ -210,6 +211,27 @@ static void init_led(void)
 
     DMSG("Successfully configured LED\n");
 }
+
+void set_led(bool on)
+{
+    vaddr_t bank_base;
+    uint32_t value;
+
+    DMSG("Setting LED state: %d\n", on);
+
+    bank_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC) + 
+        GPIO_BANK_SIZE * BANK_FROM_PIN(LED_GPIO);
+
+    value = read32(bank_base + GPIO_DR_OFFSET);
+    if (on) {
+        value |= BIT_FROM_PIN(LED_GPIO);
+    } else {
+        value &= ~BIT_FROM_PIN(LED_GPIO);
+    }
+
+    write32(value, bank_base + GPIO_DR_OFFSET);
+}
+
 
 void init_suspend_resume_stub(void)
 {
@@ -239,10 +261,20 @@ void do_suspend (void)
     vaddr_t anatop_base;
     vaddr_t gpc_base;
     vaddr_t src;
+    vaddr_t imx_resume_addr;
 
     //uint32_t dr;
 
     DMSG("Suspending CPU\n");  
+
+    imx_resume_addr = (vaddr_t)imx_resume;
+
+    DMSG(
+        "Are we identity mapped? imx_resume_addr = 0x%x, "
+        "virt_to_phys(imx_resume_addr) = 0x%x\n",
+        (unsigned)imx_resume_addr,
+        (unsigned)virt_to_phys((void*)imx_resume_addr));
+
 
     DMSG(
         "Length of imx_resume = %d\n",
@@ -312,11 +344,13 @@ void do_suspend (void)
 
     enable_power_btn_int();
 
+    set_led(false);
+
     // Program resume address into SRC
     // XXX use virt_to_phys and suspend_resume_stub. This should really be
     // programmed from the assembly side
     DMSG("Configuring resume address\n");
-    write32(virt_to_phys((void*)suspend_resume_stub), src + SRC_GPR1);
+    write32(virt_to_phys((void*)imx_resume_addr), src + SRC_GPR1);
     write32(virt_to_phys(resume_state), src + SRC_GPR2);
 
     // Flush cache
@@ -350,6 +384,9 @@ int psci_cpu_suspend (
         (unsigned)entry,
         context_id);  
 
+    resume_state->gpio_virt_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC);
+    resume_state->resume_state_virt_base = (uint32_t)resume_state;
+
     waking = save_state_for_suspend(resume_state);
     if (!waking) {
         // Normally this should not return
@@ -358,6 +395,8 @@ int psci_cpu_suspend (
         DMSG("Failed to suspend, most likely due to pending interrupt\n");
         
     }
+
+    DMSG("Successfully woke from suspend\n");
 
     return PSCI_RET_SUCCESS;
 }

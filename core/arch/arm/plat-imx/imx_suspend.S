@@ -12,6 +12,29 @@
 .balign 4
 .code 32
 
+    /*
+     * Cache maintenance during entry: handle outer cache.
+     * End address is exclusive: first byte not to be changed.
+     * Note however arm_clX_inv/cleanbyva operate on full cache lines.
+     *
+     * Use ANSI #define to trap source file line number for PL310 assertion
+     */
+    .macro __inval_cache_vrange vbase, vend, line
+#ifdef CFG_PL310
+//        assert_flat_mapped_range (\vbase), (\line)
+        bl  pl310_base
+        ldr r1, =(\vbase)
+        ldr r2, =(\vend)
+        bl  arm_cl2_invbypa
+#endif
+        ldr r0, =(\vbase)
+        ldr r1, =(\vend)
+        bl  arm_cl1_d_invbyva
+    .endm
+
+#define inval_cache_vrange(vbase, vend) \
+        __inval_cache_vrange (vbase), ((vend) - 1), __LINE__
+
 .global imx_resume_start
 imx_resume_start:
 
@@ -31,18 +54,26 @@ UNWIND(	.fnstart)
     //eor     r1, r1, #(1 << 2)       // toggle bit 2 (onboard LED)
     //str     r1, [r0, #0]
 
-    cpsid   if                      // disable interrupts
+    cpsid   if, #CPSR_MODE_MON        // disable interrupts, to monitor mode
+    mov     r4, r0
+
+    bl      plat_cpu_reset_early
 
     // XXX are all the ISB's necessary? Should not be necessary until MMU
     // and branch prediction are enabled
 
     // restore DACR
-    ldr     r1, [r0, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+    ldr     r1, [r4, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                        ARMV7_ARCH_STATE_CP15_DACR_OFFSET)]
     write_dacr  r1
     isb
 
-    mov     r1, #0xff               // TRANSITION_ASID XXX need to restore actual value?
+    //mov     r1, #0xff               // TRANSITION_ASID XXX need to restore actual value?
+    
+    // restore CONTEXTIDR
+    ldr     r1, [r4, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                       ARMV7_ARCH_STATE_CP15_CONTEXTIDR_OFFSET)]
+
     dsb
     write_contextidr    r1
     isb
@@ -51,78 +82,84 @@ UNWIND(	.fnstart)
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_TTBCR_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r1, [r4, r2]
     write_ttbcr r1
  
     // Restore TTBR0
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_TTBR0_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r1, [r4, r2]
     write_ttbr0 r1
 
     // Restore TTBR1
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_TTBR1_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r1, [r4, r2]
     write_ttbr1 r1
     
     // Restore NMRR
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_NMRR_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r1, [r4, r2]
     write_nmrr r1
 
     // Restore PRRR
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_PRRR_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r1, [r4, r2]
     write_prrr r1
-    
-    // Restore TPIDRURW
-    //movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
-    //              ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURW_OFFSET)
-
-    //ldr     r1, [r0, r2]
-    //write_tpidrurw r1
- 
-    // Restore TPIDRURO
-    //movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
-    //              ARMV7_SPECIAL_REGISTERS_CP15_TPIDRURO_OFFSET)
-
-    //ldr     r1, [r0, r2]
-    //write_tpidruro r1
- 
-    // Restore TPIDRPRW
-    //movw    r2, #(ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET + \
-    //              ARMV7_SPECIAL_REGISTERS_CP15_TPIDRPRW_OFFSET)
-
-    //ldr     r1, [r0, r2]
-    //write_tpidrprw r1
-
-    mov     r4, r0
-    
-//    movw    r0, #0xC000             // load GPIO physical address to r0
-//    movt    r0, #0x0209
-//    bl      blink_led
-//    mov     r0, r4 
+   
+    movw    r0, #0xC000             // load GPIO physical address to r0
+    movt    r0, #0x0209
+    bl      blink_led
 
     // load gpio virtual address to r5
     mov     r2, #0xe8       // gpio_virt_base
-    ldr     r5, [r0, r2]
+    ldr     r5, [r4, r2]
 
-    // Load SCTLR value from memory
+    // Load SCTLR value from memory to r7
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_SCTLR_OFFSET)
 
-    ldr     r1, [r0, r2]
+    ldr     r7, [r4, r2]
+    //orr     r0, r0, #SCTLR_Z    // enable branch prediction
 
     // Load virtual address of processor_state structure to r6
     mov     r2, #0xec       // resume_state_virt_base
-    ldr     r6, [r0, r2]
+    ldr     r6, [r4, r2]
+
+    // Load stack pointer from context record
+    mov     r2, #(ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET + \
+                  ARMV7_CONTEXT_SP_OFFSET)
+
+    ldr     sp, [r4, r2]
+
+#ifdef CFG_PL310
+    bl      pl310_base
+    bl      arm_cl2_config
+#endif
+
+    /*
+     * Invalidate dcache for all memory used during initialization to
+     * avoid nasty surprices when the cache is turned on. We must not
+     * invalidate memory not used by OP-TEE since we may invalidate
+     * entries used by for instance ARM Trusted Firmware.
+     */
+#ifdef CFG_WITH_PAGER
+    inval_cache_vrange(__text_start, __tmp_hashes_end)
+#else
+    inval_cache_vrange(__text_start, __end)
+#endif
+   
+#ifdef CFG_PL310
+    /* Enable PL310 if not yet enabled */
+    bl  pl310_base
+    bl  arm_cl2_enable
+#endif 
 
     write_tlbiall                   // invalidate tlb
     dsb
@@ -136,7 +173,7 @@ UNWIND(	.fnstart)
     dsb
     isb
 
-    write_sctlr r1
+    write_sctlr r7                  // enable MMU and caches
     dsb
     isb
 
@@ -205,9 +242,9 @@ FUNC save_state_for_suspend , :
     mov     r4, r0
 
     // XXX need to disable interrupts?
-    mov     r2, #0xe8       // gpio_virt_base
-    ldr     r0, [r4, r2]
-    bl      blink_led 
+    //mov     r2, #0xe8       // gpio_virt_base
+    //ldr     r0, [r4, r2]
+    //bl      blink_led 
 
     // compute address of context structure
 //    mov     r4, r0

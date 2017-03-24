@@ -39,6 +39,37 @@ struct gic_data {
 	vaddr_t gicd_base;
 	size_t max_it;
 	struct itr_chip chip;
+    struct {
+        /* distributor control register */
+        uint32_t icddcr;
+        /* interrupt security registers */
+        uint32_t icdisr[32];
+        /* interrupt set-enable registers */
+        uint32_t icdiser[32];
+        /* active bit registers */
+        uint32_t icdabr[32];
+        /* interrupt priority registers */
+        uint32_t icdipr[255];
+        /* interrupt processor targets registers */
+        uint32_t icdiptr[255];
+        /* interrupt configuration registers */
+        uint32_t icdicfr[64];
+
+        struct {
+            /* CPU interface control register */
+            uint32_t iccicr;
+            /* Interrupt priority mask register */
+            uint32_t iccpmr;
+            /* binary point register */
+            uint32_t iccbpr;
+            /* banked per-processor enable-set registers */
+            uint32_t icdiser;
+            /* banked per-processor active-set reigsters */
+            uint32_t icdabr;
+            /* banked per-processor config registers */
+            uint32_t icdicfr[2]; 
+        } per_cpu[8];
+    } saved_state;
 };
 
 /*
@@ -56,4 +87,9 @@ void gic_cpu_init(struct gic_data *gd);
 void gic_it_handle(struct gic_data *gd);
 
 void gic_dump_state(struct gic_data *gd);
+
+void gic_save_state(struct gic_data *gd);
+
+void gic_restore_state(struct gic_data *gd);
+
 #endif /*__DRIVERS_GIC_H*/

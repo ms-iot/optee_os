@@ -78,6 +78,13 @@ UNWIND(	.fnstart)
     write_contextidr    r1
     isb
 
+    // restore CPACR
+    mov     r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_CPACR_OFFSET)
+
+    ldr     r1, [r4, r2]
+    write_cpacr r1
+
     // Restore TTBCR
     movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
                   ARMV7_ARCH_STATE_CP15_TTBCR_OFFSET)
@@ -112,10 +119,17 @@ UNWIND(	.fnstart)
 
     ldr     r1, [r4, r2]
     write_prrr r1
+
+    // Restore VBAR
+    movw    r2, #(ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET + \
+                  ARMV7_ARCH_STATE_CP15_VBAR_OFFSET)
+    
+    ldr     r1, [r4, r2]
+    write_vbar  r1
    
-    movw    r0, #0xC000             // load GPIO physical address to r0
-    movt    r0, #0x0209
-    bl      blink_led
+//    movw    r0, #0xC000             // load GPIO physical address to r0
+//    movt    r0, #0x0209
+//    bl      blink_led
 
     // load gpio virtual address to r5
     mov     r2, #0xe8       // gpio_virt_base

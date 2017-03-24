@@ -54,7 +54,7 @@
 #endif
 
 static void main_fiq(void);
-static struct gic_data gic_data;
+static struct gic_data gic_data;    // XXX move to header
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,

@@ -30,6 +30,7 @@
 #include <drivers/gic.h>
 #include <kernel/interrupt.h>
 #include <kernel/panic.h>
+#include <kernel/misc.h>
 #include <util.h>
 #include <io.h>
 #include <trace.h>
@@ -37,6 +38,7 @@
 /* Offsets from gic.gicc_base */
 #define GICC_CTLR		(0x000)
 #define GICC_PMR		(0x004)
+#define GICC_BPR        (0x008)
 #define GICC_IAR		(0x00C)
 #define GICC_EOIR		(0x010)
 
@@ -52,8 +54,10 @@
 #define GICD_ICENABLER(n)	(0x180 + (n) * 4)
 #define GICD_ISPENDR(n)		(0x200 + (n) * 4)
 #define GICD_ICPENDR(n)		(0x280 + (n) * 4)
+#define GICD_IACTIVER(n)    (0x300 + (n) * 4)
 #define GICD_IPRIORITYR(n)	(0x400 + (n) * 4)
 #define GICD_ITARGETSR(n)	(0x800 + (n) * 4)
+#define GICD_ICONFIGR(n)    (0xC00 + (n) * 4)
 #define GICD_SGIR		(0xF00)
 
 #define GICD_CTLR_ENABLEGRP0	(1 << 0)
@@ -73,6 +77,12 @@
 
 /* Number of targets in one register */
 #define NUM_TARGETS_PER_REG	4
+
+/* Number of priority values in one register */
+#define NUM_PRIORITIES_PER_REG 4
+
+/* Number of configuration values in one register */
+#define NUM_CONFIGS_PER_REG 16
 
 /* Accessors to access ITARGETSRn */
 #define ITARGETSR_FIELD_BITS	8
@@ -370,6 +380,116 @@ void gic_dump_state(struct gic_data *gd)
 			     gic_it_get_group(gd, i), gic_it_get_target(gd, i));
 		}
 	}
+}
+
+void gic_save_state(struct gic_data *gd)
+{
+    unsigned i;
+    struct gic_per_cpu_state *per_cpu;
+
+    DMSG("Saving GIC state\n");
+
+    per_cpu = &gd->saved_state.per_cpu[get_core_pos()];
+
+    // XXX should we disable the GIC before reading state?
+    gd->saved_state.icddcr = read32(gd->gicd_base + GICD_CTLR);
+    
+    /* save interrupt security registers */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        gd->saved_state.icdisr[i] = read32(gd->gicd_base + GICD_IGROUPR(i));
+    }
+
+    /* save set-enable registers */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        gd->saved_state.icdiser[i] = read32(gd->gicd_base + GICD_ISENABLER(i));
+    }
+
+    /* save active bits */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        gd->saved_state.icdabr[i] = read32(gd->gicd_base + GICD_IACTIVER(i));
+    }
+
+    /* save interrupt priority */
+    for (i = 0; i < (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
+        gd->saved_state.icdipr[i] = read32(gd->gicd_base + GICD_IPRIORITYR(i));
+    }
+
+    /* save target registers */
+    for (i = 0; i < (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
+        gd->saved_state.icdiptr[i] = read32(gd->gicd_base + GICD_ITARGETSR(i)); 
+    }
+
+    /* save configuration */
+    for (i = 0; i < (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
+        gd->saved_state.icdicfr[i] = read32(gd->gicd_base + GICD_ICONFIGR(i));
+    } 
+    
+    /* save CPU interface control register */
+    per_cpu->iccicr = read32(gd->gicc_base + GICC_CTLR);
+    per_cpu->iccpmr = read32(gd->gicc_base + GICC_PMR);
+    per_cpu->iccbpr = read32(gd->gicc_base + GICC_BPR);
+     
+  
+    // XXX save banked per-processor GIC distributor registers 
+     
+}
+
+
+void gic_restore_state(struct gic_data *gd)
+{
+    unsigned i;
+    uint32_t gicd_ctlr;
+    uint32_t gicc_ctlr;
+    struct gic_per_cpu_state *per_cpu;
+
+    DMSG("Restoring GIC state\n");
+
+    per_cpu = &gd->saved_state.per_cpu[get_core_pos()];
+
+    gicd_ctlr = read32(gd->gicd_base + GICD_CTLR);
+    gicc_ctlr = read32(gd->gicd_base + GICC_CTLR);
+    if (((gicd_ctlr & (GICD_CTLR_ENABLEGRP0 | GICD_CTLR_ENABLEGRP1)) != 0) &&
+        ((gicc_ctlr & (GICC_CTLR_ENABLEGRP0 | GICC_CTLR_ENABLEGRP1)) != 0)) {
+
+        panic("GIC must be disabled prior to gic_restore_state");
+    }
+
+    /* restore interrupt security registers */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        write32(gd->saved_state.icdisr[i], gd->gicd_base + GICD_IGROUPR(i)); 
+    }
+
+    /* restore set-enable registers */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        write32(gd->saved_state.icdiser[i], gd->gicd_base + GICD_ISENABLER(i));
+    }
+
+    /* restore active bits */
+    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+        write32(gd->saved_state.icdabr[i], gd->gicd_base + GICD_IACTIVER(i));
+    }
+
+    /* restore interrupt priority */
+    for (i = 0; i < (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
+        write32(gd->saved_state.icdipr[i], gd->gicd_base + GICD_IPRIORITYR(i));
+    }
+
+    /* restore target registers */
+    for (i = 0; i < (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
+        write32(gd->saved_state.icdiptr[i], gd->gicd_base + GICD_ITARGETSR(i)); 
+    }
+
+    /* restore configuration */
+    for (i = 0; i < (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
+        write32(gd->saved_state.icdicfr[i], gd->gicd_base + GICD_ICONFIGR(i));
+    } 
+    
+    write32(per_cpu->iccpmr, gd->gicc_base + GICC_PMR);
+    write32(per_cpu->iccbpr, gd->gicc_base + GICC_BPR);
+
+    /* restore control registers, reenabling the GIC */
+    write32(per_cpu->iccicr, gd->gicc_base + GICC_CTLR);
+    write32(gd->saved_state.icddcr, gd->gicd_base + GICD_CTLR);
 }
 
 void gic_it_handle(struct gic_data *gd)

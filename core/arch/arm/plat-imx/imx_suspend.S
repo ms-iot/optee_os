@@ -191,12 +191,15 @@ UNWIND(	.fnstart)
     dsb
     isb
 
-    mov     r0, r5      // gpio_virt_base
-    bl      blink_led
+    //mov     r0, r5      // gpio_virt_base
+    //bl      blink_led
 
     // restore banked registers
     add     r0, r6, #ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET
     bl      armv7_restore_special_regs
+
+    ldr     r0, =gic_data
+    bl      gic_restore_state
 
     // restore context
     add     r0, r6, #ARMV7_PROCESSOR_STATE_CONTEXT_OFFSET
@@ -290,6 +293,9 @@ FUNC save_state_for_suspend , :
     // restore the caller-saved register r4 which we saved on the stack
     ldr     r1, [sp, #0]                        // load saved value of r4
     str     r1, [r0, #ARMV7_CONTEXT_R4_OFFSET]
+
+    ldr     r0, =gic_data
+    bl      gic_save_state
 
     // Save architectural state
     add     r0, r4, #ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET

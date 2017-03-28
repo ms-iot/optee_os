@@ -397,7 +397,7 @@ int psci_cpu_suspend (
     }
 
     DMSG("Successfully woke from suspend\n");
-
+    blink_led(resume_state->gpio_virt_base);
     return PSCI_RET_SUCCESS;
 }
 

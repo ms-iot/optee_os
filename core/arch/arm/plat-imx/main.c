@@ -54,7 +54,7 @@
 #endif
 
 static void main_fiq(void);
-static struct gic_data gic_data;    // XXX move to header
+struct gic_data gic_data;
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
@@ -275,7 +275,9 @@ static enum itr_return gpio_itr_cb(struct itr_handler *h)
 static struct itr_handler gpio_itr[GPIO_IT_COUNT];
 KEEP_PAGER(gpio_itr);
 
-static TEE_Result init_gpio_itr(void)
+// XXX remove me
+TEE_Result init_gpio_itr(void);
+TEE_Result init_gpio_itr(void)
 {
     vaddr_t gpio;
     unsigned i;
@@ -307,7 +309,7 @@ static TEE_Result init_gpio_itr(void)
     
     return TEE_SUCCESS;
 }
-driver_init(init_gpio_itr);
+//driver_init(init_gpio_itr); XXX
 
 #endif
 

@@ -117,6 +117,10 @@ extern uint8_t imx_resume_end;
 
 void imx_psci_init (void);
 
+void blink_led (uint32_t gpio_base);
+
+extern struct gic_data gic_data;
+
 #endif /* ASM */
 
 #define ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET 0x0

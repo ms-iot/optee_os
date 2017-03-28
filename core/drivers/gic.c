@@ -387,7 +387,7 @@ void gic_save_state(struct gic_data *gd)
     unsigned i;
     struct gic_per_cpu_state *per_cpu;
 
-    DMSG("Saving GIC state\n");
+    DMSG("Saving GIC state. (gd->max_it = %d))\n", gd->max_it);
 
     per_cpu = &gd->saved_state.per_cpu[get_core_pos()];
 
@@ -395,32 +395,32 @@ void gic_save_state(struct gic_data *gd)
     gd->saved_state.icddcr = read32(gd->gicd_base + GICD_CTLR);
     
     /* save interrupt security registers */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         gd->saved_state.icdisr[i] = read32(gd->gicd_base + GICD_IGROUPR(i));
     }
 
     /* save set-enable registers */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         gd->saved_state.icdiser[i] = read32(gd->gicd_base + GICD_ISENABLER(i));
     }
 
     /* save active bits */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         gd->saved_state.icdabr[i] = read32(gd->gicd_base + GICD_IACTIVER(i));
     }
 
     /* save interrupt priority */
-    for (i = 0; i < (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
         gd->saved_state.icdipr[i] = read32(gd->gicd_base + GICD_IPRIORITYR(i));
     }
 
     /* save target registers */
-    for (i = 0; i < (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
         gd->saved_state.icdiptr[i] = read32(gd->gicd_base + GICD_ITARGETSR(i)); 
     }
 
     /* save configuration */
-    for (i = 0; i < (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
         gd->saved_state.icdicfr[i] = read32(gd->gicd_base + GICD_ICONFIGR(i));
     } 
     
@@ -455,32 +455,32 @@ void gic_restore_state(struct gic_data *gd)
     }
 
     /* restore interrupt security registers */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         write32(gd->saved_state.icdisr[i], gd->gicd_base + GICD_IGROUPR(i)); 
     }
 
     /* restore set-enable registers */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         write32(gd->saved_state.icdiser[i], gd->gicd_base + GICD_ISENABLER(i));
     }
 
     /* restore active bits */
-    for (i = 0; i < (gd->max_it / NUM_INTS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_INTS_PER_REG); ++i) {
         write32(gd->saved_state.icdabr[i], gd->gicd_base + GICD_IACTIVER(i));
     }
 
     /* restore interrupt priority */
-    for (i = 0; i < (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_PRIORITIES_PER_REG); ++i) {
         write32(gd->saved_state.icdipr[i], gd->gicd_base + GICD_IPRIORITYR(i));
     }
 
     /* restore target registers */
-    for (i = 0; i < (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_TARGETS_PER_REG); ++i) {
         write32(gd->saved_state.icdiptr[i], gd->gicd_base + GICD_ITARGETSR(i)); 
     }
 
     /* restore configuration */
-    for (i = 0; i < (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
+    for (i = 0; i <= (gd->max_it / NUM_CONFIGS_PER_REG); ++i) {
         write32(gd->saved_state.icdicfr[i], gd->gicd_base + GICD_ICONFIGR(i));
     } 
     

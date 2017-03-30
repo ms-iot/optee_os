@@ -42,9 +42,11 @@
 #define PSCI_RET_DISABLED		(-8)
 #define PSCI_RET_INVALID_ADDRESS	(-9)
 
+struct sm_ctx;
+
 uint32_t psci_version(void);
 int psci_cpu_suspend(uint32_t power_state, uintptr_t entry,
-		     uint32_t context_id);
+		     uint32_t context_id, paddr_t* ns_return_addr);
 int psci_cpu_off(void);
 int psci_cpu_on(uint32_t cpu_id, uint32_t entry, uint32_t context_id);
 int psci_affinity_info(uint32_t affinity, uint32_t lowest_affnity_level);
@@ -57,4 +59,4 @@ int psci_features(uint32_t psci_fid);
 int psci_node_hw_state(uint32_t cpu_id, uint32_t power_level);
 int psci_stat_residency(uint32_t cpu_id, uint32_t power_state);
 int psci_stat_count(uint32_t cpu_id, uint32_t power_state);
-void tee_psci_handler(struct thread_smc_args *args);
+void tee_psci_handler(struct sm_ctx *ctx);

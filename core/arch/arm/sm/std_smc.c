@@ -29,9 +29,9 @@
 
 #include <stdint.h>
 #include <sm/optee_smc.h>
-#include <sm/psci.h>
 #include <sm/sm.h>
 #include <sm/std_smc.h>
+#include <sm/psci.h>
 #include <tee/uuid.h>
 #include <trace.h>
 
@@ -40,14 +40,15 @@ static const TEE_UUID uuid = {
 	{0x98, 0xd2, 0x74, 0xf4, 0x38, 0x27, 0x98, 0xbb},
 };
 
-void smc_std_handler(struct thread_smc_args *args)
+void smc_std_handler(struct sm_ctx *ctx)
 {
+    struct thread_smc_args *args = (struct thread_smc_args*)&ctx->nsec.r0;
 	uint32_t smc_fid = args->a0;
 
     DMSG("Received SMC (smc_fid=%d)\n", smc_fid);
 
 	if (is_psci_fid(smc_fid)) {
-		tee_psci_handler(args);
+		tee_psci_handler(ctx);
 		return;
 	}
 

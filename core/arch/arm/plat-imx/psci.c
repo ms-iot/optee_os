@@ -39,6 +39,7 @@
 #include <platform_config.h>
 #include <stdint.h>
 #include <string.h>
+#include <sm/sm.h>
 #include <sm/optee_smc.h>
 #include <sm/psci.h>
 #include <tee/entry_std.h>
@@ -372,7 +373,8 @@ void do_suspend (void)
 int psci_cpu_suspend (
     uint32_t power_state,
     uintptr_t entry,
-    uint32_t context_id
+    uint32_t context_id,
+    paddr_t *ns_return_addr
     )
 {
     bool waking;
@@ -393,12 +395,15 @@ int psci_cpu_suspend (
         do_suspend();
 
         DMSG("Failed to suspend, most likely due to pending interrupt\n");
-        
+        return PSCI_RET_SUCCESS;
     }
 
     DMSG("Successfully woke from suspend\n");
+
     blink_led(resume_state->gpio_virt_base);
-    return PSCI_RET_SUCCESS;
+
+    *ns_return_addr = entry;
+    return context_id;
 }
 
 void armv7_save_arch_state (struct armv7_arch_state* state)

@@ -18,5 +18,5 @@
 #define is_psci_fid(_fid) \
 	(((_fid) & PSCI_FID_MASK) == PSCI_FID_VALUE)
 
-void smc_std_handler(struct thread_smc_args *args);
+void smc_std_handler(struct sm_ctx *ctx);
 #endif

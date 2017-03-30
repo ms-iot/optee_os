@@ -119,7 +119,16 @@ void imx_psci_init (void);
 
 void blink_led (uint32_t gpio_base);
 
+struct scu_data;
+
+void scu_init(struct scu_data *sd);
+
+void scu_save_state(struct scu_data *sd);
+
+void scu_restore_state(struct scu_data *sd);
+
 extern struct gic_data gic_data;
+extern struct scu_data scu_data;
 
 #endif /* ASM */
 

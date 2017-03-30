@@ -53,8 +53,16 @@
 #include <kernel/tz_ssvce_pl310.h>
 #endif
 
+struct scu_data {
+    uint32_t ctrl;
+    uint32_t sac;
+    uint32_t nsac;
+};
+
+static vaddr_t scu_base(void);
 static void main_fiq(void);
 struct gic_data gic_data;
+struct scu_data scu_data;
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
@@ -96,7 +104,6 @@ static void main_fiq(void)
 void plat_cpu_reset_late(void)
 {
 	uintptr_t addr;
-    uint32_t scu_ctrl;
 
 	if (!get_core_pos()) {
 		/* primary core */
@@ -110,19 +117,7 @@ void plat_cpu_reset_late(void)
 #endif
 
 		/* SCU config */
-		write32(SCU_INV_CTRL_INIT, SCU_BASE + SCU_INV_SEC);
-		write32(SCU_SAC_CTRL_INIT, SCU_BASE + SCU_SAC);
-		write32(SCU_NSAC_CTRL_INIT, SCU_BASE + SCU_NSAC);
-
-		/* SCU enable */
-        scu_ctrl = read32(SCU_BASE + SCU_CTRL);
-        scu_ctrl |= SCU_CTRL_ENABLE;
-
-#ifdef CFG_PSCI_ARM32
-        scu_ctrl |= SCU_CTRL_STANDBY_ENABLE;
-#endif /* CFG_PSCI_ARM32 */
-
-		write32(scu_ctrl, SCU_BASE + SCU_CTRL);
+        scu_init(&scu_data);
 
 		/* configure imx6 CSU */
 
@@ -139,6 +134,55 @@ void plat_cpu_reset_late(void)
 			write32(read32(addr) | CSU_SETTING_LOCK, addr);
 	}
 }
+
+void scu_init(struct scu_data *sd __unused)
+{
+    uint32_t scu_ctrl;
+    vaddr_t base = scu_base();
+
+    /* SCU config */
+    write32(SCU_INV_CTRL_INIT, base + SCU_INV_SEC);
+    write32(SCU_SAC_CTRL_INIT, base + SCU_SAC);
+    write32(SCU_NSAC_CTRL_INIT, base + SCU_NSAC);
+
+    /* SCU enable */
+    scu_ctrl = read32(base + SCU_CTRL);
+    scu_ctrl |= SCU_CTRL_ENABLE;
+
+#ifdef CFG_PSCI_ARM32
+    scu_ctrl |= SCU_CTRL_STANDBY_ENABLE;
+#endif /* CFG_PSCI_ARM32 */
+
+    write32(scu_ctrl, base + SCU_CTRL);
+}
+
+void scu_save_state(struct scu_data *sd)
+{
+    vaddr_t base = scu_base();
+
+    sd->ctrl = read32(base + SCU_CTRL);
+    sd->sac = read32(base + SCU_SAC);
+    sd->nsac = read32(base + SCU_NSAC);
+}
+
+void scu_restore_state(struct scu_data *sd)
+{
+    uint32_t scu_ctrl;
+    vaddr_t base = scu_base();
+
+    scu_ctrl = read32(base + SCU_CTRL);
+    if ((scu_ctrl & SCU_CTRL_ENABLE) != 0) {
+        panic("SCU must be disabled when scu_restore_state is called\n");
+    }
+
+    write32(SCU_INV_CTRL_INIT, base + SCU_INV_SEC);
+    write32(sd->sac, base + SCU_SAC);
+    write32(sd->nsac, base + SCU_NSAC);
+
+    /* write to control register, turning on SCU*/
+    write32(sd->ctrl, base + SCU_CTRL);
+}
+
 #endif
 
 static vaddr_t console_base(void)
@@ -213,6 +257,18 @@ vaddr_t pl310_base(void)
 		return (vaddr_t)va;
 	}
 	return PL310_BASE;
+}
+
+vaddr_t scu_base(void)
+{
+	static void *va __early_bss;
+
+	if (cpu_mmu_enabled()) {
+		if (!va)
+			va = phys_to_virt(SCU_BASE, MEM_AREA_IO_SEC);
+		return (vaddr_t)va;
+	}
+	return SCU_BASE;
 }
 
 void main_secondary_init_gic(void)

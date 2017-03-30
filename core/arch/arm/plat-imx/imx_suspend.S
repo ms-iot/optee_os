@@ -152,6 +152,9 @@ UNWIND(	.fnstart)
 
     ldr     sp, [r4, r2]
 
+    ldr     r0, =scu_data
+    bl      scu_restore_state
+
 #ifdef CFG_PL310
     bl      pl310_base
     bl      arm_cl2_config
@@ -296,6 +299,9 @@ FUNC save_state_for_suspend , :
 
     ldr     r0, =gic_data
     bl      gic_save_state
+
+    ldr     r0, =scu_data
+    bl      scu_save_state
 
     // Save architectural state
     add     r0, r4, #ARMV7_PROCESSOR_STATE_ARCH_STATE_OFFSET

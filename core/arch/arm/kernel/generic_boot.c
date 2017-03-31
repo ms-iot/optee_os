@@ -70,7 +70,6 @@
  *
  * 64-bit systems on the other hand can use full 64-bit physical pointers.
  */
-#define PADDR_INVALID		ULONG_MAX
 
 #if defined(CFG_BOOT_SECONDARY_REQUEST)
 paddr_t ns_entry_addrs[CFG_TEE_CORE_NB_CORE] __early_bss;

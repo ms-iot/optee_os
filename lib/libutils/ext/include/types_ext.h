@@ -42,4 +42,6 @@ typedef uintptr_t vaddr_t;
 typedef uintptr_t paddr_t;
 #define PRIxPA	PRIxPTR
 
+#define PADDR_INVALID             ULONG_MAX
+
 #endif /* TYPES_EXT_H */

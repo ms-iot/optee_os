@@ -226,7 +226,8 @@
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
-#if defined(PLATFORM_FLAVOR_mx6qsabresd)
+#if defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
 #define DRAM0_BASE			0x10000000

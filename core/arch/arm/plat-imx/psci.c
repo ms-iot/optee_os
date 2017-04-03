@@ -139,6 +139,8 @@ void setup_low_power_modes(void)
     write32(clpcr, ccm + CCM_CLPCR_OFFSET);
 }
 
+#if defined(CFG_BOOT_SECONDARY_REQUEST)
+
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		uint32_t context_id __attribute__((unused)))
 {
@@ -162,6 +164,8 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 
 	return PSCI_RET_SUCCESS;
 }
+
+#endif /* CFG_BOOT_SECONDARY_REQUEST */
 
 static void enable_power_btn_int(void)
 {

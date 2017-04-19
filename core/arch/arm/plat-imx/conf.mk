@@ -2,7 +2,7 @@ PLATFORM_FLAVOR ?= mx6ulevk
 
 # Get SoC associated with the PLATFORM_FLAVOR
 mx6ul-flavorlist = mx6ulevk
-mx6q-flavorlist = mx6qsabrelite mx6qsabresd
+mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
 mx6d-flavorlist =
 mx6dl-flavorlist = mx6dlsabresd
 mx6s-flavorlist =
@@ -51,8 +51,8 @@ $(call force,CFG_PL310,y)
 $(call force,CFG_PL310_LOCKED,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 
-CFG_BOOT_SYNC_CPU ?= y
-CFG_BOOT_SECONDARY_REQUEST ?= y
+//CFG_BOOT_SYNC_CPU ?= y
+//CFG_BOOT_SECONDARY_REQUEST ?= y
 endif
 
 

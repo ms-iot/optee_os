@@ -95,7 +95,8 @@
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
-#if defined(PLATFORM_FLAVOR_mx6qsabresd)
+#if defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
 #if defined(PLATFORM_FLAVOR_mx6dlsabresd)
@@ -105,7 +106,8 @@
 /* Board specific RAM size */
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
 	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6dlsabresd)
+	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
+	defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #define DRAM0_SIZE			0x40000000
 #endif
 
@@ -244,15 +246,14 @@
  */
 
 /* emulated SRAM, at start of secure DDR */
-
-#define CFG_CORE_TZSRAM_EMUL_START	0x4E000000
+#define CFG_CORE_TZSRAM_EMUL_START	0x10900000
+#define CFG_DDR_TEETZ_RESERVED_START	0x10A00000
 
 #define TZSRAM_BASE			CFG_CORE_TZSRAM_EMUL_START
 #define TZSRAM_SIZE			CFG_CORE_TZSRAM_EMUL_SIZE
 
 /* Location of trusted dram */
 
-#define CFG_DDR_TEETZ_RESERVED_START	0x4E100000
 #define CFG_DDR_TEETZ_RESERVED_SIZE	0x01F00000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)
@@ -284,8 +285,8 @@
  *  TA_RAM  : all what is left
  */
 
-#define CFG_DDR_TEETZ_RESERVED_START	0x4E000000
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x02000000
+#define CFG_DDR_TEETZ_RESERVED_START	0x10A00000
+#define CFG_DDR_TEETZ_RESERVED_SIZE	0x01F00000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)
 #define CFG_TEE_RAM_PH_SIZE		(1 * 1024 * 1024)

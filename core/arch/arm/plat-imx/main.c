@@ -42,9 +42,11 @@
 #include <platform_config.h>
 #include <stdint.h>
 #include <sm/optee_smc.h>
+#include <sm/sm.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
 
+#define PADDR_INVALID	ULONG_MAX
 
 static void main_fiq(void);
 static struct gic_data gic_data;
@@ -143,3 +145,17 @@ void main_secondary_init_gic(void)
 	gic_cpu_init(&gic_data);
 }
 #endif
+
+void init_sec_mon(unsigned long nsec_entry)
+{
+	struct sm_nsec_ctx *nsec_ctx;
+
+        assert(nsec_entry != PADDR_INVALID);
+
+	/* Initialize secure monitor */
+	nsec_ctx = sm_get_nsec_ctx();
+	nsec_ctx->mon_lr = nsec_entry;
+	nsec_ctx->mon_spsr = CPSR_MODE_SVC | CPSR_I;
+
+	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n",nsec_entry, nsec_ctx->mon_spsr);
+}

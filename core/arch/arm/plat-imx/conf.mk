@@ -3,11 +3,11 @@ PLATFORM_FLAVOR ?= mx6ulevk
 # Get SoC associated with the PLATFORM_FLAVOR
 mx6ul-flavorlist = mx6ulevk
 mx6ull-flavorlist = mx6ullevk
-mx6q-flavorlist = mx6qsabrelite mx6qsabresd
+mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
 mx6sx-flavorlist = mx6sxsabreauto
 mx6d-flavorlist =
-mx6dl-flavorlist = mx6dlsabresd
-mx6s-flavorlist =
+mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
+mx6s-flavorlist = mx6shmbedge
 mx7-flavorlist = mx7dsabresd
 
 ifneq (,$(filter $(PLATFORM_FLAVOR),$(mx6ul-flavorlist)))
@@ -102,3 +102,4 @@ endif
 CFG_MMAP_REGIONS ?= 24
 
 ta-targets = ta_arm32
+

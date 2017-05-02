@@ -387,7 +387,7 @@ void gic_save_state(struct gic_data *gd)
     unsigned i;
     struct gic_per_cpu_state *per_cpu;
 
-    DMSG("Saving GIC state. (gd->max_it = %d))\n", gd->max_it);
+    //DMSG("Saving GIC state. (gd->max_it = %d))\n", gd->max_it);
 
     per_cpu = &gd->saved_state.per_cpu[get_core_pos()];
 
@@ -442,7 +442,7 @@ void gic_restore_state(struct gic_data *gd)
     uint32_t gicc_ctlr;
     struct gic_per_cpu_state *per_cpu;
 
-    DMSG("Restoring GIC state\n");
+    //DMSG("Restoring GIC state\n");
 
     per_cpu = &gd->saved_state.per_cpu[get_core_pos()];
 

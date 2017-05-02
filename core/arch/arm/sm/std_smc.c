@@ -45,7 +45,7 @@ void smc_std_handler(struct sm_ctx *ctx)
     struct thread_smc_args *args = (struct thread_smc_args*)&ctx->nsec.r0;
 	uint32_t smc_fid = args->a0;
 
-    DMSG("Received SMC (smc_fid=%d)\n", smc_fid);
+    //DMSG("Received SMC (smc_fid=0x%x)\n", smc_fid);
 
 	if (is_psci_fid(smc_fid)) {
 		tee_psci_handler(ctx);

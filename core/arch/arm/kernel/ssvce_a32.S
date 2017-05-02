@@ -144,6 +144,7 @@ _cl_nextLine:
 	BNE     _cl_nextWay
 
 	DSB                             @ ; synchronise
+    ISB
 	MOV PC, LR
 UNWIND(	.fnend)
 END_FUNC arm_cl1_d_cleanbysetway
@@ -169,7 +170,8 @@ _inv_nextLine:
 	CMP     R0, #0                              @ ; look for overflow out of way field
 	BNE     _inv_nextWay
 
-	DSB                             @ ; synchronise
+	DSB      st                     @ ; synchronise
+    ISB
 	MOV      PC, LR
 UNWIND(	.fnend)
 END_FUNC arm_cl1_d_invbysetway

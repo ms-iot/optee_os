@@ -36,7 +36,7 @@
         __inval_cache_vrange (vbase), ((vend) - 1), __LINE__
 
 .global imx_resume_start
-imx_resume_start:
+//imx_resume_start:
 
 /*
  * Code to start running when the CPU wakes up.
@@ -45,18 +45,28 @@ imx_resume_start:
 FUNC imx_resume , :
 UNWIND(	.fnstart)
 
-    // We expect the GPIO physical base address to be in r0.
-    // We do this so that we don't have to do an LDR (pc-relative) load
-    // instruction, because this code must be location independent.
-    
-    // toggle state of LED
-    //ldr     r1, [r0, #0]            // read gpio_dr register
-    //eor     r1, r1, #(1 << 2)       // toggle bit 2 (onboard LED)
-    //str     r1, [r0, #0]
-
-    cpsid   if, #CPSR_MODE_MON        // disable interrupts, to monitor mode
     mov     r4, r0
 
+    ldr     r0, =stack_cookie_ptr
+    ldr     r0, [r0]
+    cmp     r0, #0
+    beq     cookie_good
+    ldr     r1, =0x00100000
+    add     r0, r0, r1
+    ldr     r0, [r0]
+    ldr     r1, =stack_cookie_value
+    ldr     r1, [r1]
+    cmp     r0, r1
+    beq     cookie_good
+
+    mov     r5, r0
+    mov     r6, r1
+    movw    r0, #0xC000             // load GPIO physical address to r0
+    movt    r0, #0x0209
+    bl      blink_led
+    
+cookie_good:
+    cpsid   if, #CPSR_MODE_MON        // disable interrupts, to monitor mode
     bl      plat_cpu_reset_early
 
     // XXX are all the ISB's necessary? Should not be necessary until MMU
@@ -160,19 +170,17 @@ UNWIND(	.fnstart)
     bl      arm_cl2_config
 #endif
 
-    /*
-     * Invalidate dcache for all memory used during initialization to
-     * avoid nasty surprices when the cache is turned on. We must not
-     * invalidate memory not used by OP-TEE since we may invalidate
-     * entries used by for instance ARM Trusted Firmware.
-     */
-#ifdef CFG_WITH_PAGER
-    inval_cache_vrange(__text_start, __tmp_hashes_end)
-#else
-    inval_cache_vrange(__text_start, __end)
-#endif
+    mov     r0, #0x3    // #DCACHE_INVALIDATE
+    mov     r1, #0
+    mov     r2, #0
+    bl      cache_maintenance_l1
    
 #ifdef CFG_PL310
+    mov     r0, #0xA     // #L2CACHE_INVALIDATE
+    mov     r1, #0
+    mov     r2, #0
+    bl      cache_maintenance_l2
+
     /* Enable PL310 if not yet enabled */
     bl  pl310_base
     bl  arm_cl2_enable
@@ -197,6 +205,7 @@ UNWIND(	.fnstart)
     //mov     r0, r5      // gpio_virt_base
     //bl      blink_led
 
+    // XXX make sure we don't enable interrupts before restoring GIC
     // restore banked registers
     add     r0, r6, #ARMV7_PROCESSOR_STATE_SPECIAL_REGISTERS_OFFSET
     bl      armv7_restore_special_regs
@@ -218,12 +227,15 @@ end:
 	UNWIND(	.fnend)
 END_FUNC imx_resume 
 
+imx_resume_start:
+
 /*
  * void blink_led(uint32_t gpio_base)
  */
 FUNC blink_led , :
     UNWIND( .fnstart)
 
+    // XXX
     //movw    r0, #0xC000             // load GPIO physical address to r0
     //movt    r0, #0x0209
   

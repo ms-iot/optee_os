@@ -51,11 +51,12 @@
 
 
 static void do_suspend(void);
-static void setup_low_power_modes(void);
-static void enable_power_btn_int(void);
+/*static*/ void setup_low_power_modes(void);
+/*static*/ void enable_power_btn_int(void);
 static void init_led(void);
 static void set_led(bool on);
-static void init_suspend_resume_stub(void);
+/*static*/ void init_suspend_resume_stub(void);
+static void write_clpcr (uint32_t clpcr);
 
 struct armv7_processor_state* resume_state;
 vaddr_t suspend_resume_stub;
@@ -114,7 +115,7 @@ void setup_low_power_modes(void)
     /* set required bits in CGPR */
     cgpr = read32(ccm + CCM_CGPR_OFFSET);
     cgpr |= CCM_CGPR_MUST_BE_ONE;
-    cgpr |= CCM_CGPR_INT_MEM_CLK_LPM;
+    cgpr &= ~CCM_CGPR_INT_MEM_CLK_LPM;
     write32(cgpr, ccm + CCM_CGPR_OFFSET);
 
     /* configure IOMUXC GINT to be always asserted */
@@ -136,7 +137,24 @@ void setup_low_power_modes(void)
     clpcr &= ~CCM_CLPCR_MASK_CORE3_WFI;
     clpcr &= ~CCM_CLPCR_MASK_SCU_IDLE;
     clpcr &= ~CCM_CLPCR_MASK_L2CC_IDLE;
-    write32(clpcr, ccm + CCM_CLPCR_OFFSET);
+    write_clpcr(clpcr);
+}
+
+int psci_features(uint32_t psci_fid)
+{
+    DMSG(
+        "psci_features was called. (psci_fid = 0x%x, PSCI_CPU_SUSPEND = 0x%x)",
+        psci_fid,
+        PSCI_CPU_SUSPEND);
+
+    switch (psci_fid) {
+    case PSCI_CPU_SUSPEND:
+        return (1 << 1) | // Use extended StateID format
+               (1 << 0);  // OS-initiated mode supported
+
+    default:
+        return PSCI_RET_NOT_SUPPORTED;
+    }
 }
 
 #if defined(CFG_BOOT_SECONDARY_REQUEST)
@@ -167,7 +185,7 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 
 #endif /* CFG_BOOT_SECONDARY_REQUEST */
 
-static void enable_power_btn_int(void)
+void enable_power_btn_int(void)
 {
     uint32_t value;
     vaddr_t bank_base;
@@ -222,7 +240,7 @@ void set_led(bool on)
     vaddr_t bank_base;
     uint32_t value;
 
-    DMSG("Setting LED state: %d\n", on);
+    //DMSG("Setting LED state: %d\n", on);
 
     bank_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC) + 
         GPIO_BANK_SIZE * BANK_FROM_PIN(LED_GPIO);
@@ -258,10 +276,157 @@ void init_suspend_resume_stub(void)
         resume_fn_len);
 }
 
+uint32_t *stack_cookie_ptr;
+uint32_t stack_cookie_value;
+void check_stack_cookie(uint32_t lineno);
+#define CHECK_STACK_COOKIE() check_stack_cookie(__LINE__);
+
+void check_stack_cookie(uint32_t lineno)
+{
+    if (stack_cookie_ptr != NULL) {
+        if (*stack_cookie_ptr != stack_cookie_value) {
+            DMSG("Stack cookie check failed at line %d\n", lineno);
+            panic("Stack cookie is corrupt!\n");
+        }
+    }
+}
+
+uint32_t hash_section(void* start);
+uint32_t hash_section(void* start)
+{
+    uint32_t sum = 0;
+    uint32_t* cur = (uint32_t*)start;
+    uint32_t* end = cur + 1024 * 1024 / sizeof(uint32_t);
+    while (cur != end) {
+        sum += *cur;
+        ++cur;
+    }
+
+    return sum;
+}
+
+void init_hashes(void);
+void init_hashes(void)
+{
+    vaddr_t s;
+    vaddr_t e;
+    uint32_t i;
+    uint32_t num_sections;
+                    
+    /* get virtual addr/size of NSec shared mem allcated from teecore */
+    core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &s, &e);
+
+    num_sections = (e - s) / (1024 * 1024);
+
+    DMSG(
+        "Computing memory hashes. (s = 0x%x, e = 0x%x, num_sections = %d)",
+        (uint32_t)s,
+        (uint32_t)e,
+        num_sections);
+
+    if (ARRAY_SIZE(resume_state->hashes) < num_sections)
+        panic("Not enough storage for hashes");
+
+    // compute hashes of each 1MB chunk of nonsecure memory 
+    for (i = 0; i < num_sections; ++i) {
+        //DMSG(
+        //    "Computing hash of section %d at 0x%lx\n",
+        //    i,
+        //    s + (1024 * 1024 * i));
+
+        resume_state->hashes[i] = hash_section((void*)(s + (1024 * 1024 * i)));
+    }
+}
+
+void check_hashes(void);
+void check_hashes(void)
+{
+    vaddr_t s;
+    vaddr_t e;
+    uint32_t i;
+    uint32_t num_sections;
+                    
+    DMSG("Checking hashes ... ");
+
+    /* get virtual addr/size of NSec shared mem allcated from teecore */
+    core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &s, &e);
+
+    num_sections = (e - s) / (1024 * 1024);
+
+    // compute hashes of each 1MB chunk of nonsecure memory 
+    for (i = 0; i < num_sections; ++i) {
+        uint32_t actual = hash_section((void*)(s + (1024 * 1024 * i)));
+        if (actual != resume_state->hashes[i]) {
+            DMSG(
+                "Hash of section 0x%lx does not match. "
+                "(expected = 0x%x, actual= 0x%x)\n",
+                s + (1024 * 1024 * i),
+                resume_state->hashes[i],
+                actual);
+
+            panic("Memory hash check failure!");
+        }
+    }
+
+    DMSG("ok");
+}
+
+void set_timer_interrupt(uint32_t ms);
+void set_timer_interrupt(uint32_t ms)
+{
+    vaddr_t gpc_base;
+    vaddr_t epit_base;
+    uint32_t value;
+
+    DMSG("Programming wakeup interrupt in %d ms\n", ms);
+
+    gpc_base = periph_base(GPC_BASE, MEM_AREA_IO_SEC);
+    epit_base = periph_base(EPIT1_BASE, MEM_AREA_IO_SEC);
+
+    write32(0xffffffff, gpc_base + GPC_IMR1_OFFSET);
+    write32(0xffffffff, gpc_base + GPC_IMR2_OFFSET);
+    write32(0xffffffff, gpc_base + GPC_IMR3_OFFSET);
+    write32(0xffffffff, gpc_base + GPC_IMR4_OFFSET);
+
+    // disable EPIT and software reset
+    value =
+        EPIT_CR_ENMOD |
+        EPIT_CR_RLD |
+        EPIT_CR_SWR |          // software reset
+        EPIT_CR_WAITEN |
+        EPIT_CR_STOPEN |
+        EPIT_CR_CLKSRC(3);     // low freq ref clock
+
+    write32(value, epit_base + EPIT_CR_OFFSET);
+
+    // clear interrupt
+    write32(EPIT_SR_OCIF, epit_base + EPIT_SR_OFFSET);
+
+    // ensure compare register is 0
+    write32(0,  epit_base + EPIT_CMPR_OFFSET);
+
+    // write counter value to load register
+    write32(EPIT_FREQ * ms / 1000, epit_base + EPIT_LR_OFFSET);
+
+    value =
+        EPIT_CR_ENMOD |        // counter starts from reload value
+        EPIT_CR_RLD |          // reload from lr
+        EPIT_CR_PRESCALER(0) | // divide by 1
+        EPIT_CR_WAITEN |
+        EPIT_CR_STOPEN |
+        EPIT_CR_CLKSRC(3);
+
+    write32(value, epit_base + EPIT_CR_OFFSET);
+    write32(value | EPIT_CR_EN, epit_base + EPIT_CR_OFFSET);
+
+    // unmask interrupt in GPC
+    write32(~0x01000000, gpc_base + GPC_IMR2_OFFSET);
+}
+
 void do_suspend (void)
 {
-    vaddr_t gpio_base;
-    vaddr_t ocram_base;
+    vaddr_t gpio_base __unused;
+    vaddr_t ocram_base __unused;
     vaddr_t ccm_base;
     vaddr_t anatop_base;
     vaddr_t gpc_base;
@@ -270,20 +435,20 @@ void do_suspend (void)
 
     //uint32_t dr;
 
-    DMSG("Suspending CPU\n");  
+    //DMSG("Suspending CPU\n");  
 
-    imx_resume_addr = (vaddr_t)imx_resume;
+    imx_resume_addr = (vaddr_t)imx_resume; //suspend_resume_stub;
 
-    DMSG(
-        "Are we identity mapped? imx_resume_addr = 0x%x, "
-        "virt_to_phys(imx_resume_addr) = 0x%x\n",
-        (unsigned)imx_resume_addr,
-        (unsigned)virt_to_phys((void*)imx_resume_addr));
+    //DMSG(
+    //    "Are we identity mapped? imx_resume_addr = 0x%x, "
+    //    "virt_to_phys(imx_resume_addr) = 0x%x\n",
+    //    (unsigned)imx_resume_addr,
+    //    (unsigned)virt_to_phys((void*)imx_resume_addr));
 
 
-    DMSG(
-        "Length of imx_resume = %d\n",
-        &imx_resume_end - &imx_resume_start);
+    //DMSG(
+    //    "Length of imx_resume = %d\n",
+    //    &imx_resume_end - &imx_resume_start);
 
     gpio_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC);
     ocram_base = periph_base(OCRAM_BASE, MEM_AREA_RAM_SEC);
@@ -292,18 +457,18 @@ void do_suspend (void)
     gpc_base = periph_base(GPC_BASE, MEM_AREA_IO_SEC);
     src = src_base();
 
-    DMSG(
-        "gpio_base = 0x%08x, ocram_base = 0x%08x, anatop_base = 0x%08x, "
-        "src = 0x%08x, imx_resume = 0x%x, "
-        "&imx_resume_start = 0x%x",
-        (uint32_t)gpio_base,
-        (uint32_t)ocram_base,
-        (uint32_t)anatop_base,
-        (uint32_t)src,
-        (uint32_t)imx_resume,
-        (uint32_t)&imx_resume_start);
+    //DMSG(
+    //    "gpio_base = 0x%08x, ocram_base = 0x%08x, anatop_base = 0x%08x, "
+    //    "src = 0x%08x, imx_resume = 0x%x, "
+    //    "&imx_resume_start = 0x%x",
+    //    (uint32_t)gpio_base,
+    //    (uint32_t)ocram_base,
+    //    (uint32_t)anatop_base,
+    //    (uint32_t)src,
+    //    (uint32_t)imx_resume,
+    //    (uint32_t)&imx_resume_start);
     
-    DMSG("Configuring LPM=STOP\n");
+    //DMSG("Configuring LPM=STOP\n");
     // Configure LPM for STOP mode
     {
         uint32_t clpcr;
@@ -316,97 +481,221 @@ void do_suspend (void)
         // clpcr |= CCM_CLPCR_VSTBY;              // request standby voltage
         // clpcr |= (0x3 << CCM_CLPCR_STBY_COUNT_SHIFT);
         // clpcr |= CCM_CLPCR_WB_PER_AT_LPM;      // enable well biasing
-        
-        write32(clpcr, ccm_base + CCM_CLPCR_OFFSET); 
+       
+        write_clpcr(clpcr); 
     }
 
-    DMSG("Configuring light sleep mode\n");
+    //DMSG("Configuring light sleep mode\n");
     // Configure PMU_MISC0 for light sleep mode
     write32(
         ANATOP_MISC0_STOP_MODE_CONFIG,
         anatop_base + ANATOP_MISC0_SET_OFFSET);
 
-    DMSG("Clearing INT_MEM_CLK_LPM\n");
+    //DMSG("Clearing INT_MEM_CLK_LPM\n");
     // Clear INT_MEM_CLK_LPM
     // (Control for the Deep Sleep signal to the ARM Platform memories)
     {
         uint32_t cgpr;
         cgpr = read32(ccm_base + CCM_CGPR_OFFSET);
+        cgpr |= (1 << 1);
         cgpr &= ~CCM_CGPR_INT_MEM_CLK_LPM;
         write32(cgpr, ccm_base + CCM_CGPR_OFFSET);
     }
 
-    DMSG("Writing PGC_CPU to configure CPU power gating\n");
+    //DMSG("Writing PGC_CPU to configure CPU power gating\n");
     // Configure PGC to power down CPU on next stop mode request
     write32(GPC_PGC_CTRL_PCR, gpc_base + GPC_PGC_CPU_CTRL_OFFSET);
 
-    DMSG("Configuring GPC interrupt controller for wakeup\n");
+    //DMSG("Configuring GPC interrupt controller for wakeup\n");
     // Enable GPIO 93 as the only wakeup source (GPIO3) IRQ 103
-    write32(0xffffffff, gpc_base + GPC_IMR1_OFFSET);
-    write32(0xffffffff, gpc_base + GPC_IMR2_OFFSET);
-    write32(~BIT32(7), gpc_base + GPC_IMR3_OFFSET);
-    write32(0xffffffff, gpc_base + GPC_IMR4_OFFSET);
-
+    // XXX
+    /*
     enable_power_btn_int();
+    {
+        uint32_t val;
 
-    set_led(false);
+        val = read32(gpc_base + GPC_IMR2_OFFSET);
+        val |= 0x01000000;  // mask EPIT
+        write32(val, gpc_base + GPC_IMR2_OFFSET);
+        
+        val = read32(gpc_base + GPC_IMR3_OFFSET);
+        val &= ~BIT32(7);   // unmask GPIO
+        write32(val, gpc_base + GPC_IMR3_OFFSET);
+
+        //write32(0xffffffff, gpc_base + GPC_IMR1_OFFSET);
+        //write32(0xffffffff, gpc_base + GPC_IMR2_OFFSET);
+        //write32(~BIT32(7), gpc_base + GPC_IMR3_OFFSET);
+        //write32(0xffffffff, gpc_base + GPC_IMR4_OFFSET);
+    }
+    */
+
+    // set a timer to wake us up 1 second from now
+    //set_timer_interrupt(1000);
+
+    //set_led(false);
 
     // Program resume address into SRC
     // XXX use virt_to_phys and suspend_resume_stub. This should really be
     // programmed from the assembly side
-    DMSG("Configuring resume address\n");
+    //DMSG(
+    //    "Configuring resume address. 0x%x\n",
+    //    (uint32_t)virt_to_phys((void*)imx_resume_addr));
+
+    //write32(virt_to_phys((void*)imx_resume_addr), src + SRC_GPR1);
     write32(virt_to_phys((void*)imx_resume_addr), src + SRC_GPR1);
     write32(virt_to_phys(resume_state), src + SRC_GPR2);
 
+    //DMSG("Executing WFI\n");
+
     // Flush cache
     cache_maintenance_l1(DCACHE_CLEAN, NULL, 0);
+
+#if defined(CFG_PL310)
     cache_maintenance_l2(L2CACHE_CLEAN, 0, 0);
+#endif
 
     // Invalidate icache before jumping to code in OCRAM
-    cache_maintenance_l1(ICACHE_INVALIDATE, NULL, 0);
+    //cache_maintenance_l1(ICACHE_INVALIDATE, NULL, 0);
 
-    DMSG("Successfully flushed cache, executing wfi\n");
+    //DMSG("Successfully flushed cache, executing wfi\n");
 
     // XXX here's where we would jump to the suspend stub
     // to put DDR in self-refresh and execute WFI
 
+    // XXX: precondition to resume: ROM_CLK_ENABLE must be ungated
+    // XXX: add assertion that OCRAM_CLK_ENABLE is ungated
+
+
     wfi();
-    DMSG("WFI should not have returned!\n");
+
+    /*
+    DMSG(
+        "WFI should not have returned! 0x%08x 0x%08x 0x%08x 0x%08x\n",
+        ~read32(gpc_base + GPC_IMR1_OFFSET) &
+             read32(gpc_base + GPC_ISR1_OFFSET),
+        ~read32(gpc_base + GPC_IMR2_OFFSET) &
+             read32(gpc_base + GPC_ISR2_OFFSET),
+        ~read32(gpc_base + GPC_IMR3_OFFSET) &
+             read32(gpc_base + GPC_ISR3_OFFSET),
+        ~read32(gpc_base + GPC_IMR4_OFFSET) &
+             read32(gpc_base + GPC_ISR4_OFFSET));
+   */
+
+    // disarm CPU power gating 
+    write32(0, gpc_base + GPC_PGC_CPU_CTRL_OFFSET);
+
+    // Configure LPM for RUN mode
+    // XXX this should be done regardless of whether we entered WFI or not
+    // XXX need to follow errata sequence for updating clpcr
+    {
+        uint32_t clpcr;
+
+        clpcr = read32(ccm_base + CCM_CLPCR_OFFSET);
+        clpcr &= ~CCM_CLPCR_LPM_MASK;
+        clpcr &= ~CCM_CLPCR_SBYOS;
+        write_clpcr(clpcr);
+    }
+}
+
+void freeze_epit(bool freeze);
+void freeze_epit(bool freeze)
+{
+    vaddr_t epit_base;
+    uint32_t val;
+
+    epit_base = periph_base(EPIT1_BASE, MEM_AREA_IO_SEC);
+
+    val = read32(epit_base + EPIT_CR_OFFSET);
+    if (freeze) {
+        val &= ~EPIT_CR_EN;
+    } else {
+        val |= EPIT_CR_EN;
+    }
+    write32(val, epit_base + EPIT_CR_OFFSET);
 }
 
 int psci_cpu_suspend (
-    uint32_t power_state,
+    uint32_t power_state __unused,
     uintptr_t entry,
     uint32_t context_id,
-    paddr_t *ns_return_addr
+    struct sm_ctx *ctx
     )
 {
     bool waking;
 
-    DMSG(
-        "Hello from psci_cpu_suspend (power_state = %d, "
-        "entry = 0x%08x, context_id - 0x%x)\n",
-        power_state,
-        (unsigned)entry,
-        context_id);  
+    //freeze_epit(true);
+
+    //DMSG(
+    //    "Hello from psci_cpu_suspend (power_state = %d, "
+    //    "entry = 0x%08x, context_id - 0x%x)\n",
+    //    power_state,
+    //    (unsigned)entry,
+    //    context_id);  
 
     resume_state->gpio_virt_base = periph_base(GPIO_BASE, MEM_AREA_IO_NSEC);
     resume_state->resume_state_virt_base = (uint32_t)resume_state;
+
+    //init_hashes();  // XXX
+
+    // XXX
 
     waking = save_state_for_suspend(resume_state);
     if (!waking) {
         // Normally this should not return
         do_suspend();
 
-        DMSG("Failed to suspend, most likely due to pending interrupt\n");
+        //DMSG("Failed to suspend, most likely due to pending interrupt\n");
+        //freeze_epit(false);
         return PSCI_RET_SUCCESS;
     }
 
-    DMSG("Successfully woke from suspend\n");
+    set_led(true);
+    
+    //DMSG("Successfully woke from suspend\n");
+    
+    //check_hashes(); // XXX
+    
+    // Disarm CPU power gating
+    {
+        vaddr_t gpc_base;
+        gpc_base = periph_base(GPC_BASE, MEM_AREA_IO_SEC); 
+        write32(0, gpc_base + GPC_PGC_CPU_CTRL_OFFSET);
+    }
 
-    blink_led(resume_state->gpio_virt_base);
+    // disarm STOP mode
+    // XXX follow errata sequence for updating LPM
+    {
+        uint32_t clpcr;
+        uint32_t cgpr;
+        vaddr_t ccm_base = periph_base(CCM_BASE, MEM_AREA_IO_SEC);
 
-    *ns_return_addr = entry;
+        clpcr = read32(ccm_base + CCM_CLPCR_OFFSET);
+        clpcr &= ~CCM_CLPCR_LPM_MASK;
+        clpcr &= ~CCM_CLPCR_SBYOS;
+        write_clpcr(clpcr);
+
+        cgpr = read32(ccm_base + CCM_CGPR_OFFSET);
+        cgpr |= CCM_CGPR_INT_MEM_CLK_LPM;
+        write32(cgpr, ccm_base + CCM_CGPR_OFFSET);
+    }
+
+    // clear out resume address and parameter
+    {
+        vaddr_t src;
+        src = src_base();
+
+        write32(0, src + SRC_GPR1);
+        write32(0, src + SRC_GPR2);
+    }
+    
+    //freeze_epit(false);     // XXX
+    //blink_led(resume_state->gpio_virt_base);
+
+    ctx->nsec.mon_lr = entry;
+
+    /* Return to SVC mode in ARM state with IRQ and FIQ disabled */
+    ctx->nsec.mon_spsr = CPSR_MODE_SVC | CPSR_F | CPSR_I | CPSR_A;
+    
     return context_id;
 }
 
@@ -427,5 +716,31 @@ void armv7_save_arch_state (struct armv7_arch_state* state)
     state->cp15_nmrr = read_nmrr();
     state->cp15_vbar = read_vbar();
     state->cp15_contextidr = read_contextidr();
+}
+
+#define IOMUXC_IRQ_NUM      32
+
+void write_clpcr(uint32_t clpcr)
+{
+    vaddr_t ccm_base;
+    vaddr_t gpc_base;
+    uint32_t imr;
+    uint32_t imr_offset;
+
+    ccm_base = periph_base(CCM_BASE, MEM_AREA_IO_SEC);
+    gpc_base = periph_base(GPC_BASE, MEM_AREA_IO_SEC);
+    
+    imr_offset = GPC_IMR1_OFFSET + 4 * (IOMUXC_IRQ_NUM - 32) / 32;
+
+    // Unmask IOMUXC interrupt in GPC
+    imr = read32(gpc_base + imr_offset);
+    imr &= ~(1 << (IOMUXC_IRQ_NUM % 32));
+    write32(imr, gpc_base + imr_offset);
+
+    write32(clpcr, ccm_base + CCM_CLPCR_OFFSET);
+
+    // Mask IOMUXC interrupt again
+    imr |= 1 << (IOMUXC_IRQ_NUM % 32);
+    write32(imr, gpc_base + imr_offset);
 }
 

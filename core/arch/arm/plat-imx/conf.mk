@@ -20,8 +20,8 @@ ifeq ($(PLATFORM_FLAVOR),mx6ulevk)
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 endif
 ifeq ($(PLATFORM_FLAVOR),$(filter $(PLATFORM_FLAVOR),mx6qsabrelite mx6qsabresd mx6qhmbedge))
-$(call force,CFG_PL310,y)
-$(call force,CFG_PL310_LOCKED,y)
+#XXX $(call force,CFG_PL310,y)
+#XXX $(call force,CFG_PL310_LOCKED,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 
 //CFG_BOOT_SYNC_CPU ?= y

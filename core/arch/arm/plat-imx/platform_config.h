@@ -50,7 +50,6 @@
 #define UART0_BASE			0x2020000
 #define UART1_BASE			0x21E8000
 #define UART2_BASE			0x21EC000
-
 #define AHB1_BASE			0x02000000
 #define AHB1_SIZE			0x100000
 #define AHB2_BASE			0x02100000
@@ -132,6 +131,7 @@
 #define GIC_DIST_BASE			(GIC_BASE + GICD_OFFSET)
 #define UART1_BASE			0x02020000
 #define UART2_BASE			0x021E8000
+#define UART3_BASE          0x021EC000 
 #define GPIO_BASE           0x0209C000
 #define OCRAM_BASE          0x00900000
 #define OCRAM_SIZE          0x00040000
@@ -139,6 +139,8 @@
 #define IOMUXC_BASE         0x020E0000
 #define ANATOP_BASE         0x020C8000
 #define GPC_BASE            0x020DC000
+#define EPIT1_BASE          0x020D0000
+#define EPIT2_BASE          0x020D4000
 
 /* Central Security Unit register values */
 #define CSU_BASE			0x021C0000
@@ -218,17 +220,48 @@
 #define GPC_IMR2_OFFSET                 0x00C
 #define GPC_IMR3_OFFSET                 0x010
 #define GPC_IMR4_OFFSET                 0x014
+#define GPC_ISR1_OFFSET                 0x018
+#define GPC_ISR2_OFFSET                 0x01C
+#define GPC_ISR3_OFFSET                 0x020
+#define GPC_ISR4_OFFSET                 0x024
 #define GPC_PGC_CPU_CTRL_OFFSET         0x2A0
 
 /* GPC PGC CTRL register bit definitions */
 #define GPC_PGC_CTRL_PCR                BIT32(0)
+
+/* EPIT Register Offsets */
+#define EPIT_CR_OFFSET                  0x0
+#define EPIT_SR_OFFSET                  0x4
+#define EPIT_LR_OFFSET                  0x8
+#define EPIT_CMPR_OFFSET                0xC
+#define EPIT_CNR_OFFSET                 0x10
+
+/* EPIT Control Register bit definitions */
+#define EPIT_CR_EN                      BIT32(0)
+#define EPIT_CR_ENMOD                   BIT32(1)
+#define EPIT_CR_OCIEN                   BIT32(2)
+#define EPIT_CR_RLD                     BIT32(3)
+#define EPIT_CR_PRESCALER(x)            (((x) & 0x3ff) << 4)
+#define EPIT_CR_SWR                     BIT32(16)
+#define EPIT_CR_IOVW                    BIT32(17)
+#define EPIT_CR_DBGEN                   BIT32(18)
+#define EPIT_CR_WAITEN                  BIT32(19)
+#define EPIT_CR_STOPEN                  BIT32(21)
+#define EPIT_CR_OM(x)                   (((x) & 0x3) << 22)
+#define EPIT_CR_CLKSRC(x)               (((x) & 0x3) << 24)
+
+/* EPIT Status Register bit definitions */
+#define EPIT_SR_OCIF                    BIT32(0)
+
+/* Frequency of low frequency EPIT clock source (RTC) */
+#define EPIT_FREQ                       32768
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
 #if defined(PLATFORM_FLAVOR_mx6qsabresd) || \
     defined(PLATFORM_FLAVOR_mx6qhmbedge)
-#define CONSOLE_UART_BASE		UART1_BASE
+#define CONSOLE_UART_BASE		UART3_BASE
 #endif
 #define DRAM0_BASE			0x10000000
 #define DRAM0_SIZE			0x40000000
@@ -374,9 +407,12 @@
 #define CFG_TA_RAM_START		TZDRAM_BASE
 #define CFG_TA_RAM_SIZE			TZDRAM_SIZE
 
+/* XXX
 #define CFG_SHMEM_START			(CFG_DDR_TEETZ_RESERVED_START + \
-						TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
+						// TZDRAM_SIZE)
+*/
+#define CFG_SHMEM_START		    0x12900000	
+#define CFG_SHMEM_SIZE			0x3D700000 
 
 #define CFG_TEE_RAM_START		TZSRAM_BASE
 
@@ -419,9 +455,12 @@
 				CFG_TEE_RAM_PH_SIZE - \
 				CFG_PUB_RAM_SIZE)
 
-#define CFG_SHMEM_START			(CFG_DDR_TEETZ_RESERVED_START + \
-				TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
+//#define CFG_SHMEM_START			(CFG_DDR_TEETZ_RESERVED_START + 
+//				TZDRAM_SIZE)
+//#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
+#define CFG_SHMEM_START		    0x12900000	
+#define CFG_SHMEM_SIZE			0x3D700000 // CFG_PUB_RAM_SIZE
+
 
 #define CFG_TEE_RAM_START		TZDRAM_BASE
 

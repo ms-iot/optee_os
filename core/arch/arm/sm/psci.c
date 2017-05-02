@@ -44,7 +44,7 @@ __weak uint32_t psci_version(void)
 __weak int psci_cpu_suspend(uint32_t power_state __unused,
 			    uintptr_t entry __unused,
 			    uint32_t context_id __unused,
-                paddr_t *ns_return_addr __unused)
+                struct sm_ctx *ctx __unused)
 {
 	return PSCI_RET_NOT_SUPPORTED;
 }
@@ -125,7 +125,7 @@ void tee_psci_handler(struct sm_ctx *ctx)
 		args->a0 = psci_version();
 		break;
 	case PSCI_CPU_SUSPEND:
-		args->a0 = psci_cpu_suspend(a1, a2, a3, (paddr_t*)&ctx->nsec.mon_lr);
+		args->a0 = psci_cpu_suspend(a1, a2, a3, ctx);
 		break;
 	case PSCI_CPU_OFF:
 		args->a0 = psci_cpu_off();

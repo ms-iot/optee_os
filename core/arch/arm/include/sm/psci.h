@@ -46,7 +46,7 @@ struct sm_ctx;
 
 uint32_t psci_version(void);
 int psci_cpu_suspend(uint32_t power_state, uintptr_t entry,
-		     uint32_t context_id, paddr_t* ns_return_addr);
+		     uint32_t context_id, struct sm_ctx *ctx);
 int psci_cpu_off(void);
 int psci_cpu_on(uint32_t cpu_id, uint32_t entry, uint32_t context_id);
 int psci_affinity_info(uint32_t affinity, uint32_t lowest_affnity_level);

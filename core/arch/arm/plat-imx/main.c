@@ -79,6 +79,7 @@ static const struct thread_handlers handlers = {
 register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_RAM_SEC, OCRAM_BASE, 0x00100000);
+register_phys_mem(MEM_AREA_IO_NSEC, IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
 
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
 	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
@@ -149,7 +150,7 @@ void scu_init(struct scu_data *sd __unused)
     scu_ctrl = read32(base + SCU_CTRL);
     scu_ctrl |= SCU_CTRL_ENABLE;
 
-#ifdef CFG_PSCI_ARM32
+#if defined(CFG_PSCI_ARM32)
     scu_ctrl |= SCU_CTRL_STANDBY_ENABLE;
 #endif /* CFG_PSCI_ARM32 */
 
@@ -239,7 +240,7 @@ void main_init_gic(void)
 	gic_init(&gic_data, gicc_base, gicd_base);
 	itr_init(&gic_data.chip);
 
-#ifdef CFG_PSCI_ARM32
+#if defined(CFG_PSCI_ARM32)
     imx_psci_init();
 #endif
 }

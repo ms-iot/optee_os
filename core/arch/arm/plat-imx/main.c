@@ -45,6 +45,7 @@
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
 
+#define PADDR_INVALID	ULONG_MAX
 
 static void main_fiq(void);
 static struct gic_data gic_data;

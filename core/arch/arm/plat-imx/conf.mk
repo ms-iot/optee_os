@@ -3,9 +3,9 @@ PLATFORM_FLAVOR ?= mx6ulevk
 # Get SoC associated with the PLATFORM_FLAVOR
 mx6ul-flavorlist = mx6ulevk
 mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
-mx6d-flavorlist =
-mx6dl-flavorlist = mx6dlsabresd
-mx6s-flavorlist =
+mx6d-flavorlist = mx6dhmbedge
+mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
+mx6s-flavorlist = mx6shmbedge
 
 ifneq (,$(filter $(PLATFORM_FLAVOR),$(mx6ul-flavorlist)))
 $(call force,CFG_MX6UL,y)

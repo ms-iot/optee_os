@@ -86,8 +86,8 @@
 
 /* For i.MX6 Quad SABRE Lite and Smart Device board */
 
-#elif defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
-	defined(CFG_MX6S)
+#elif (defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
+	defined(CFG_MX6S))
 
 #include <imx6-regs.h>
 
@@ -95,10 +95,14 @@
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
-#if defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-    defined(PLATFORM_FLAVOR_mx6qhmbedge)
+#if (defined(PLATFORM_FLAVOR_mx6qsabresd) || \
+    defined(PLATFORM_FLAVOR_mx6qhmbedge) || \
+    defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
+    defined(PLATFORM_FLAVOR_mx6dlhmbedge) || \
+    defined(PLATFORM_FLAVOR_mx6shmbedge) )
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
+
 #if defined(PLATFORM_FLAVOR_mx6dlsabresd)
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
@@ -109,6 +113,13 @@
 	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
 	defined(PLATFORM_FLAVOR_mx6qhmbedge)
 #define DRAM0_SIZE			0x40000000
+#endif
+#if defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
+        defined(PLATFORM_FLAVOR_mx6dlhmbedge)
+#define DRAM0_SIZE                      0x20000000
+#endif
+#if defined(PLATFORM_FLAVOR_mx6shmbedge)
+#define DRAM0_SIZE                      0x10000000
 #endif
 
 /* Core number depends of SoC version. */
@@ -285,8 +296,8 @@
  *  TA_RAM  : all what is left
  */
 
-#define CFG_DDR_TEETZ_RESERVED_START    0x10900000
-#define CFG_DDR_TEETZ_RESERVED_SIZE     0x02000000
+#define CFG_DDR_TEETZ_RESERVED_START    0x10A00000
+#define CFG_DDR_TEETZ_RESERVED_SIZE     0x01F00000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)
 #define CFG_TEE_RAM_PH_SIZE		(1 * 1024 * 1024)

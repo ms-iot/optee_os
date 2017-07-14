@@ -73,8 +73,8 @@ UNWIND(	.fnstart)
 	 *
 	 * SCTLR = 0x00004C00
 	 * - Round-Robin replac. for icache, btac, i/duTLB (bit14: RoundRobin)
-	 * - Z,bit[11]: SWP Instruction enable.
-	 * - SW,bit[10]: Branch prediction enable.
+	 * - SW,bit[11]: SWP Instruction enable.
+	 * - Z,bit[10]: Branch prediction enable.
 	 *
 	 * ACTRL = 0x00000041
 	 * - core always in full SMP (FW bit0=1, SMP bit6=1)

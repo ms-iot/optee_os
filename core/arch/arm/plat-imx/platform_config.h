@@ -95,6 +95,7 @@
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
+
 #if (defined(PLATFORM_FLAVOR_mx6qsabresd) || \
     defined(PLATFORM_FLAVOR_mx6qhmbedge) || \
     defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
@@ -296,8 +297,8 @@
  *  TA_RAM  : all what is left
  */
 
-#define CFG_DDR_TEETZ_RESERVED_START    0x10900000
-#define CFG_DDR_TEETZ_RESERVED_SIZE     0x02000000
+#define CFG_DDR_TEETZ_RESERVED_START    0x10A00000
+#define CFG_DDR_TEETZ_RESERVED_SIZE     0x01F00000
 
 #define CFG_PUB_RAM_SIZE		(1 * 1024 * 1024)
 #define CFG_TEE_RAM_PH_SIZE		(1 * 1024 * 1024)

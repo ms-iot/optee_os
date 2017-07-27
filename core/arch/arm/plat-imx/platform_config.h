@@ -253,11 +253,13 @@
  *  PUB_RAM : default 2MByte
  */
 
-/* emulated SRAM, at start of secure DDR */
-#define CFG_CORE_TZSRAM_EMUL_START	0x10900000
+/* On-chip SRAM */
+#define TZSRAM_BASE			0x00900000
+#define TZSRAM_SIZE			(1 * 256 * 1024)
 
-#define TZSRAM_BASE			CFG_CORE_TZSRAM_EMUL_START
-#define TZSRAM_SIZE			CFG_CORE_TZSRAM_EMUL_SIZE
+#define CFG_TEE_RAM_START               TZSRAM_BASE
+#define CFG_TEE_RAM_PH_SIZE		        TZSRAM_SIZE
+#define CFG_TEE_LOAD_ADDR               CFG_TEE_RAM_START
 
 /* Location of trusted dram */
 
@@ -266,9 +268,15 @@
 
 #define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
 
-#define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START)
+
+/* Area reserved for nonpageable part of image */
+#define CFG_PAGEABLE_PART_SIZE			CORE_MMU_DEVICE_SIZE
+
+#define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START + \
+							 CFG_PAGEABLE_PART_SIZE)
+
 #define TZDRAM_SIZE			(CFG_DDR_TEETZ_RESERVED_SIZE - \
-				CFG_PUB_RAM_SIZE)
+				CFG_PUB_RAM_SIZE - CFG_PAGEABLE_PART_SIZE)
 
 #define CFG_TA_RAM_START		TZDRAM_BASE
 #define CFG_TA_RAM_SIZE			TZDRAM_SIZE
@@ -308,13 +316,15 @@
 				CFG_TEE_RAM_PH_SIZE - \
 				CFG_PUB_RAM_SIZE)
 
+#define CFG_TEE_RAM_START		TZDRAM_BASE
+
 #endif /* CFG_WITH_PAGER */
 
 #define CFG_SHMEM_START			(CFG_DDR_TEETZ_RESERVED_START + \
-					 TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
+								 CFG_DDR_TEETZ_RESERVED_SIZE - \
+								 CFG_PUB_RAM_SIZE)
 
-#define CFG_TEE_RAM_START		TZDRAM_BASE
+#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
 
 #ifndef CFG_TEE_LOAD_ADDR
 #define CFG_TEE_LOAD_ADDR		TZDRAM_BASE

@@ -105,6 +105,11 @@ register_phys_mem(MEM_AREA_IO_SEC,
 		  ROUNDDOWN(PL310_BASE, CORE_MMU_DEVICE_SIZE),
 		  CORE_MMU_DEVICE_SIZE);
 #endif
+#ifdef CFG_WITH_PAGER
+register_phys_mem(MEM_AREA_RAM_SEC,
+		  ROUNDDOWN(CFG_DDR_TEETZ_RESERVED_START, CORE_MMU_DEVICE_SIZE),
+		  CFG_PAGEABLE_PART_SIZE);
+#endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
@@ -159,3 +164,4 @@ void init_sec_mon(unsigned long nsec_entry)
 
 	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n",nsec_entry, nsec_ctx->mon_spsr);
 }
+

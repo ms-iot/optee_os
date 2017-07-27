@@ -619,7 +619,11 @@ void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
 	}
 
 	if (size)
+#if defined(CFG_MX6Q) && defined(CFG_WITH_PAGER) && !defined(CFG_WITH_USER_TA)
+		*size = 0x00800000;
+#else
 		*size = (NUM_UL1_ENTRIES - 1) << SECTION_SHIFT;
+#endif
 }
 
 void core_mmu_get_user_map(struct core_mmu_user_map *map)
@@ -782,6 +786,7 @@ static void map_memarea(const struct tee_mmap_region *mm, uint32_t *ttb)
 
 	assert(mm && ttb);
 
+#if defined(CFG_WITH_USER_TA)
 	/*
 	 * If mm->va is smaller than 32M, then mm->va will conflict with
 	 * user TA address space. This mapping will be overridden/hidden
@@ -790,6 +795,8 @@ static void map_memarea(const struct tee_mmap_region *mm, uint32_t *ttb)
 	 */
 	if (mm->va < (NUM_UL1_ENTRIES * SECTION_SIZE))
 		panic("va conflicts with user ta address");
+
+#endif // CFG_WITH_USER_TA
 
 	if (!((mm->va | mm->pa | mm->size | mm->region_size) & SECTION_MASK)) {
 		map_memarea_sections(mm, ttb);

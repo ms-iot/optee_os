@@ -65,8 +65,11 @@ static const struct thread_handlers handlers = {
 static struct imx_uart_data console_data;
 
 register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE, CORE_MMU_DEVICE_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, ANATOP_BASE, CORE_MMU_DEVICE_SIZE);
+#ifdef CFG_WITH_PAGER
+register_phys_mem(
+	MEM_AREA_RAM_SEC, CFG_DDR_TEETZ_RESERVED_START, CFG_PAGEABLE_PART_SIZE);
+#endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {

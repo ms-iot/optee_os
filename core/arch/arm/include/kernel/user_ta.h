@@ -12,6 +12,7 @@
 #include <tee_api_types.h>
 #include <types_ext.h>
 #include <util.h>
+#include <utee_defines.h>
 
 TAILQ_HEAD(tee_cryp_state_head, tee_cryp_state);
 TAILQ_HEAD(tee_obj_head, tee_obj);
@@ -36,6 +37,7 @@ struct user_ta_ctx {
 	struct tee_mmu_info *mmu;	/* Saved MMU information (ddr only) */
 	void *ta_time_offs;	/* Time reference used by the TA */
 	struct tee_pager_area_head *areas;
+	uint8_t ta_image_sha256[TEE_SHA256_HASH_SIZE];
 #if defined(CFG_SE_API)
 	struct tee_se_service *se_service;
 #endif

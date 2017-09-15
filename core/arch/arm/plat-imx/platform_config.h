@@ -340,4 +340,8 @@
 #error "Unknown platform flavor"
 #endif
 
+#ifdef CFG_CYREP
+#include <mx6-cyrep.h>
+#endif
+
 #endif /*PLATFORM_CONFIG_H*/

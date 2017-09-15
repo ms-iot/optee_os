@@ -72,6 +72,9 @@ register_phys_mem(MEM_AREA_IO_SEC, ANATOP_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(
 	MEM_AREA_RAM_SEC, CFG_DDR_TEETZ_RESERVED_START, CFG_PAGEABLE_PART_SIZE);
 #endif
+#ifdef CFG_CYREP
+register_phys_mem(MEM_AREA_IO_SEC, CAAM_BASE, CORE_MMU_DEVICE_SIZE);
+#endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {

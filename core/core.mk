@@ -94,6 +94,12 @@ libdir = core/lib/libfdt
 include mk/lib.mk
 endif
 
+ifeq ($(CFG_CYREP),y)
+libname = cyrep
+libdir = core/lib/libcyrep
+include mk/lib.mk
+endif
+
 #
 # Do main source
 #

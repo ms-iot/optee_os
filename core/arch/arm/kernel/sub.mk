@@ -44,6 +44,10 @@ srcs-$(CFG_ARM32_core) += generic_entry_a32.S
 srcs-$(CFG_ARM64_core) += generic_entry_a64.S
 endif
 
+ifeq ($(CFG_CYREP),y)
+srcs-$(CFG_ARM32_core) += cyrep_entry.c
+endif
+
 ifeq ($(CFG_UNWIND),y)
 srcs-y += unwind_arm32.c
 srcs-$(CFG_ARM64_core) += unwind_arm64.c

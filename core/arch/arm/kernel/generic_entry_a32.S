@@ -156,7 +156,7 @@ KEEP_INIT _start
 	/*
 	 * Save boot arguments
 	 * entry r0, saved r4: pagestore
-	 * entry r1, saved r7: (ARMv7 standard bootarg #1)
+	 * entry r1, saved r7: (ARMv7 standard bootarg #1) (CyReP args)
 	 * entry r2, saved r6: device tree address, (ARMv7 standard bootarg #2)
 	 * entry lr, saved r5: non-secure entry address (ARMv7 bootarg #0)
 	 */
@@ -362,6 +362,14 @@ shadow_stack_access_ok:
 	/* Enable Console */
 	bl	console_init
 
+#if defined(CFG_CYREP)	/*
+	 * In case of CyReP, we are not going to boot Linux and we will reuse the Linux
+	 * standard bootarg to pass CyReP args.
+	 */
+	mov r0, r7
+	bl cyrep_entry
+#endif
+
 #ifdef CFG_PL310
 	bl	pl310_base
 	bl	arm_cl2_config
@@ -427,6 +435,15 @@ shadow_stack_access_ok:
 	 * generic_boot.c.
 	 */
 	bl 	thread_clr_boot_thread
+
+#if defined(CFG_CYREP)
+	bl cyrep_measure_nsfw
+	/*
+	 * Overrwite the bootarg #1 with the address of the cyrep args blob
+	 * for the non-sec firmware to consume.
+	 */
+	mov r7, r0
+#endif
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
 	/* Pass the vector address returned from main_init */

@@ -13,3 +13,4 @@ srcs-y += RiotSha256.c
 srcs-y += RiotX509Bldr.c
 
 cflags-RiotSha256.c-y += -fno-strict-aliasing
+cflags-y += -DCONFIG_CYREP_OPTEE_BUILD=1

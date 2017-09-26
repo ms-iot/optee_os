@@ -437,10 +437,10 @@ shadow_stack_access_ok:
 	bl 	thread_clr_boot_thread
 
 #if defined(CFG_CYREP)
-	bl cyrep_measure_nsfw
+	bl cyrep_measure_fw
 	/*
-	 * Overrwite the bootarg #1 with the address of the cyrep args blob
-	 * for the non-sec firmware to consume.
+	 * Overrwite the bootarg #1 with the physical address of the cyrep args
+	 * blob for the non-sec firmware to consume.
 	 */
 	mov r7, r0
 #endif

@@ -53,6 +53,7 @@ size_t RIOT_KDF_FIXED(
 {
     size_t          total = (((label) ? labelSize : 0) + ((context) ? contextSize : 0) + 5);
 
+    (void)fixedSize;
     assert(fixedSize >= total);
 
     if (label) {

@@ -1,3 +1,6 @@
+//
+// Copyright (c) Microsoft Corporation. All rights reserved.
+//
 #include <CyrepCommon.h>
 #include <RiotDerEnc.h>
 #include <RiotX509Bldr.h>
@@ -18,7 +21,7 @@
 //
 // Macro for label sizes (skip strlen()).
 //
-#define lblSize(a)          	(sizeof(a) - 1)
+#define lblSize(a)  (sizeof(a) - 1)
 
 // The static data fields that make up the x509 "to be signed" region
 const RIOT_X509_TBS_DATA x509TBSDataTemplate = { { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E },
@@ -26,9 +29,9 @@ const RIOT_X509_TBS_DATA x509TBSDataTemplate = { { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E 
                                    "170101000000Z", "370101000000Z",
                                    "RIoT Device", "MSR_TEST", "US" };
 
-void Cyrep_MeasureL1Image(const uint8_t *Cid, size_t CdiSize, const void *ImageBase,
-						size_t ImageSize, const char *CertIssuerCommon,
-						const char *CertSubjectCommon, CyrepFwMeasurement *MeasurementResult)
+bool Cyrep_MeasureL1Image(const uint8_t *Cdi, size_t CdiSize,
+                          const CyrepFwInfo *FwInfo, const char *CertIssuerCommon,
+                          CyrepFwMeasurement *MeasurementResult)
 {
     uint8_t             cerBuffer[DER_MAX_TBS];
     uint8_t             cDigest[RIOT_DIGEST_LENGTH];
@@ -39,19 +42,25 @@ void Cyrep_MeasureL1Image(const uint8_t *Cid, size_t CdiSize, const void *ImageB
     RIOT_X509_TBS_DATA  x509TBSData;
     size_t              certLength;
 
-    // Sanity checks for programming errors, catch early
-    assert(Cid != NULL);
-    assert(CdiSize > 0);
-    assert(ImageBase != NULL);
-    assert(ImageSize > 0);
+    assert(Cdi != NULL);
+    assert(FwInfo != NULL);
     assert(CertIssuerCommon != NULL);
-    assert(CertSubjectCommon != NULL);
     assert(MeasurementResult != NULL);
+
+    if (Cdi == NULL || FwInfo == NULL || CertIssuerCommon == NULL ||
+        MeasurementResult == NULL) {
+        return false;
+    }
+
+    assert(CdiSize > 0);
+    if (CdiSize == 0) {
+        return false;
+    }
 
     memset(MeasurementResult, 0x00, sizeof(*MeasurementResult));
 
     // Don't use CDI directly
-    RiotCrypt_Hash(cDigest, sizeof(cDigest), Cid, CdiSize);
+    RiotCrypt_Hash(cDigest, sizeof(cDigest), Cdi, CdiSize);
 
     // Derive DeviceID key pair from CDI
     RiotCrypt_DeriveEccKey(&MeasurementResult->DeviceIDPub,
@@ -61,12 +70,12 @@ void Cyrep_MeasureL1Image(const uint8_t *Cid, size_t CdiSize, const void *ImageB
                            lblSize(RIOT_LABEL_IDENTITY));
 
     // Measure FW, i.e., calculate FWID
-    RiotCrypt_Hash(FWID, sizeof(FWID), ImageBase, ImageSize);
+    RiotCrypt_Hash(FWID, sizeof(FWID), FwInfo->FwBase, FwInfo->FwSize);
 
     // Combine CDI and FWID, result in cDigest
     RiotCrypt_Hash2(cDigest, sizeof(cDigest),
                     cDigest, sizeof(cDigest),
-                    FWID,    sizeof(FWID));
+                    FWID, sizeof(FWID));
 
     // Derive Alias key pair from CDI and FWID
     RiotCrypt_DeriveEccKey(&MeasurementResult->AliasKeyPub,
@@ -82,9 +91,10 @@ void Cyrep_MeasureL1Image(const uint8_t *Cid, size_t CdiSize, const void *ImageB
     DERInitContext(&cerCtx, cerBuffer, DER_MAX_TBS);
     memcpy(&x509TBSData, &x509TBSDataTemplate, sizeof(x509TBSData));
     x509TBSData.IssuerCommon = CertIssuerCommon;
-    x509TBSData.SubjectCommon = CertSubjectCommon;
+    x509TBSData.SubjectCommon = FwInfo->FwName;
     X509GetAliasCertTBS(&cerCtx, &x509TBSData,
-                        &MeasurementResult->AliasKeyPub, &MeasurementResult->DeviceIDPub,
+                        &MeasurementResult->AliasKeyPub,
+                        &MeasurementResult->DeviceIDPub,
                         FWID, sizeof(FWID));
 
     // Sign the Alias Key Certificate's TBS region
@@ -100,12 +110,13 @@ void Cyrep_MeasureL1Image(const uint8_t *Cid, size_t CdiSize, const void *ImageB
     MeasurementResult->CertChain[0][certLength - 1] = '\0';
     MeasurementResult->CertChainCount = 1;
 
-    return;
+    return true;
 }
 
-void Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
-            const void *ImageBase, size_t ImageSize, const char *CertIssuerCommon,
-            const char *CertSubjectCommon, CyrepFwMeasurement *MeasurementResult)
+bool Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
+                              const CyrepFwInfo *FwInfo,
+                              const char *CertIssuerCommon,
+                              CyrepFwMeasurement *MeasurementResult)
 {
     uint8_t             cerBuffer[DER_MAX_TBS];
     uint8_t             cDigest[RIOT_DIGEST_LENGTH];
@@ -117,13 +128,15 @@ void Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
     uint32_t            certLength;
     size_t              certIndex;
 
-    // Sanity checks for programming errors, catch early
     assert(CurrentMeasurement != NULL);
-    assert(ImageBase != NULL);
-    assert(ImageSize > 0);
+    assert(FwInfo != NULL);
     assert(CertIssuerCommon != NULL);
-    assert(CertSubjectCommon != NULL);
     assert(MeasurementResult != NULL);
+
+    if (CurrentMeasurement == NULL || FwInfo == NULL ||
+        CertIssuerCommon == NULL || MeasurementResult == NULL) {
+        return false;
+    }
 
     // Copy the current FW measurement as a template to the new measurement
     // We will reuse the same DeviceIDPub and append to the certificate chain
@@ -134,12 +147,12 @@ void Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
                    sizeof(CurrentMeasurement->AliasKeyPriv));
 
     // Measure FW, i.e., calculate FWID
-    RiotCrypt_Hash(FWID, sizeof(FWID), ImageBase, ImageSize);
+    RiotCrypt_Hash(FWID, sizeof(FWID), FwInfo->FwBase, FwInfo->FwSize);
 
     // Combine hashed AliasKeyPriv and FWID, result in cDigest
     RiotCrypt_Hash2(cDigest, sizeof(cDigest),
                     cDigest, sizeof(cDigest),
-                    FWID,    sizeof(FWID));
+                    FWID, sizeof(FWID));
 
     // Derive new Alias key pair from hashed AliasKeyPriv and FWID
     RiotCrypt_DeriveEccKey(&MeasurementResult->AliasKeyPub,
@@ -155,9 +168,10 @@ void Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
     DERInitContext(&cerCtx, cerBuffer, DER_MAX_TBS);
     memcpy(&x509TBSData, &x509TBSDataTemplate, sizeof(x509TBSData));
     x509TBSData.IssuerCommon = CertIssuerCommon;
-    x509TBSData.SubjectCommon = CertSubjectCommon;
+    x509TBSData.SubjectCommon = FwInfo->FwName;
     X509GetAliasCertTBS(&cerCtx, &x509TBSData,
-                        &MeasurementResult->AliasKeyPub, &MeasurementResult->DeviceIDPub,
+                        &MeasurementResult->AliasKeyPub,
+                        &MeasurementResult->DeviceIDPub,
                         FWID, sizeof(FWID));
 
     // Sign the Alias Key Certificate's TBS region
@@ -182,5 +196,5 @@ void Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
     MeasurementResult->CertChain[certIndex][certLength - 1] = '\0';
     MeasurementResult->CertChainCount++;
 
-    return;
+    return true;
 }

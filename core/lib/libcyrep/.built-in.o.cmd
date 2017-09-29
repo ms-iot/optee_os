@@ -1,1 +1,0 @@
-cmd_lib/cyrep/built-in.o :=  /usr/bin/arm-linux-gnueabi-ld.bfd     -r -o lib/cyrep/built-in.o lib/cyrep/RiotAes128.o lib/cyrep/RiotAesTables.o lib/cyrep/RiotBase64.o lib/cyrep/RiotCrypt.o lib/cyrep/RiotDerEnc.o lib/cyrep/RiotEcc.o lib/cyrep/RiotHmac.o lib/cyrep/RiotKdf.o lib/cyrep/RiotSha256.o lib/cyrep/RiotX509Bldr.o lib/cyrep/Cyrep.o 

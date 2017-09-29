@@ -14,6 +14,7 @@
 #ifndef __CYREP_COMMON_H__
 #define __CYREP_COMMON_H__
 
+
 /*
  * Define the appropriate compile time CONFIG_CYREP_* based on the target
  * environment (i.e u-boot, OPTEE, or UEFI) which are the currently supported
@@ -22,16 +23,33 @@
 
 #if defined(CONFIG_CYREP_UBOOT_BUILD)
 #include <common.h>
+
+#define PLATFORM_TRACE_ERROR(...)\
+    printf("ERROR: " __VA_ARGS__)
+
 #elif defined(CONFIG_CYREP_OPTEE_BUILD)
 #include <types_ext.h>
 #include <string.h>
 #include <assert.h>
+
+#define PLATFORM_TRACE_ERROR(...)\
+    EMSG(__VA_ARGS__)
+
 #elif defined(CONFIG_CYREP_UEFI_BUILD)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
 #include <string.h>
+
+#define PLATFORM_TRACE_ERROR(...)\
+    DEBUG((DEBUG_ERROR, __VA_ARGS__))
+
 #endif
+
+#define CYREP_INTERNAL_ERROR(...) \
+    do { \
+        PLATFORM_TRACE_ERROR("Cyrep Internal Error: "__VA_ARGS__); \
+    } while(0)
 
 #endif // __CYREP_COMMON_H__

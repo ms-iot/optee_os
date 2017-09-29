@@ -60,6 +60,15 @@ typedef struct {
 } CyrepFwInfo;
 
 /*
+ * Define 3 magic numbers that should be placed at the beginning, middle and the
+ * end of each Cyrep args binary blob. These 3 magic numbers are used to partially
+ * verify the binary blob integrity.
+ */
+#define CYREP_ARGS_PREFIX_GUARD    0xBBEEEEFF
+#define CYREP_ARGS_INFIX_GUARD     0xA5A5A5A5
+#define CYREP_ARGS_POSTFIX_GUARD   0xFFEEEEBB
+
+/*
  * Encapsulates the CyReP specific arguments that gets passed from a firmware
  * to another in a multistage bootloader/firmware boot.
  *
@@ -71,18 +80,60 @@ typedef struct {
  *         When this arg is not used, it should be be a null pointer.
  */
 typedef struct {
+    uint32_t            PrefixGuard;
     CyrepFwMeasurement  FwMeasurement;
+    uint32_t            InfixGuard;
+    uint8_t             FwMeasurementHash[RIOT_DIGEST_LENGTH];
     CyrepFwInfo         *FwInfo;
+    uint8_t             FwInfoHash[RIOT_DIGEST_LENGTH];
+    uint32_t            PostfixGuard;
 } CyrepFwArgs;
 
-bool Cyrep_MeasureL1Image(const uint8_t *Cdi, size_t CdiSize,
+/*
+ * Initializes a Cyrep fw args.
+ *
+ * Args: Pointer to the Cyrep args to initialize.
+ */
+void Cyrep_InitArgs(CyrepFwArgs *Args);
+
+/*
+ * Do necessary post-process on the Cyrep fw args such as hashing the measurement
+ * to use later for data integrity verification.
+ * This function should be done after measurement.
+ *
+ * Args: Pointer to the Cyrep args to do post-processing on.
+ */
+bool Cyrep_PostprocessArgs(CyrepFwArgs *Args);
+
+/*
+ * Verifies a Cyrep fw args integrity by making sure that the prefix and postfix
+ * magic numbers are present.
+ *
+ * Args: Pointer to the Cyrep args to verify.
+ */
+bool Cyrep_VerifyArgs(const CyrepFwArgs *Args);
+
+
+
+bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                           const CyrepFwInfo *FwInfo, const char *CertIssuerCommon,
                           CyrepFwMeasurement *MeasurementResult);
 
-bool Cyrep_MeasureL2plusImage(const CyrepFwMeasurement *CurrentMeasurement,
+bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
                               const CyrepFwInfo *FwInfo,
                               const char *CertIssuerCommon,
                               CyrepFwMeasurement *MeasurementResult);
+
+/*
+ * Clear the memory in a secure way that avoids a possible compiler optimization
+ * for elemenating memset calls for memory region that is not gonna be touched.
+ * NOTE: This function doesn't necessarly zero the memory region, but it clears
+ * it by writing random values to it.
+ *
+ * Mem: Base address of the memory region to clear.
+ * Size: Memory region size in bytes.
+ */
+void Cyrep_SecureClearMemory(void *Mem, size_t Size);
 
 #ifdef __cplusplus
 }

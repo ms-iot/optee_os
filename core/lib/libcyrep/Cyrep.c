@@ -50,11 +50,11 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
 
     ret = false;
 
-    assert(Cdi != NULL);
-    assert(FwInfo != NULL);
-    assert(CertIssuerCommon != NULL);
-    assert(MeasurementResult != NULL);
-    assert(CdiSize > 0);
+    CYREP_ASSERT(Cdi != NULL);
+    CYREP_ASSERT(FwInfo != NULL);
+    CYREP_ASSERT(CertIssuerCommon != NULL);
+    CYREP_ASSERT(MeasurementResult != NULL);
+    CYREP_ASSERT(CdiSize > 0);
 
     if ((Cdi == NULL) || (CdiSize == 0) || (FwInfo == NULL) || (CertIssuerCommon == NULL) ||
         (MeasurementResult == NULL)) {
@@ -65,6 +65,7 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
 
     // Don't use CDI directly.
     if (RiotCrypt_Hash(cDigest, sizeof(cDigest), Cdi, CdiSize) != RIOT_SUCCESS) {
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash() failed\n");
         goto Exit;
     }
 
@@ -74,12 +75,16 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_IDENTITY,
                                lblSize(RIOT_LABEL_IDENTITY)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
     }
 
     // Measure FW, i.e., calculate FWID.
     if (RiotCrypt_Hash(FWID, sizeof(FWID), FwInfo->FwBase, FwInfo->FwSize) !=
         RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash() failed\n");
         goto Exit;
     }
 
@@ -87,6 +92,8 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
     if (RiotCrypt_Hash2(cDigest, sizeof(cDigest),
                         cDigest, sizeof(cDigest),
                         FWID, sizeof(FWID)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash2() failed\n");
         goto Exit;
     }
 
@@ -96,6 +103,8 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_ALIAS,
                                lblSize(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
     }
 
@@ -108,24 +117,35 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                             &MeasurementResult->AliasKeyPub,
                             &MeasurementResult->DeviceIDPub,
                             FWID, sizeof(FWID)) != 0) {
+
+        CYREP_INTERNAL_ERROR("X509GetAliasCertTBS() failed\n");
         goto Exit;
     }
 
     // Sign the Alias Key Certificate's TBS region.
     if (RiotCrypt_Sign(&tbsSig, cerCtx.Buffer, cerCtx.Position,
                        &deviceIDPriv) != 0) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Sign() failed\n");
         goto Exit;
     }
 
     // Generate Alias Key Certificate by signing the TBS region.
     if (X509MakeAliasCert(&cerCtx, &tbsSig) != 0) {
+        CYREP_INTERNAL_ERROR("X509MakeAliasCert() failed\n");
         goto Exit;
     }
 
     // Append the Alias Key Certificate to the certificate chain
-    certLength = sizeof(*MeasurementResult->CertChain);
-    DERtoPEM(&cerCtx, CERT_TYPE, MeasurementResult->CertChain[0], &certLength);
-    MeasurementResult->CertChain[0][certLength - 1] = '\0';
+    certLength = sizeof(*MeasurementResult->CertChain) - 1;
+    if (DERtoPEM(&cerCtx, CERT_TYPE, MeasurementResult->CertChain[0],
+                  &certLength) != 0) {
+
+        CYREP_INTERNAL_ERROR("DERtoPEM() failed\n");
+        goto Exit;
+    }
+
+    MeasurementResult->CertChain[0][certLength] = '\0';
     MeasurementResult->CertChainCount = 1;
 
     ret = true;
@@ -154,11 +174,11 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
 
     ret = false;
 
-    assert(CurrentMeasurement != NULL);
-    assert(FwInfo != NULL);
-    assert(CertIssuerCommon != NULL);
-    assert(MeasurementResult != NULL);
-    assert(CurrentMeasurement != MeasurementResult);
+    CYREP_ASSERT(CurrentMeasurement != NULL);
+    CYREP_ASSERT(FwInfo != NULL);
+    CYREP_ASSERT(CertIssuerCommon != NULL);
+    CYREP_ASSERT(MeasurementResult != NULL);
+    CYREP_ASSERT(CurrentMeasurement != MeasurementResult);
 
     if ((CurrentMeasurement == NULL) || (FwInfo == NULL) ||
         (CertIssuerCommon == NULL) || (MeasurementResult == NULL) ||
@@ -173,18 +193,24 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
     // Hash AliasKeyPriv into a 256-bit key
     if (RiotCrypt_Hash(cDigest, sizeof(cDigest), &CurrentMeasurement->AliasKeyPriv,
                        sizeof(CurrentMeasurement->AliasKeyPriv)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash() failed\n");
         goto Exit;
     }
 
     // Measure FW, i.e., calculate FWID.
     if (RiotCrypt_Hash(FWID, sizeof(FWID), FwInfo->FwBase, FwInfo->FwSize) !=
         RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash() failed\n");
         goto Exit;
     }
 
     // Combine hashed AliasKeyPriv and FWID, result in cDigest.
     if (RiotCrypt_Hash2(cDigest, sizeof(cDigest), cDigest, sizeof(cDigest),
                         FWID, sizeof(FWID)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Hash2() failed\n");
         goto Exit;
     }
 
@@ -194,6 +220,8 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_ALIAS,
                                lblSize(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
     }
 
@@ -206,17 +234,22 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
                             &MeasurementResult->AliasKeyPub,
                             &MeasurementResult->DeviceIDPub,
                             FWID, sizeof(FWID)) != 0) {
+
+        CYREP_INTERNAL_ERROR("X509GetAliasCertTBS() failed\n");
         goto Exit;
     }
 
     // Sign the Alias Key Certificate's TBS region.
     if (RiotCrypt_Sign(&tbsSig, cerCtx.Buffer, cerCtx.Position,
                        &CurrentMeasurement->AliasKeyPriv) != RIOT_SUCCESS) {
+
+        CYREP_INTERNAL_ERROR("RiotCrypt_Sign() failed\n");
         goto Exit;
     }
 
     // Generate Alias Key Certificate by signing the TBS region.
     if (X509MakeAliasCert(&cerCtx, &tbsSig) != 0) {
+        CYREP_INTERNAL_ERROR("X509MakeAliasCert() failed\n");
         goto Exit;
     }
 
@@ -227,14 +260,16 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
     if (certIndex == 0 || certIndex >= CYREP_CERT_CHAIN_MAX) {
         goto Exit;
     }
-    
-    certLength = sizeof(*MeasurementResult->CertChain);
+
+    certLength = sizeof(*MeasurementResult->CertChain) - 1;
     if (DERtoPEM(&cerCtx, CERT_TYPE, MeasurementResult->CertChain[certIndex],
                  &certLength) != 0) {
+
+        CYREP_INTERNAL_ERROR("DERtoPEM() failed\n");
         goto Exit;
     }
 
-    MeasurementResult->CertChain[certIndex][certLength - 1] = '\0';
+    MeasurementResult->CertChain[certIndex][certLength] = '\0';
     MeasurementResult->CertChainCount++;
 
     ret = true;
@@ -247,7 +282,7 @@ Exit:
 
 static inline bool VerifyArgsGuard(const CyrepFwArgs *Args)
 {
-    assert(Args != NULL);
+    CYREP_ASSERT(Args != NULL);
     if (Args->PrefixGuard != CYREP_ARGS_PREFIX_GUARD) {
         CYREP_INTERNAL_ERROR("Args->PrefixGuard mismatch. "
                              "(Expected:%x, Actual:%x)\n",
@@ -276,7 +311,7 @@ static inline bool VerifyArgsGuard(const CyrepFwArgs *Args)
 }
 
 void Cyrep_InitArgs(CyrepFwArgs *Args) {
-    assert(Args != NULL);
+    CYREP_ASSERT(Args != NULL);
     memset(Args, 0x0, sizeof(*Args));
     Args->PrefixGuard = CYREP_ARGS_PREFIX_GUARD;
     Args->InfixGuard = CYREP_ARGS_INFIX_GUARD;
@@ -294,6 +329,7 @@ bool Cyrep_VerifyArgs(const CyrepFwArgs *Args)
 
     if (RiotCrypt_Hash(digest, sizeof(digest), &Args->FwMeasurement,
                         sizeof(Args->FwMeasurement)) != RIOT_SUCCESS) {
+
         CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwMeasurement) failed\n");
         return false;
     }
@@ -306,6 +342,7 @@ bool Cyrep_VerifyArgs(const CyrepFwArgs *Args)
     if (Args->FwInfo != NULL) {
         if (RiotCrypt_Hash(digest, sizeof(digest), Args->FwInfo,
                            sizeof(*Args->FwInfo)) != RIOT_SUCCESS) {
+
             CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwInfo) failed\n");
             return false;
         }
@@ -321,7 +358,7 @@ bool Cyrep_VerifyArgs(const CyrepFwArgs *Args)
 
 bool Cyrep_PostprocessArgs(CyrepFwArgs *Args)
 {
-    assert(Args != NULL);
+    CYREP_ASSERT(Args != NULL);
     if (!VerifyArgsGuard(Args)) {
         CYREP_INTERNAL_ERROR("VerifyArgsGuard() failed\n");
         return false;

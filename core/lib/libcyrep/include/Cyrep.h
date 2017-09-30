@@ -72,12 +72,21 @@ typedef struct {
  * Encapsulates the CyReP specific arguments that gets passed from a firmware
  * to another in a multistage bootloader/firmware boot.
  *
+ * PrefixGuard: A magic number placed by Cyrep library at the beginning of the
+ *              args binary blob to catch overflows.
  * FwMeasurement: The measurements of the firmware that this args is passed to.
+ * InfixGuard: A magic number placed by Cyrep library directly after the
+ *             measurements structure blob to catch measurements overflows.
+ * FwMeasurementHash: A SHA digest for the measurements used to verify
+ *                    measurement integrity.
  * FwInfo: An optional pointer to a firmware info that can be consumed by the
  *         next firmware. This can be used when a firmware Ln loads the next 2
  *         firmwares Ln+1 and Ln+2, in which Ln+1 uses FwInfo to locate and
  *         measure Ln+2 before transferring control to it.
  *         When this arg is not used, it should be be a null pointer.
+ * FwInfoHash: A SHA digest for the firmware info used to verify info integrity.
+ * PostfixGuard: A magic number placed by Cyrep library at the end of the
+ *              args binary blob to catch overflows.
  */
 typedef struct {
     uint32_t            PrefixGuard;
@@ -99,7 +108,8 @@ void Cyrep_InitArgs(CyrepFwArgs *Args);
 /*
  * Do necessary post-process on the Cyrep fw args such as hashing the measurement
  * to use later for data integrity verification.
- * This function should be done after measurement.
+ * This function should be called on the Cyrep fw args after both the measurement
+ * and the firmware info have been written.
  *
  * Args: Pointer to the Cyrep args to do post-processing on.
  */
@@ -113,16 +123,35 @@ bool Cyrep_PostprocessArgs(CyrepFwArgs *Args);
  */
 bool Cyrep_VerifyArgs(const CyrepFwArgs *Args);
 
-
-
+/*
+ * Measures an L1 firmware using a device secret.
+ *
+ * Cdi: Pointer to a device secret buffer.
+ * CdiSize: Device secret buffer size in bytes.
+ * FwInfo: Pointer to the L1 firmware info.
+ * CertIssuerCommon: Name of the entity issuing the measurement certificate.
+ * CyrepFwMeasurement: Pointer to a Cyrep measurement to which L1 firmware
+ *                     measurement result is written to.
+ */
 bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
-                          const CyrepFwInfo *FwInfo, const char *CertIssuerCommon,
-                          CyrepFwMeasurement *MeasurementResult);
+                             const CyrepFwInfo *FwInfo,
+                             const char *CertIssuerCommon,
+                             CyrepFwMeasurement *MeasurementResult);
 
+/*
+ * Measures an L2 or beyond firmware using a the previous firmware L(n-1)
+ * measurements to the current firmware L(n).
+ *
+ * CurrentMeasurement: Pointer to the current firmware measurements.
+ * FwInfo: Pointer to the L2+ firmware info.
+ * CertIssuerCommon: Name of the entity issuing the measurement certificate.
+ * CyrepFwMeasurement: Pointer to a Cyrep measurement to which L2+ firmware
+ *                     measurement result is written to.
+ */
 bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
-                              const CyrepFwInfo *FwInfo,
-                              const char *CertIssuerCommon,
-                              CyrepFwMeasurement *MeasurementResult);
+                                 const CyrepFwInfo *FwInfo,
+                                 const char *CertIssuerCommon,
+                                 CyrepFwMeasurement *MeasurementResult);
 
 /*
  * Clear the memory in a secure way that avoids a possible compiler optimization

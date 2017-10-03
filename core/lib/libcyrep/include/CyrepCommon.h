@@ -14,6 +14,9 @@
 #ifndef __CYREP_COMMON_H__
 #define __CYREP_COMMON_H__
 
+#ifdef DEBUG
+#define CYREP_DEBUG     1
+#endif
 
 /*
  * Define the appropriate compile time CONFIG_CYREP_* based on the target
@@ -23,10 +26,7 @@
 #if defined(CONFIG_CYREP_UBOOT_BUILD)
 #include <common.h>
 
-#define CYREP_PLATFORM_ASSERT(...) \
-    assert(__VA_ARGS__)
-
-#define CYREP_PLATFORM_TRACE_ERROR(...)\
+#define CYREP_PLATFORM_TRACE_ERROR(...) \
     printf("ERROR: " __VA_ARGS__)
 
 #elif defined(CONFIG_CYREP_OPTEE_BUILD)
@@ -34,11 +34,8 @@
 #include <string.h>
 #include <assert.h>
 
-#define CYREP_PLATFORM_TRACE_ERROR(...)\
+#define CYREP_PLATFORM_TRACE_ERROR(...) \
     EMSG(__VA_ARGS__)
-
-#define CYREP_PLATFORM_ASSERT(...) \
-    assert(__VA_ARGS__)
 
 #elif defined(CONFIG_CYREP_UEFI_BUILD)
 #include <stdbool.h>
@@ -48,22 +45,20 @@
 #include <string.h>
 #include <Library/DebugLib.h>
 
-#define CYREP_PLATFORM_ASSERT(...) \
-    ASSERT(__VA_ARGS__)
-
 #define CYREP_PLATFORM_TRACE_ERROR(...) \
     DEBUG((DEBUG_ERROR, __VA_ARGS__))
 
 #endif
 
-#define CYREP_ASSERT(...) \
-    do { \
-        CYREP_PLATFORM_ASSERT (__VA_ARGS__); \
-    } while (0)
-
+#if defined(CYREP_DEBUG)
 #define CYREP_INTERNAL_ERROR(...) \
     do { \
         CYREP_PLATFORM_TRACE_ERROR("Cyrep Internal Error: "__VA_ARGS__); \
     } while(0)
+#else
+#define CYREP_INTERNAL_ERROR(...) \
+    do { \
+    } while(0)
+#endif
 
 #endif // __CYREP_COMMON_H__

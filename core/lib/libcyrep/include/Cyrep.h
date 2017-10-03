@@ -60,12 +60,11 @@ typedef struct {
 } CyrepFwInfo;
 
 /*
- * Define 3 magic numbers that should be placed at the beginning, middle and the
- * end of each Cyrep args binary blob. These 3 magic numbers are used to partially
- * verify the binary blob integrity.
+ * Define 2 magic numbers that should be placed before and after the measurement
+ * structure inside the Cyrep args binary blob to help in catching overflows
+ * by the measurement routines.
  */
 #define CYREP_ARGS_PREFIX_GUARD    0xBBEEEEFF
-#define CYREP_ARGS_INFIX_GUARD     0xA5A5A5A5
 #define CYREP_ARGS_POSTFIX_GUARD   0xFFEEEEBB
 
 /*
@@ -75,7 +74,7 @@ typedef struct {
  * PrefixGuard: A magic number placed by Cyrep library at the beginning of the
  *              args binary blob to catch overflows.
  * FwMeasurement: The measurements of the firmware that this args is passed to.
- * InfixGuard: A magic number placed by Cyrep library directly after the
+ * PostfixGuard: A magic number placed by Cyrep library directly after the
  *             measurements structure blob to catch measurements overflows.
  * FwMeasurementHash: A SHA digest for the measurements used to verify
  *                    measurement integrity.
@@ -85,17 +84,14 @@ typedef struct {
  *         measure Ln+2 before transferring control to it.
  *         When this arg is not used, it should be be a null pointer.
  * FwInfoHash: A SHA digest for the firmware info used to verify info integrity.
- * PostfixGuard: A magic number placed by Cyrep library at the end of the
- *              args binary blob to catch overflows.
  */
 typedef struct {
     uint32_t            PrefixGuard;
     CyrepFwMeasurement  FwMeasurement;
-    uint32_t            InfixGuard;
+    uint32_t            PostfixGuard;
     uint8_t             FwMeasurementHash[RIOT_DIGEST_LENGTH];
     CyrepFwInfo         *FwInfo;
     uint8_t             FwInfoHash[RIOT_DIGEST_LENGTH];
-    uint32_t            PostfixGuard;
 } CyrepFwArgs;
 
 /*
@@ -116,8 +112,8 @@ void Cyrep_InitArgs(CyrepFwArgs *Args);
 bool Cyrep_PostprocessArgs(CyrepFwArgs *Args);
 
 /*
- * Verifies a Cyrep fw args integrity by making sure that the prefix and postfix
- * magic numbers are present.
+ * Verifies a Cyrep fw args integrity by making sure that the magic numbers are
+ * present as expected.
  *
  * Args: Pointer to the Cyrep args to verify.
  */
@@ -155,7 +151,7 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
 
 /*
  * Clear the memory in a secure way that avoids a possible compiler optimization
- * for elemenating memset calls for memory region that is not gonna be touched.
+ * for elemenating memset calls for memory region that is not going to be touched.
  * NOTE: This function doesn't necessarly zero the memory region, but it clears
  * it by writing random values to it.
  *

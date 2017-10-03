@@ -24,9 +24,9 @@
 #define RIOT_LABEL_AK           "Attestation"
 
 //
-// Macro for label sizes (skip strlen()).
+// Macro for label sizes instead of calling strlen()
 //
-#define lblSize(a)  (sizeof(a) - 1)
+#define STR_LABEL_LEN(S)        (sizeof(S) - 1)
 
 // The static data fields that make up the x509 "to be signed" region
 const RIOT_X509_TBS_DATA x509TBSDataTemplate = { { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E },
@@ -50,11 +50,11 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
 
     ret = false;
 
-    CYREP_ASSERT(Cdi != NULL);
-    CYREP_ASSERT(FwInfo != NULL);
-    CYREP_ASSERT(CertIssuerCommon != NULL);
-    CYREP_ASSERT(MeasurementResult != NULL);
-    CYREP_ASSERT(CdiSize > 0);
+    assert(Cdi != NULL);
+    assert(FwInfo != NULL);
+    assert(CertIssuerCommon != NULL);
+    assert(MeasurementResult != NULL);
+    assert(CdiSize > 0);
 
     if ((Cdi == NULL) || (CdiSize == 0) || (FwInfo == NULL) || (CertIssuerCommon == NULL) ||
         (MeasurementResult == NULL)) {
@@ -74,7 +74,7 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                                &deviceIDPriv,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_IDENTITY,
-                               lblSize(RIOT_LABEL_IDENTITY)) != RIOT_SUCCESS) {
+                               STR_LABEL_LEN(RIOT_LABEL_IDENTITY)) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
@@ -102,7 +102,7 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                                &MeasurementResult->AliasKeyPriv,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_ALIAS,
-                               lblSize(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
+                               STR_LABEL_LEN(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
@@ -137,7 +137,7 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
     }
 
     // Append the Alias Key Certificate to the certificate chain
-    certLength = sizeof(*MeasurementResult->CertChain) - 1;
+    certLength = sizeof(MeasurementResult->CertChain[0]) - 1;
     if (DERtoPEM(&cerCtx, CERT_TYPE, MeasurementResult->CertChain[0],
                   &certLength) != 0) {
 
@@ -174,17 +174,24 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
 
     ret = false;
 
-    CYREP_ASSERT(CurrentMeasurement != NULL);
-    CYREP_ASSERT(FwInfo != NULL);
-    CYREP_ASSERT(CertIssuerCommon != NULL);
-    CYREP_ASSERT(MeasurementResult != NULL);
-    CYREP_ASSERT(CurrentMeasurement != MeasurementResult);
+    assert(CurrentMeasurement != NULL);
+    assert(FwInfo != NULL);
+    assert(CertIssuerCommon != NULL);
+    assert(MeasurementResult != NULL);
+    assert(CurrentMeasurement != MeasurementResult);
 
     if ((CurrentMeasurement == NULL) || (FwInfo == NULL) ||
         (CertIssuerCommon == NULL) || (MeasurementResult == NULL) ||
         (CurrentMeasurement == MeasurementResult)) {
         goto Exit;
     }
+
+#if defined(CYREP_DEBUG)
+    if (!Cyrep_VerifyArgs(CurrentMeasurement)) {
+        CYREP_INTERNAL_ERROR("Cyrep_VerifyArgs(CurrentMeasurement) failed\n");
+        goto Exit;
+    }
+#endif
 
     // Copy the current FW measurement as a template to the new measurement
     // We will reuse the same DeviceIDPub and append to the certificate chain.
@@ -219,7 +226,7 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
                                &MeasurementResult->AliasKeyPriv,
                                cDigest, sizeof(cDigest),
                                (const uint8_t *)RIOT_LABEL_ALIAS,
-                               lblSize(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
+                               STR_LABEL_LEN(RIOT_LABEL_ALIAS)) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
         goto Exit;
@@ -261,7 +268,7 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
         goto Exit;
     }
 
-    certLength = sizeof(*MeasurementResult->CertChain) - 1;
+    certLength = sizeof(MeasurementResult->CertChain[0]) - 1;
     if (DERtoPEM(&cerCtx, CERT_TYPE, MeasurementResult->CertChain[certIndex],
                  &certLength) != 0) {
 
@@ -282,20 +289,12 @@ Exit:
 
 static inline bool VerifyArgsGuard(const CyrepFwArgs *Args)
 {
-    CYREP_ASSERT(Args != NULL);
+    assert(Args != NULL);
     if (Args->PrefixGuard != CYREP_ARGS_PREFIX_GUARD) {
         CYREP_INTERNAL_ERROR("Args->PrefixGuard mismatch. "
                              "(Expected:%x, Actual:%x)\n",
                              CYREP_ARGS_PREFIX_GUARD,
                              Args->PrefixGuard);
-        return false;
-    }
-
-    if (Args->InfixGuard != CYREP_ARGS_INFIX_GUARD) {
-        CYREP_INTERNAL_ERROR("Args->InfixGuard mismatch. "
-                             "(Expected:%x, Actual:%x)\n",
-                             CYREP_ARGS_INFIX_GUARD,
-                             Args->InfixGuard);
         return false;
     }
 
@@ -311,10 +310,9 @@ static inline bool VerifyArgsGuard(const CyrepFwArgs *Args)
 }
 
 void Cyrep_InitArgs(CyrepFwArgs *Args) {
-    CYREP_ASSERT(Args != NULL);
+    assert(Args != NULL);
     memset(Args, 0x0, sizeof(*Args));
     Args->PrefixGuard = CYREP_ARGS_PREFIX_GUARD;
-    Args->InfixGuard = CYREP_ARGS_INFIX_GUARD;
     Args->PostfixGuard = CYREP_ARGS_POSTFIX_GUARD;
 }
 
@@ -358,7 +356,7 @@ bool Cyrep_VerifyArgs(const CyrepFwArgs *Args)
 
 bool Cyrep_PostprocessArgs(CyrepFwArgs *Args)
 {
-    CYREP_ASSERT(Args != NULL);
+    assert(Args != NULL);
     if (!VerifyArgsGuard(Args)) {
         CYREP_INTERNAL_ERROR("VerifyArgsGuard() failed\n");
         return false;

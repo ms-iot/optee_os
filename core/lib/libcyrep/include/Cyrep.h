@@ -14,6 +14,7 @@
 #ifndef __CYREP_H__
 #define __CYREP_H__
 
+#include "CyrepDef.h"
 #include "CyrepCommon.h"
 #include "RiotDerEnc.h"
 #include "RiotX509Bldr.h"
@@ -22,29 +23,41 @@
 extern "C" {
 #endif
 
-/* Maximum number of PEM certificates chain a measurement can have. */
-#define CYREP_CERT_CHAIN_MAX    4
+#define CYREP_PASTE_HELPER(X, Y) \
+    X ## Y
+
+#define CYREP_PASTE(X, Y) \
+    CYREP_PASTE_HELPER(X, Y)
+
+/* Compile time assertion */
+#define CYREP_STATIC_ASSERT(E) \
+    typedef char CYREP_PASTE(__C_ASSERT__, __COUNTER__) [(E) ? 1 : -1]
+
+/* Get the size in bytes of a struct field */
+#define CYREP_STRUCT_FIELD_SIZE(STRUCT_NAME, FIELD_NAME) \
+    (sizeof(((STRUCT_NAME *)0)->FIELD_NAME))
 
 /*
  * Encapsulates CyReP measurements for a certain firmware.
  *
+ * PrefixGuard: A magic number used for data integrity verification.
  * DeviceIDPub: Public key of the device identity.
  * AliasKeyPub:  Public key that identifies the firmware.
  * AliasKeyPriv: Private key that identifies the firmware.
  * CertChainCount: Number of certificates in the CertChain array.
  * CertChain: An array of PEM certificates whose number of valid entries is
  *            identified by CertChainCount.
+ * PostfixGuard: A magic number used for data integrity verification.
  */
 typedef struct {
+    uint32_t            PrefixGuard;
     RIOT_ECC_PUBLIC     DeviceIDPub;
     RIOT_ECC_PUBLIC     AliasKeyPub;
     RIOT_ECC_PRIVATE    AliasKeyPriv;
     size_t              CertChainCount;
     char                CertChain[CYREP_CERT_CHAIN_MAX][DER_MAX_PEM];
+    uint32_t            PostfixGuard;
 } CyrepFwMeasurement;
-
-/* Firmware name size including the null character. */
-#define CYREP_FW_NAME_MAX   8
 
 /*
  * Encapsualtes firmware info used by CyReP during measurements.
@@ -60,64 +73,73 @@ typedef struct {
 } CyrepFwInfo;
 
 /*
- * Define 2 magic numbers that should be placed before and after the measurement
- * structure inside the Cyrep args binary blob to help in catching overflows
- * by the measurement routines.
- */
-#define CYREP_ARGS_PREFIX_GUARD    0xBBEEEEFF
-#define CYREP_ARGS_POSTFIX_GUARD   0xFFEEEEBB
-
-/*
  * Encapsulates the CyReP specific arguments that gets passed from a firmware
  * to another in a multistage bootloader/firmware boot.
  *
- * PrefixGuard: A magic number placed by Cyrep library at the beginning of the
- *              args binary blob to catch overflows.
  * FwMeasurement: The measurements of the firmware that this args is passed to.
- * PostfixGuard: A magic number placed by Cyrep library directly after the
- *             measurements structure blob to catch measurements overflows.
- * FwMeasurementHash: A SHA digest for the measurements used to verify
- *                    measurement integrity.
- * FwInfo: An optional pointer to a firmware info that can be consumed by the
+ * FwInfo: An optional firmware info that can be consumed by the
  *         next firmware. This can be used when a firmware Ln loads the next 2
  *         firmwares Ln+1 and Ln+2, in which Ln+1 uses FwInfo to locate and
  *         measure Ln+2 before transferring control to it.
- *         When this arg is not used, it should be be a null pointer.
- * FwInfoHash: A SHA digest for the firmware info used to verify info integrity.
+ *         When this field is not used it should be all zeros.
+ * Digest: A hash digest for both the measurement and the firmware info which is
+ *         used for data integrity verification.
+ *
+ * The CyrepFwArgs should be treated as an obaque struct, accessing both the
+ * measurement and the firmware info should be done through Cyrep_ArgsGet*
+ * accessors.
  */
-typedef struct {
-    uint32_t            PrefixGuard;
-    CyrepFwMeasurement  FwMeasurement;
-    uint32_t            PostfixGuard;
-    uint8_t             FwMeasurementHash[RIOT_DIGEST_LENGTH];
-    CyrepFwInfo         *FwInfo;
-    uint8_t             FwInfoHash[RIOT_DIGEST_LENGTH];
-} CyrepFwArgs;
+typedef union {
+    struct {
+        CyrepFwMeasurement  FwMeasurement;
+        CyrepFwInfo         FwInfo;
+        uint8_t             Digest[RIOT_DIGEST_LENGTH];
+    } Fields;
+    uint8_t                 Buffer[CYREP_ARGS_MAX_SIZE];
+} CyrepFwArgs __attribute__ ((aligned (8)));
+
+/* Guard against CyrepFwArgs invalid alignment") */
+CYREP_STATIC_ASSERT((sizeof(CyrepFwArgs) % 8) == 0);
+
+/* Guard against Cyrep actual args size exceed max limit */
+CYREP_STATIC_ASSERT(CYREP_STRUCT_FIELD_SIZE(CyrepFwArgs, Fields) <= CYREP_ARGS_MAX_SIZE);
+
+/* Accessor to get a Cyrep args measurement */
+static inline CyrepFwMeasurement* Cyrep_ArgsGetFwMeasurement(CyrepFwArgs *Args) {
+    assert(Args != NULL);
+    return &Args->Fields.FwMeasurement;
+}
+
+/* Accessor to get a Cyrep args firmware info */
+static inline CyrepFwInfo* Cyrep_ArgsGetFwInfo(CyrepFwArgs *Args) {
+    assert(Args != NULL);
+    return &Args->Fields.FwInfo;
+}
 
 /*
- * Initializes a Cyrep fw args.
+ * Initializes a Cyrep fw args to a good initial state.
  *
  * Args: Pointer to the Cyrep args to initialize.
  */
-void Cyrep_InitArgs(CyrepFwArgs *Args);
+void Cyrep_ArgsInit(CyrepFwArgs *Args);
 
 /*
- * Do necessary post-process on the Cyrep fw args such as hashing the measurement
- * to use later for data integrity verification.
+ * Do necessary post-process on the Cyrep fw args.
+ *
  * This function should be called on the Cyrep fw args after both the measurement
  * and the firmware info have been written.
  *
  * Args: Pointer to the Cyrep args to do post-processing on.
  */
-bool Cyrep_PostprocessArgs(CyrepFwArgs *Args);
+bool Cyrep_ArgsPostprocess(CyrepFwArgs *Args);
 
 /*
- * Verifies a Cyrep fw args integrity by making sure that the magic numbers are
- * present as expected.
+ * Verifies a Cyrep fw args integrity by performing necessary data integrity
+ * checks.
  *
  * Args: Pointer to the Cyrep args to verify.
  */
-bool Cyrep_VerifyArgs(const CyrepFwArgs *Args);
+bool Cyrep_ArgsVerify(const CyrepFwArgs *Args);
 
 /*
  * Measures an L1 firmware using a device secret.

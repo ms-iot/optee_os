@@ -1,4 +1,17 @@
 
+/** @file
+*
+*  Copyright (c) Microsoft Corporation. All rights reserved.
+*
+*  This program and the accompanying materials
+*  are licensed and made available under the terms and conditions of the BSD License
+*  which accompanies this distribution.  The full text of the license may be found at
+*  http://opensource.org/licenses/bsd-license.php
+*
+*  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+*  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+*
+**/
 #include <arm.h>
 #include <assert.h>
 #include <compiler.h>
@@ -13,44 +26,7 @@
 #include <kernel/cyrep_entry.h>
 #include <string.h>
 
-CyrepFwArgs optee_args __section(".data");
-CyrepFwInfo nsfw_info __section(".data");
-
-#define CYREP_CRITICAL_ERROR(...) \
-	do { \
-		EMSG(__VA_ARGS__); \
-		panic("Cyrep critical error detected"); \
-	} while(0)
-
-/*
- * Copies the CyReP args locally for use later.
- * There is no tolerance for error in this function, any error will result in
- * a panic.
- */
-void cyrep_entry(paddr_t cyrep_args_addr)
-{
-	CyrepFwArgs *cyrep_args;
-
-	cyrep_args = (CyrepFwArgs *)(void *)cyrep_args_addr;
-	assert(cyrep_args != NULL);
-	assert(cyrep_args->FwInfo != NULL);
-	IMSG("CyReP: Captured args cyrep_args_addr:0x%p fw_info:0x%p",
-		(void *)cyrep_args, (void *)cyrep_args->FwInfo);
-
-	memcpy(&optee_args, cyrep_args, sizeof(optee_args));
-	optee_args.FwInfo = &nsfw_info;
-	memcpy(&nsfw_info, cyrep_args->FwInfo, sizeof(nsfw_info));
-
-	IMSG("CyReP: Non-sec firmware %s info: addr:0x%p size:%u", nsfw_info.FwName,
-		nsfw_info.FwBase, (uint32_t)nsfw_info.FwSize);
-
-	/* 
-	 * Don't leave anything behind and clear away the memory region of the
-	 * passed in cyrep args.
-	 */
-	Cyrep_SecureClearMemory(cyrep_args->FwInfo, sizeof(*cyrep_args->FwInfo));
-	Cyrep_SecureClearMemory(cyrep_args, sizeof(*cyrep_args));
-}
+paddr_t cyrep_args_pa __section(".data");
 
 static bool cache_flush_range(paddr_t pa, void *va, size_t len)
 {
@@ -76,36 +52,55 @@ static bool cache_flush_range(paddr_t pa, void *va, size_t len)
  * NOTE: This function executes after the MMU has been enabled. Any address
  * captured during cyrep_entry should be re-transalted to its virt address
  * before usage to avoid translation faults.
+ * NOTE: This function should be called once per u-boot lifetime.
  */
 paddr_t cyrep_measure_nsfw(void)
 {
-	paddr_t nsfw_cyrep_args_pa;
-	CyrepFwArgs *nsfw_cyrep_args;
+	CyrepFwArgs *cyrep_args;
+	CyrepFwInfo nsfw_info;
+	CyrepFwMeasurement optee_measurement;
+	paddr_t nsfw_cyrep_args_pa = 0;
 	void *fw_base;
-	CyrepFwMeasurement *optee_measurement;
-	CyrepFwInfo fw_info;
 
 	/* [mlotfy] FIXME: See the issue description below
 	vaddr_t fw_page_start_va;
 	size_t fw_num_pages;
 	*/
 
+	if (cyrep_args_pa == 0) {
+		EMSG("AliasKeyPrivate hasn't been captured or it was "
+			"consumed and got cleared-out");
+
+		goto exit;
+	}
+
+	if (!core_mmu_add_mapping(MEM_AREA_RAM_NSEC, cyrep_args_pa, sizeof(CyrepFwArgs))) {
+		EMSG("core_mmu_add_mapping failed to map cyrep_args");
+		goto exit;
+	}
+
+	cyrep_args = (void *)phys_to_virt(cyrep_args_pa, MEM_AREA_RAM_NSEC);
+	if (cyrep_args == NULL) {
+		EMSG("phys_to_virt(cyrep_args_pa) failed");
+		goto exit;
+	}
+
+	if (!Cyrep_ArgsVerify(cyrep_args)) {
+		EMSG("Cyrep_VerifyArgs() failed");
+		goto exit;
+	}
+
+	memmove(&optee_measurement, Cyrep_ArgsGetFwMeasurement(cyrep_args),
+		sizeof(optee_measurement));
+
+	memmove(&nsfw_info, Cyrep_ArgsGetFwInfo(cyrep_args), sizeof(nsfw_info));
+
 	IMSG("CyReP: Measuring Non-sec firmware %s info: addr:0x%p size:%u",
 		nsfw_info.FwName, nsfw_info.FwBase, (uint32_t)nsfw_info.FwSize);
 
-	if (!Cyrep_VerifyArgs(&optee_args)) {
-		CYREP_CRITICAL_ERROR("Cyrep_VerifyArgs() failed");
-	}
-
-	optee_measurement = &optee_args.FwMeasurement;
-
-	if (optee_measurement->CertChainCount == 0) {
-		CYREP_CRITICAL_ERROR("OPTEE measurement certificate chain is empty");
-	}
-
 	if (nsfw_info.FwBase == NULL || nsfw_info.FwSize == 0) {
 		EMSG("Passed-in non-sec firmware image info is invalid");
-		CYREP_CRITICAL_ERROR("Passed-in non-sec firmware image info is invalid");
+		goto exit;
 	}
 
 	/*
@@ -113,61 +108,48 @@ paddr_t cyrep_measure_nsfw(void)
 	 * to OPTEE virtual address before Cyrep_* functions can consume it.
 	 */
 
-	if (!core_mmu_add_mapping(MEM_AREA_IO_NSEC, (paddr_t)nsfw_info.FwBase, nsfw_info.FwSize)) {
-		CYREP_CRITICAL_ERROR("core_mmu_add_mapping failed to map nsec fw physical base");
+	if (!core_mmu_add_mapping(MEM_AREA_RAM_NSEC, (paddr_t)nsfw_info.FwBase, nsfw_info.FwSize)) {
+		EMSG("core_mmu_add_mapping failed to map nsec fw physical base");
+		goto exit;
 	}
 	
-	fw_base = (void *)phys_to_virt((paddr_t)nsfw_info.FwBase, MEM_AREA_IO_NSEC);
-	if (!fw_base) {
-		CYREP_CRITICAL_ERROR("phys_to_virt(nsfw_info.FwBase) failed");
+	fw_base = (void *)phys_to_virt((paddr_t)nsfw_info.FwBase, MEM_AREA_RAM_NSEC);
+	if (fw_base == NULL) {
+		EMSG("phys_to_virt(nsfw_info.FwBase) failed");
+		goto exit;
 	}
 
-	memcpy(&fw_info, &nsfw_info, sizeof(fw_info));
-	fw_info.FwBase = fw_base;
+	nsfw_info.FwBase = fw_base;
 
-	/*
-	 * Place the non-sec firmware CyReP args before the base address of the firmware
-	 * leaving 1K of space between the end of the args and the firmware base.
-	 * OPTEE uses the first 4K of the SHMEM for some  bookkeeping.
-	 */
-	nsfw_cyrep_args_pa = CFG_SHMEM_START + 0x1000;
-	nsfw_cyrep_args = phys_to_virt(nsfw_cyrep_args_pa, MEM_AREA_NSEC_SHM);
-	if (nsfw_cyrep_args == NULL) {
-		CYREP_CRITICAL_ERROR("phys_to_virt(nsfw_cyrep_args_pa) failed");
+	Cyrep_ArgsInit(cyrep_args);
+
+	if (!Cyrep_MeasureL2plusFirmware(&optee_measurement, &nsfw_info, "OPTEE",
+		Cyrep_ArgsGetFwMeasurement(cyrep_args))) {
+
+		EMSG("Cyrep_MeasureL2plusImage() failed");
+		goto exit;
 	}
 
-#ifdef DEBUG
-	/* Sanity check that VA and PA mapping is working 2-way as expected */
-	if (virt_to_phys(nsfw_cyrep_args) != nsfw_cyrep_args_pa) {
-		CYREP_CRITICAL_ERROR("VA and PA mismatch");
-	}
-#endif
-
-	Cyrep_InitArgs(nsfw_cyrep_args);
-
-	if (!Cyrep_MeasureL2plusFirmware(optee_measurement, &fw_info, "OPTEE",
-		&nsfw_cyrep_args->FwMeasurement)) {
-		CYREP_CRITICAL_ERROR("Cyrep_MeasureL2plusImage() failed");
-	}
-
-	if (!Cyrep_PostprocessArgs(nsfw_cyrep_args)) {
-		CYREP_CRITICAL_ERROR("Cyrep_PostprocessArgs(nsfw_cyrep_args) failed");
+	if (!Cyrep_ArgsPostprocess(cyrep_args)) {
+		EMSG("Cyrep_PostprocessArgs(cyrep_args) failed");
+		goto exit;
 	}
 
 	/*
 	 * Clear away our private key, we are done with it and no need to
 	 * keep it around.
 	 */
-	Cyrep_SecureClearMemory(&optee_measurement->AliasKeyPriv,
-		sizeof(optee_measurement->AliasKeyPriv));
+	Cyrep_SecureClearMemory(&optee_measurement.AliasKeyPriv,
+		sizeof(optee_measurement.AliasKeyPriv));
 
 	/*
 	 * Flush caches because the non-sec firmware we are handing over to will be
 	 * accessing the CyReP args directly from physical memory and it will very
 	 * likely have caches disabled or invalidated very early.
 	 */
-	if (!cache_flush_range(nsfw_cyrep_args_pa, nsfw_cyrep_args, sizeof(*nsfw_cyrep_args))) {
-		CYREP_CRITICAL_ERROR("cache_flush_range() failed");
+	if (!cache_flush_range(cyrep_args_pa, cyrep_args, sizeof(*cyrep_args))) {
+		EMSG("cache_flush_range() failed");
+		goto exit;
 	}
 
 	/*
@@ -182,6 +164,12 @@ paddr_t cyrep_measure_nsfw(void)
 
 	core_mmu_unmap_pages(fw_page_start_va, fw_num_pages);
 	*/
+
+	nsfw_cyrep_args_pa = cyrep_args_pa;
+
+exit:
+	/* Clear the args pointer so that this function can't be called again */
+	cyrep_args_pa = 0;
 
 	return nsfw_cyrep_args_pa;
 }

@@ -7,6 +7,14 @@
 #include <Cyrep.h>
 
 //
+// Define 2 magic numbers that gets placed before and after the measurement
+// to help in catching underwrite and overflow conditions by Cyrep measurement
+// routines.
+//
+#define CYREP_MEASUREMENT_PREFIX_GUARD     0xBBEEEEFF
+#define CYREP_MEASUREMENT_POSTFIX_GUARD    0xFFEEEEBB
+
+//
 // Byte value used to set memory to when clearing a memory region.
 //
 #define CYREP_CLEAR_MEM_VALUE   0x5A
@@ -33,6 +41,35 @@ const RIOT_X509_TBS_DATA x509TBSDataTemplate = { { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E 
                                    "RIoT Core", "MSR_TEST", "US",
                                    "170101000000Z", "370101000000Z",
                                    "RIoT Device", "MSR_TEST", "US" };
+
+static bool VerifyFwMeasurementGuards(const CyrepFwMeasurement *Measurement)
+{
+    assert(Args != NULL);
+    if (Measurement->PrefixGuard != CYREP_MEASUREMENT_PREFIX_GUARD) {
+        CYREP_INTERNAL_ERROR("Args->PrefixGuard mismatch. "
+                             "(Expected:%x, Actual:%x)\n",
+                             CYREP_MEASUREMENT_PREFIX_GUARD,
+                             Measurement->PrefixGuard);
+        return false;
+    }
+
+    if (Measurement->PostfixGuard != CYREP_MEASUREMENT_POSTFIX_GUARD) {
+        CYREP_INTERNAL_ERROR("Measurement->PostfixGuard mismatch. "
+                             "(Expected:%x, Actual:%x)\n",
+                             CYREP_MEASUREMENT_POSTFIX_GUARD,
+                             Measurement->PostfixGuard);
+        return false;
+    }
+
+    return true;
+}
+
+static void FwMeasurementInit(CyrepFwMeasurement *Measurement)
+{
+    memset(Measurement, 0x00, sizeof(*Measurement));
+    Measurement->PrefixGuard = CYREP_MEASUREMENT_PREFIX_GUARD;
+    Measurement->PostfixGuard = CYREP_MEASUREMENT_POSTFIX_GUARD;
+}
 
 bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                              const CyrepFwInfo *FwInfo, const char *CertIssuerCommon,
@@ -61,7 +98,7 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
         goto Exit;
     }
 
-    memset(MeasurementResult, 0x00, sizeof(*MeasurementResult));
+    FwMeasurementInit(MeasurementResult);
 
     // Don't use CDI directly.
     if (RiotCrypt_Hash(cDigest, sizeof(cDigest), Cdi, CdiSize) != RIOT_SUCCESS) {
@@ -77,6 +114,13 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
                                STR_LABEL_LEN(RIOT_LABEL_IDENTITY)) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_DeriveEccKey() failed\n");
+        goto Exit;
+    }
+
+    if ((FwInfo->FwBase == NULL) || (FwInfo->FwSize == 0) ||
+        (FwInfo->FwName[0] == '\0')) {
+
+        CYREP_INTERNAL_ERROR("Invalid FwInfo name, address or size\n");
         goto Exit;
     }
 
@@ -148,6 +192,11 @@ bool Cyrep_MeasureL1Firmware(const uint8_t *Cdi, size_t CdiSize,
     MeasurementResult->CertChain[0][certLength] = '\0';
     MeasurementResult->CertChainCount = 1;
 
+    if (!VerifyFwMeasurementGuards(MeasurementResult)) {
+        CYREP_INTERNAL_ERROR("!!MeasurementResult underwrite/overflow detected!!\n");
+        goto Exit;
+    }
+
     ret = true;
 
 Exit:
@@ -186,12 +235,10 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
         goto Exit;
     }
 
-#if defined(CYREP_DEBUG)
-    if (!Cyrep_VerifyArgs(CurrentMeasurement)) {
-        CYREP_INTERNAL_ERROR("Cyrep_VerifyArgs(CurrentMeasurement) failed\n");
+    if (!VerifyFwMeasurementGuards(CurrentMeasurement)) {
+        CYREP_INTERNAL_ERROR("!!CurrentMeasurement underwrite/overflow detected!!\n");
         goto Exit;
     }
-#endif
 
     // Copy the current FW measurement as a template to the new measurement
     // We will reuse the same DeviceIDPub and append to the certificate chain.
@@ -202,6 +249,13 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
                        sizeof(CurrentMeasurement->AliasKeyPriv)) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_Hash() failed\n");
+        goto Exit;
+    }
+
+    if ((FwInfo->FwBase == NULL) || (FwInfo->FwSize == 0) ||
+        (FwInfo->FwName[0] == '\0')) {
+
+        CYREP_INTERNAL_ERROR("Invalid FwInfo name, address or size\n");
         goto Exit;
     }
 
@@ -265,6 +319,7 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
 
     // This can't be the first certificate, and there should be a space for it.
     if (certIndex == 0 || certIndex >= CYREP_CERT_CHAIN_MAX) {
+        CYREP_INTERNAL_ERROR("CertChain is either empty or full\n");
         goto Exit;
     }
 
@@ -279,6 +334,11 @@ bool Cyrep_MeasureL2plusFirmware(const CyrepFwMeasurement *CurrentMeasurement,
     MeasurementResult->CertChain[certIndex][certLength] = '\0';
     MeasurementResult->CertChainCount++;
 
+    if (!VerifyFwMeasurementGuards(MeasurementResult)) {
+        CYREP_INTERNAL_ERROR("!!MeasurementResult underwrite/overflow detected!!\n");
+        goto Exit;
+    }
+
     ret = true;
 
 Exit:
@@ -287,94 +347,55 @@ Exit:
     return ret;
 }
 
-static inline bool VerifyArgsGuard(const CyrepFwArgs *Args)
-{
-    assert(Args != NULL);
-    if (Args->PrefixGuard != CYREP_ARGS_PREFIX_GUARD) {
-        CYREP_INTERNAL_ERROR("Args->PrefixGuard mismatch. "
-                             "(Expected:%x, Actual:%x)\n",
-                             CYREP_ARGS_PREFIX_GUARD,
-                             Args->PrefixGuard);
-        return false;
-    }
-
-    if (Args->PostfixGuard != CYREP_ARGS_POSTFIX_GUARD) {
-        CYREP_INTERNAL_ERROR("Args->PostfixGuard mismatch. "
-                             "(Expected:%x, Actual:%x)\n",
-                             CYREP_ARGS_POSTFIX_GUARD,
-                             Args->PostfixGuard);
-        return false;
-    }
-
-    return true;
-}
-
-void Cyrep_InitArgs(CyrepFwArgs *Args) {
+void Cyrep_ArgsInit(CyrepFwArgs *Args) {
     assert(Args != NULL);
     memset(Args, 0x0, sizeof(*Args));
-    Args->PrefixGuard = CYREP_ARGS_PREFIX_GUARD;
-    Args->PostfixGuard = CYREP_ARGS_POSTFIX_GUARD;
 }
 
-bool Cyrep_VerifyArgs(const CyrepFwArgs *Args)
+bool Cyrep_ArgsVerify(const CyrepFwArgs *Args)
 {
     uint8_t digest[RIOT_DIGEST_LENGTH];
+    size_t actual_args_size;
 
-    if ((Args == NULL) || !VerifyArgsGuard(Args)) {
-        CYREP_INTERNAL_ERROR("VerifyArgsGuard() failed\n");
+    assert(Args != NULL);
+    if (!VerifyFwMeasurementGuards(&Args->Fields.FwMeasurement)) {
+        CYREP_INTERNAL_ERROR("VerifyArgsGuard(0x%p) failed\n", Args);
         return false;
     }
 
-    if (RiotCrypt_Hash(digest, sizeof(digest), &Args->FwMeasurement,
-                        sizeof(Args->FwMeasurement)) != RIOT_SUCCESS) {
+    actual_args_size = sizeof(Args->Fields) - sizeof(Args->Fields.Digest);
+
+    if (RiotCrypt_Hash(digest, sizeof(digest), &Args->Fields.FwMeasurement,
+                       actual_args_size) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwMeasurement) failed\n");
         return false;
     }
 
-    if (memcmp(digest, Args->FwMeasurementHash, sizeof(digest)) != 0) {
+    if (memcmp(digest, Args->Fields.Digest, sizeof(digest)) != 0) {
         CYREP_INTERNAL_ERROR("Verify FW measurement hash failed\n");
         return false;
     }
 
-    if (Args->FwInfo != NULL) {
-        if (RiotCrypt_Hash(digest, sizeof(digest), Args->FwInfo,
-                           sizeof(*Args->FwInfo)) != RIOT_SUCCESS) {
-
-            CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwInfo) failed\n");
-            return false;
-        }
-
-        if (memcmp(digest, Args->FwInfoHash, sizeof(digest)) != 0) {
-            CYREP_INTERNAL_ERROR("Verify FW info hash failed\n");
-            return false;
-        }
-    }
-
     return true;
 }
 
-bool Cyrep_PostprocessArgs(CyrepFwArgs *Args)
+bool Cyrep_ArgsPostprocess(CyrepFwArgs *Args)
 {
+    size_t actual_args_size;
+
     assert(Args != NULL);
-    if (!VerifyArgsGuard(Args)) {
-        CYREP_INTERNAL_ERROR("VerifyArgsGuard() failed\n");
+    if (!VerifyFwMeasurementGuards(&Args->Fields.FwMeasurement)) {
+        CYREP_INTERNAL_ERROR("VerifyArgsGuard(0x%p) failed\n", Args);
         return false;
     }
 
-    if (RiotCrypt_Hash(Args->FwMeasurementHash, sizeof(Args->FwMeasurementHash),
-                       &Args->FwMeasurement, sizeof(Args->FwMeasurement))
-            != RIOT_SUCCESS) {
+    actual_args_size = sizeof(Args->Fields) - sizeof(Args->Fields.Digest);
 
-        CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwMeasurement) failed\n");
-        return false;
-    }
+    if (RiotCrypt_Hash(Args->Fields.Digest, sizeof(Args->Fields.Digest),
+                       &Args->Fields, actual_args_size) != RIOT_SUCCESS) {
 
-    if ((Args->FwInfo != NULL) &&
-        (RiotCrypt_Hash(Args->FwInfoHash, sizeof(Args->FwInfoHash),
-                        Args->FwInfo, sizeof(*Args->FwInfo)) != RIOT_SUCCESS)) {
-
-        CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwInfo) failed\n");
+        CYREP_INTERNAL_ERROR("Failed to generate args digest\n");
         return false;
     }
 

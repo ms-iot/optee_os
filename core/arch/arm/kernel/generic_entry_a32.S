@@ -39,6 +39,10 @@
 .section .data
 .balign 4
 
+#ifdef CFG_CYREP
+.extern cyrep_args_pa
+#endif
+
 #ifdef CFG_BOOT_SYNC_CPU
 .equ SEM_CPU_READY, 1
 #endif
@@ -290,6 +294,15 @@ UNWIND(	.cantunwind)
 
 	/* preserve r4-r7: bootargs */
 
+#if defined(CFG_CYREP)	/*
+	/*
+	 * In case of CyReP, we are not going to boot Linux and we will reuse the Linux
+	 * standard bootarg to pass CyReP args.
+	 */
+	mov	r0, r7
+	bl	do_cyrep_entry
+#endif
+
 #ifdef CFG_WITH_PAGER
 	/*
 	 * Move init code into correct location and move hashes to a
@@ -362,14 +375,6 @@ shadow_stack_access_ok:
 	/* Enable Console */
 	bl	console_init
 
-#if defined(CFG_CYREP)	/*
-	 * In case of CyReP, we are not going to boot Linux and we will reuse the Linux
-	 * standard bootarg to pass CyReP args.
-	 */
-	mov r0, r7
-	bl cyrep_entry
-#endif
-
 #ifdef CFG_PL310
 	bl	pl310_base
 	bl	arm_cl2_config
@@ -438,10 +443,23 @@ shadow_stack_access_ok:
 
 #if defined(CFG_CYREP)
 	bl cyrep_measure_nsfw
+	cmp	r0, #0
+	bne	cyrep_measure_nsfw_success
+
+	/*
+	 * this must be compliant with the panic generic routine:
+	 * __do_panic(__FILE__, __LINE__, __func__, str)
+	 */
+	ldr	r0, =panic_boot_file
+	ldr	r1, =__LINE__
+	mov	r2, #0
+	mov	r3, #0
+	bl	__do_panic
 	/*
 	 * Overrwite the bootarg #1 with the physical address of the cyrep args
 	 * blob for the non-sec firmware to consume.
 	 */
+cyrep_measure_nsfw_success:
 	mov r7, r0
 #endif
 
@@ -548,4 +566,17 @@ UNWIND(	.cantunwind)
 	b	.	/* SMC should not return */
 UNWIND(	.fnend)
 END_FUNC reset_secondary
+
+#if defined(CFG_CYREP)
+LOCAL_FUNC do_cyrep_entry , :
+UNWIND(	.fnstart)
+UNWIND(	.cantunwind)
+	/* capture the address of the cyrep_args into the pointer cyrep_args_pa */
+	ldr	r1, =cyrep_args_pa
+	str r0, [r1]
+	bx	lr
+UNWIND(	.fnend)
+END_FUNC do_cyrep_entry
+#endif
+
 #endif /* defined(CFG_WITH_ARM_TRUSTED_FW) */

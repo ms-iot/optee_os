@@ -44,9 +44,9 @@ const RIOT_X509_TBS_DATA x509TBSDataTemplate = { { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E 
 
 static bool VerifyFwMeasurementGuards(const CyrepFwMeasurement *Measurement)
 {
-    assert(Args != NULL);
+    assert(Measurement != NULL);
     if (Measurement->PrefixGuard != CYREP_MEASUREMENT_PREFIX_GUARD) {
-        CYREP_INTERNAL_ERROR("Args->PrefixGuard mismatch. "
+        CYREP_INTERNAL_ERROR("Measurement->PrefixGuard mismatch. "
                              "(Expected:%x, Actual:%x)\n",
                              CYREP_MEASUREMENT_PREFIX_GUARD,
                              Measurement->PrefixGuard);

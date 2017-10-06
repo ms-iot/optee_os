@@ -115,7 +115,7 @@ static int get_random_bytes(uint8_t *buf, size_t len);
 // #define ARM7_ASM
 
 // Define SMALL_CODE to skip unrolling loops
-// #define SMALL_CODE
+#define SMALL_CODE
 
 // Define SPECIAL_SQUARE to generate a special case for squaring. Special
 // squaring should just about halve the number of multiplies, but on Windows
@@ -724,7 +724,6 @@ big_mpyP(bigval_t *tgt, bigval_t const *a, bigval_t const *b,
             int64_t v;
             int64_t tmp;
             int64_t tmp2;
-            int j;
             int k;
 
             for (k = 0; w[i] != 0 && k < 3; ++k) {

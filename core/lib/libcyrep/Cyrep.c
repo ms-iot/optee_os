@@ -358,21 +358,21 @@ bool Cyrep_ArgsVerify(const CyrepFwArgs *Args)
     size_t actual_args_size;
 
     assert(Args != NULL);
-    if (!VerifyFwMeasurementGuards(&Args->Fields.FwMeasurement)) {
+    if (!VerifyFwMeasurementGuards(&Args->FwMeasurement)) {
         CYREP_INTERNAL_ERROR("VerifyArgsGuard(0x%p) failed\n", Args);
         return false;
     }
 
-    actual_args_size = sizeof(Args->Fields) - sizeof(Args->Fields.Digest);
+    actual_args_size = sizeof(*Args) - sizeof(Args->Digest);
 
-    if (RiotCrypt_Hash(digest, sizeof(digest), &Args->Fields.FwMeasurement,
+    if (RiotCrypt_Hash(digest, sizeof(digest), &Args->FwMeasurement,
                        actual_args_size) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("RiotCrypt_Hash(Args->FwMeasurement) failed\n");
         return false;
     }
 
-    if (memcmp(digest, Args->Fields.Digest, sizeof(digest)) != 0) {
+    if (memcmp(digest, Args->Digest, sizeof(digest)) != 0) {
         CYREP_INTERNAL_ERROR("Verify FW measurement hash failed\n");
         return false;
     }
@@ -385,15 +385,15 @@ bool Cyrep_ArgsPostprocess(CyrepFwArgs *Args)
     size_t actual_args_size;
 
     assert(Args != NULL);
-    if (!VerifyFwMeasurementGuards(&Args->Fields.FwMeasurement)) {
+    if (!VerifyFwMeasurementGuards(&Args->FwMeasurement)) {
         CYREP_INTERNAL_ERROR("VerifyArgsGuard(0x%p) failed\n", Args);
         return false;
     }
 
-    actual_args_size = sizeof(Args->Fields) - sizeof(Args->Fields.Digest);
+    actual_args_size = sizeof(*Args) - sizeof(Args->Digest);
 
-    if (RiotCrypt_Hash(Args->Fields.Digest, sizeof(Args->Fields.Digest),
-                       &Args->Fields, actual_args_size) != RIOT_SUCCESS) {
+    if (RiotCrypt_Hash(Args->Digest, sizeof(Args->Digest),
+                       Args, actual_args_size) != RIOT_SUCCESS) {
 
         CYREP_INTERNAL_ERROR("Failed to generate args digest\n");
         return false;

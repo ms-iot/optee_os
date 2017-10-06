@@ -23,20 +23,6 @@
 extern "C" {
 #endif
 
-#define CYREP_PASTE_HELPER(X, Y) \
-    X ## Y
-
-#define CYREP_PASTE(X, Y) \
-    CYREP_PASTE_HELPER(X, Y)
-
-/* Compile time assertion */
-#define CYREP_STATIC_ASSERT(E) \
-    typedef char CYREP_PASTE(__C_ASSERT__, __COUNTER__) [(E) ? 1 : -1]
-
-/* Get the size in bytes of a struct field */
-#define CYREP_STRUCT_FIELD_SIZE(STRUCT_NAME, FIELD_NAME) \
-    (sizeof(((STRUCT_NAME *)0)->FIELD_NAME))
-
 /*
  * Encapsulates CyReP measurements for a certain firmware.
  *
@@ -85,35 +71,26 @@ typedef struct {
  * Digest: A hash digest for both the measurement and the firmware info which is
  *         used for data integrity verification.
  *
- * The CyrepFwArgs should be treated as an obaque struct, accessing both the
- * measurement and the firmware info should be done through Cyrep_ArgsGet*
- * accessors.
+ * The CyrepFwArgs should be treated as an obaque struct, accessing its fields
+ * should be  done through Cyrep_ArgsGet() accessors. This decouples the
+ * external consuming implementation from the struct layout.
  */
-typedef union {
-    struct {
-        CyrepFwMeasurement  FwMeasurement;
-        CyrepFwInfo         FwInfo;
-        uint8_t             Digest[RIOT_DIGEST_LENGTH];
-    } Fields;
-    uint8_t                 Buffer[CYREP_ARGS_MAX_SIZE];
-} CyrepFwArgs __attribute__ ((aligned (8)));
-
-/* Guard against CyrepFwArgs invalid alignment") */
-CYREP_STATIC_ASSERT((sizeof(CyrepFwArgs) % 8) == 0);
-
-/* Guard against Cyrep actual args size exceed max limit */
-CYREP_STATIC_ASSERT(CYREP_STRUCT_FIELD_SIZE(CyrepFwArgs, Fields) <= CYREP_ARGS_MAX_SIZE);
+typedef struct {
+    CyrepFwMeasurement  FwMeasurement;
+    CyrepFwInfo         FwInfo;
+    uint8_t             Digest[RIOT_DIGEST_LENGTH];
+} CyrepFwArgs;
 
 /* Accessor to get a Cyrep args measurement */
 static inline CyrepFwMeasurement* Cyrep_ArgsGetFwMeasurement(CyrepFwArgs *Args) {
     assert(Args != NULL);
-    return &Args->Fields.FwMeasurement;
+    return &Args->FwMeasurement;
 }
 
 /* Accessor to get a Cyrep args firmware info */
 static inline CyrepFwInfo* Cyrep_ArgsGetFwInfo(CyrepFwArgs *Args) {
     assert(Args != NULL);
-    return &Args->Fields.FwInfo;
+    return &Args->FwInfo;
 }
 
 /*

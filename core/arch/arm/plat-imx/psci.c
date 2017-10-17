@@ -45,8 +45,20 @@
 #include <tee/entry_fast.h>
 
 #ifdef CFG_BOOT_SECONDARY_REQUEST
+
+int psci_features(uint32_t psci_fid)
+{
+    switch (psci_fid) {
+    case PSCI_CPU_ON:
+		return 0;
+
+    default:
+		return PSCI_RET_NOT_SUPPORTED;
+    }
+}
+
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
-		uint32_t context_id __attribute__((unused)))
+		uint32_t context_id)
 {
 	uint32_t val;
 	vaddr_t va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
@@ -58,7 +70,14 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		return PSCI_RET_INVALID_PARAMETERS;
 
 	/* set secondary cores' NS entry addresses */
-	ns_entry_addrs[core_idx] = entry;
+	ns_entry_contexts[core_idx].entry_point = entry;
+	ns_entry_contexts[core_idx].r0 = context_id;
+
+	/* flush cache to PoU so other CPUs see the values */
+	cache_op_inner(
+		DCACHE_AREA_CLEAN,
+		&ns_entry_contexts[core_idx],
+		sizeof(struct ns_entry_context));
 
 	if (soc_is_imx7ds()) {
 		write32((uint32_t)CFG_TEE_LOAD_ADDR,

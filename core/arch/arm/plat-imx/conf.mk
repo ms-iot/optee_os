@@ -56,6 +56,11 @@ $(call force,CFG_MX6,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 endif
 
+# i.MX6Q specific config
+ifeq ($(CFG_MX6Q),y)
+# CFG_TZC380 is required for systems having the TZASC_ENABLE fuse burnt.
+CFG_TZC380 ?= y
+endif
 
 # i.MX6 Solo/DualLite/Dual/Quad specific config
 ifeq ($(filter y, $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) $(CFG_MX6S)), y)

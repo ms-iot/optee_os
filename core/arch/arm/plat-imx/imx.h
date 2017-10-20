@@ -1,3 +1,4 @@
+<<<<<<< HEAD:core/arch/arm/plat-imx/imx.h
 /*
  * Copyright 2017 NXP
  * All rights reserved.
@@ -59,5 +60,12 @@ void imx_gpcv2_set_core1_pup_by_software(void);
 void imx_gpcv2_set_core_pgc(bool enable, uint32_t offset);
 
 #define CAAM_BASE			0x00100000
+
+#if defined(CFG_MX6Q)
+#define AIPS2_ARB_BASE_ADDR         0x02100000
+#define ATZ2_BASE_ADDR              AIPS2_ARB_BASE_ADDR
+#define AIPS2_OFF_BASE_ADDR         (ATZ2_BASE_ADDR + 0x80000)
+#define IP2APB_TZASC1_BASE_ADDR     (AIPS2_OFF_BASE_ADDR + 0x50000)
+#endif
 
 #endif

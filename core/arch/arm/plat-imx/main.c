@@ -31,6 +31,7 @@
 #include <console.h>
 #include <drivers/gic.h>
 #include <drivers/imx_uart.h>
+#include <drivers/tzc380.h>
 #include <io.h>
 #include <kernel/generic_boot.h>
 #include <kernel/misc.h>
@@ -126,3 +127,39 @@ void init_sec_mon(unsigned long nsec_entry)
 
 	DMSG("nsec_entry=0x%08lX, SPSR=0x%08X \n",nsec_entry, nsec_ctx->mon_spsr);
 }
+
+#ifdef CFG_TZC380
+register_phys_mem(MEM_AREA_IO_SEC, IP2APB_TZASC1_BASE_ADDR, CORE_MMU_DEVICE_SIZE);
+
+static void allow_unsecure_readwrite_entire_memory(void)
+{
+	// Region 0 always includes the entire physical memory. 
+	tzc_configure_region(0, 0, TZC_ATTR_SP_ALL);
+}
+
+static TEE_Result init_tzc380(void)
+{
+	void *va;
+
+	va = phys_to_virt(IP2APB_TZASC1_BASE_ADDR, MEM_AREA_IO_SEC);
+	if (!va) {
+		EMSG("TZASC1 not mapped");
+		panic();
+	}
+
+	tzc_init((vaddr_t)va);
+	tzc_set_action(TZC_ACTION_ERR);
+	tzc_dump_state();
+
+	// Start by allowing both TZ and the normal world to read and write, thus
+	// simulating the behavior of systems where the TZASC_ENABLE fuse has not
+	// been burnt. Restricting normal world's access to some of the memory
+	// regions will be implemented later.
+	allow_unsecure_readwrite_entire_memory();
+	tzc_dump_state();
+
+	return TEE_SUCCESS;
+}
+
+service_init(init_tzc380);
+#endif // #ifdef CFG_TZC380

@@ -60,6 +60,12 @@ $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 //CFG_BOOT_SECONDARY_REQUEST ?= y
 endif
 
+ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+# In the default configuration: 
+# - UART3 is used for OPTEE console
+# - UART1 is used for Windows kernel debugging
+CFG_CONSOLE_UART ?= UART3_BASE
+endif
 
 ta-targets = ta_arm32
 

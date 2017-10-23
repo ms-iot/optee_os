@@ -5,7 +5,7 @@ mx6ul-flavorlist = mx6ulevk
 mx6ull-flavorlist = mx6ullevk
 mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
 mx6sx-flavorlist = mx6sxsabreauto
-mx6d-flavorlist =
+mx6d-flavorlist = mx6dhmbedge
 mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
 mx6s-flavorlist = mx6shmbedge
 mx7-flavorlist = mx7dsabresd
@@ -59,6 +59,11 @@ $(call force,CFG_MX6,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 endif
 
+# i.MX6Q specific config
+ifeq ($(CFG_MX6Q),y)
+# CFG_TZC380 is required for systems having the TZASC_ENABLE fuse burnt.
+CFG_TZC380 ?= y
+endif
 
 # i.MX6 Solo/DualLite/Dual/Quad specific config
 ifeq ($(filter y, $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) $(CFG_MX6S) \
@@ -94,6 +99,20 @@ CFG_BOOT_SECONDARY_REQUEST = n
 CFG_TEE_CORE_NB_CORE ?= 1
 endif
 
+ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+# In the default configuration: 
+# - UART3 is used for OPTEE console
+# - UART1 is used for Windows kernel debugging
+CFG_CONSOLE_UART ?= UART1_BASE
+
+# IOMUX initialization is not supported by default.
+CFG_IMX_IOMUX ?= n
+
+# Querying clock frequency is not supported by default.
+CFG_IMX_CLOCK ?= n
+
+endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+
 ifeq ($(filter y, $(CFG_PSCI_ARM32)), y)
 CFG_HWSUPP_MEM_PERM_WXN = n
 CFG_IMX_WDOG ?= y
@@ -102,4 +121,5 @@ endif
 CFG_MMAP_REGIONS ?= 24
 
 ta-targets = ta_arm32
+
 

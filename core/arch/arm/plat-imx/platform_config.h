@@ -101,6 +101,10 @@
 
 #include <imx-regs.h>
 
+#if defined(CFG_CONSOLE_UART)
+#define CONSOLE_UART_BASE	CFG_CONSOLE_UART
+#else
+
 /* Board specific console UART */
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite)
 #define CONSOLE_UART_BASE		UART2_BASE
@@ -117,6 +121,8 @@
 #if defined(PLATFORM_FLAVOR_mx6dlsabresd)
 #define CONSOLE_UART_BASE		UART1_BASE
 #endif
+
+#endif /* #if defined(CFG_CONSOLE_UART) */
 
 /* Board specific RAM size */
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \

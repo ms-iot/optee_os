@@ -91,6 +91,9 @@ CFG_CONSOLE_UART ?= UART3_BASE
 # IOMUX initialization is not supported by default.
 CFG_IMX_IOMUX ?= n
 
+# Querying clock frequency is not supported by default.
+CFG_IMX_CLOCK ?= n
+
 endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 
 ta-targets = ta_arm32

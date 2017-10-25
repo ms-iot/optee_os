@@ -4,6 +4,8 @@
  * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
+ * Copyright (c) 2017, Microsoft.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -41,6 +43,7 @@
 register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 
 /* Bits included in the CFG_TZ_SPI_CONTROLLERS build parameter */
+#define TZ_SPI_NONE     0x00
 #define TZ_SPI1         0x01
 #define TZ_SPI2         0x02
 #define TZ_SPI3         0x04
@@ -52,6 +55,10 @@ register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 #define TZ_CSL18_SPI    TZ_SPI1
 #define TZ_CSL19_SPI    (TZ_SPI2 | TZ_SPI3)
 #define TZ_CSL20_SPI    (TZ_SPI4 | TZ_SPI5)
+
+#ifndef CFG_TZ_SPI_CONTROLLERS
+#define CFG_TZ_SPI_CONTROLLERS 0
+#endif
 
 #if (CFG_TZ_SPI_CONTROLLERS & (~TZ_SPI_ALL))
     #error "Unsupported CFG_TZ_SPI_CONTROLLERS value"
@@ -118,6 +125,7 @@ void plat_cpu_reset_late(void)
 {
 	uintptr_t addr;
 	uint32_t pa __maybe_unused;
+	uint32_t csl_index;
 
 	if (!get_core_pos()) {
 		/* primary core */
@@ -142,11 +150,11 @@ void plat_cpu_reset_late(void)
 
 		/* configure imx6 CSU */
 
-		/* first grant all peripherals */
-		for (addr = CSU_BASE + CSU_CSL_START;
+		/* configure access control for all peripherals */
+		for (csl_index = 0, addr = CSU_BASE + CSU_CSL_START;
 			 addr != CSU_BASE + CSU_CSL_END;
-			 addr += 4)
-			write32(CSU_ACCESS_ALL, addr);
+			 csl_index++, addr += 4)
+			write32(get_csl_value(csl_index), addr);
 
 		/* lock the settings */
 		for (addr = CSU_BASE + CSU_CSL_START;

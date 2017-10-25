@@ -103,6 +103,14 @@ void *phys_to_virt(paddr_t pa, enum teecore_memtypes m);
 void *phys_to_virt_io(paddr_t pa);
 
 /*
+ * Check if MMU is enabled and:
+ * - If MMU is disabled, return the value of the pa parameter, 
+ *   cast to a pointer.
+ * - If MMU is enabled, return phys_to_virt_io(pa).
+ */
+void *phys_to_virt_io_check_mmu(paddr_t pa);
+
+/*
  * Translate virtual address to physical address
  * Returns 0 on failure or a valid physical address on success.
  */

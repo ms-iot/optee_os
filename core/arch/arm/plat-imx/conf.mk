@@ -122,5 +122,3 @@ CFG_MMAP_REGIONS ?= 24
 
 ta-targets = ta_arm32
 
-
-

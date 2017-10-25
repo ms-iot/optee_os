@@ -248,7 +248,7 @@ TEE_Result tee_fs_crypt_block(const TEE_UUID *uuid, uint8_t *out,
 	void *ctx;
 	const uint32_t algo = TEE_ALG_AES_CBC_NOPAD;
 
-	DMSG("%scrypt block #%u", (mode == TEE_MODE_ENCRYPT) ? "En" : "De",
+	FMSG("%scrypt block #%u", (mode == TEE_MODE_ENCRYPT) ? "En" : "De",
 	     blk_idx);
 
 	/* Decrypt FEK */

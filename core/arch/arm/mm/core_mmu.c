@@ -1738,6 +1738,14 @@ void *phys_to_virt_io(paddr_t pa)
 	return va;
 }
 
+void *phys_to_virt_io_check_mmu(paddr_t pa)
+{
+	if (cpu_mmu_enabled())
+		return phys_to_virt_io(pa);
+
+	return (void *)pa;
+}
+
 bool cpu_mmu_enabled(void)
 {
 	uint32_t sctlr;

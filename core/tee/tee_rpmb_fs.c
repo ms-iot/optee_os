@@ -1259,7 +1259,7 @@ static TEE_Result tee_rpmb_read(uint16_t dev_id, uint32_t addr, uint8_t *data,
 
 	req->block_count = blkcnt;
 
-	DMSG("Read %u block%s at index %u", blkcnt, ((blkcnt > 1) ? "s" : ""),
+	FMSG("Read %u block%s at index %u", blkcnt, ((blkcnt > 1) ? "s" : ""),
 	     blk_idx);
 
 	res = tee_rpmb_invoke(&mem);

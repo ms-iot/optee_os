@@ -19,3 +19,7 @@ srcs-$(CFG_DRA7_RNG) += dra7_rng.c
 srcs-$(CFG_STIH_UART) += stih_asc.c
 srcs-$(CFG_ATMEL_UART) += atmel_uart.c
 srcs-$(CFG_MVEBU_UART) += mvebu_uart.c
+srcs-$(CFG_IMX_IOMUX) += imx_iomux.c
+srcs-$(CFG_IMX_CLOCK) += imx_clock.c
+srcs-$(CFG_IMX_GPIO) += imx_gpio.c
+srcs-$(CFG_IMX_SPI) += imx_spi.c

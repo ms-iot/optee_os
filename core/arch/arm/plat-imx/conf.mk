@@ -87,6 +87,10 @@ ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 # - UART3 is used for OPTEE console
 # - UART1 is used for Windows kernel debugging
 CFG_CONSOLE_UART ?= UART3_BASE
-endif
+
+# IOMUX initialization is not supported by default.
+CFG_IMX_IOMUX ?= n
+
+endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 
 ta-targets = ta_arm32

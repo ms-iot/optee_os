@@ -66,4 +66,6 @@
 #define ATZ2_BASE_ADDR              AIPS2_ARB_BASE_ADDR
 #define AIPS2_OFF_BASE_ADDR         (ATZ2_BASE_ADDR + 0x80000)
 #define IP2APB_TZASC1_BASE_ADDR     (AIPS2_OFF_BASE_ADDR + 0x50000)
-#endif
+
+#define IMX_IOMUXC_BASE     0x020E0000
+#endif // #if defined(CFG_MX6Q)

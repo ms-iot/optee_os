@@ -78,4 +78,9 @@
 
 #define CCM_BASE_ADDR               (AIPS1_OFF_BASE_ADDR + 0x44000)
 
+#define IMX_GPIO1_BASE_ADDR         (AIPS1_OFF_BASE_ADDR + 0x1C000)
+#define IMX_GPIO_PORTS              7
+#define IMX_GPIO_PORT_GRANULARITY   0x4000
+#define IMX_GPIO_REGISTER_BITS      32
+
 #endif // #if defined(CFG_MX6Q)

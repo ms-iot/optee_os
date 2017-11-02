@@ -8,9 +8,13 @@
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#ifndef __ASM_ARCH_CLOCK_H
-#define __ASM_ARCH_CLOCK_H
+#ifndef IMX_CLOCK_H
+#define IMX_CLOCK_H
+
+#include <stdbool.h>
 
 unsigned int get_cspi_clk(void);
 
-#endif /* __ASM_ARCH_CLOCK_H */
+bool enable_cspi_clk(unsigned int spiBus);
+
+#endif /* IMX_CLOCK_H */

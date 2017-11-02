@@ -168,3 +168,20 @@ unsigned int get_cspi_clk(void)
 
 	return decode_pll(PLL_USBOTG, MXC_HCLK) / (8 * (cspi_podf + 1));
 }
+
+bool enable_cspi_clk(unsigned int spiBus)
+{
+    vaddr_t va;
+
+    /* Just ECSPI2 is currently supported */
+    if (spiBus != 1) {
+        EMSG("Unsupported spiBus = %u", spiBus);
+        return false;
+    }
+
+    va = (vaddr_t)phys_to_virt(IMX_CCM_CCGR1_BASE_ADDR,  MEM_AREA_IO_SEC);
+    FMSG("Enabling ECSPI2 clock @ %#x", (uint32_t)va);
+    write32(read32(va) | IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED, va);
+
+    return true;
+}

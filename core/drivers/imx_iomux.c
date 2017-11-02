@@ -19,10 +19,10 @@
 #include <drivers/imx_iomux.h>
 
 /* The VA corresponding to IMX_IOMUXC_BASE */
-static uint32_t iomuxc_base;
+static vaddr_t iomuxc_base;
 
 /* The VA corresponding to IOMUXC_SELECT_INPUT_BASE_ADDRESS */
-static uint32_t iomuxc_select_input_base;
+static vaddr_t iomuxc_select_input_base;
 
 typedef uint64_t IMX_PADCFG;
 
@@ -2825,10 +2825,17 @@ static void imx_pad_config(IMX_PAD Pad, IMX_PADCFG PadConfig)
     write32(_IMX_PADCFG_PAD_CTL(PadConfig), iomuxc_base + _IMX_PAD_CTL_OFFSET(Pad));
 }
 
-void imx_iomux_configure_spi2(int32_t *bank, int32_t *pin)
+#if defined(CFG_MX6Q) || defined(CFG_MX6D)
+bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
 {
     uint32_t initialValue, newValue;
     uint32_t misoSelectInputVA;
+
+    /* Just ECSPI2 is currently supported */
+    if (spiBus != 1) {
+        EMSG("Unsupported spiBus = %u", spiBus);
+        return false;
+    }
 
     // CS0 (PAD_EIM_RW) GPIO2_IO26 -> bank 1, pin 26
     imx_pad_config(IMX_PAD_EIM_RW, IMX_PAD_EIM_RW_GPIO2_IO26);
@@ -2855,20 +2862,23 @@ void imx_iomux_configure_spi2(int32_t *bank, int32_t *pin)
 
     // SCLK: PAD_EIM_CS0_B (GPIO2_IO23) Alt2
     imx_pad_config(IMX_PAD_EIM_CS0, IMX_PAD_EIM_CS0_ECSPI2_SCLK);
+
+    return true;
 }
+#endif /* #if defined(CFG_MX6Q) || defined(CFG_MX6D) */
 
 void imx_iomux_init(void)
 {
     assert((IOMUXC_SELECT_INPUT_UPPER_BOUND - 
         IOMUXC_SELECT_INPUT_BASE_ADDRESS) < (0xff * 4));
 
-    iomuxc_base = (uint32_t)phys_to_virt(
+    iomuxc_base = (vaddr_t)phys_to_virt(
         IMX_IOMUXC_BASE,  MEM_AREA_IO_SEC);
 
-    iomuxc_select_input_base = (uint32_t)phys_to_virt(
+    iomuxc_select_input_base = (vaddr_t)phys_to_virt(
         IOMUXC_SELECT_INPUT_BASE_ADDRESS,  MEM_AREA_IO_SEC);
 
-    FMSG("iomuxc_base = %#x, iomuxc_select_input_base = %#x",
+    FMSG("iomuxc_base = 0x%" PRIxVA ", iomuxc_select_input_base = 0x%" PRIxVA,
          iomuxc_base,
          iomuxc_select_input_base);
 }

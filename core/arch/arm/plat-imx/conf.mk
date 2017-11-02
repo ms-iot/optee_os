@@ -67,13 +67,16 @@ ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 # - UART1 is used for Windows kernel debugging
 CFG_CONSOLE_UART ?= UART1_BASE
 
-# IOMUX initialization is not supported by default.
-CFG_IMX_IOMUX ?= n
+ifeq ($(CFG_SPI),y)
+$(call force,CFG_IMX_SPI,y)
+endif
 
-# Querying clock frequency is not supported by default.
-CFG_IMX_CLOCK ?= n
+ifeq ($(CFG_IMX_SPI),y)
+$(call force,CFG_IMX_IOMUX,y)
+$(call force,CFG_IMX_GPIO,y)
+$(call force,CFG_IMX_CLOCK,y)
+endif 
 
 endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 
 ta-targets = ta_arm32
-

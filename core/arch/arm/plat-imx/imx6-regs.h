@@ -83,4 +83,37 @@
 #define IMX_GPIO_PORT_GRANULARITY   0x4000
 #define IMX_GPIO_REGISTER_BITS      32
 
+/* ECSPI */
+#define MXC_ECSPI1_BASE_ADDR        (ATZ1_BASE_ADDR + 0x08000)
+#define MXC_ECSPI_BUS_COUNT         5
+#define MXC_ECSPI_BUS_GRANULARITY   0x4000
+
+#define MXC_CSPICON_POL		4
+#define MXC_CSPICON_PHA		0
+#define MXC_CSPICON_SSPOL	12
+
+#define MXC_CSPICTRL_EN		        (1 << 0)
+#define MXC_CSPICTRL_MODE	        (1 << 1)
+#define MXC_CSPICTRL_XCH	        (1 << 2)
+#define MXC_CSPICTRL_MODE_MASK      (0xf << 4)
+#define MXC_CSPICTRL_CHIPSELECT(x)	(((x) & 0x3) << 12)
+#define MXC_CSPICTRL_BITCOUNT(x)	(((x) & 0xfff) << 20)
+#define MXC_CSPICTRL_PREDIV(x)	    (((x) & 0xF) << 12)
+#define MXC_CSPICTRL_POSTDIV(x)	    (((x) & 0xF) << 8)
+#define MXC_CSPICTRL_SELCHAN(x)	    (((x) & 0x3) << 18)
+#define MXC_CSPICTRL_MAXBITS	    0xfff
+#define MXC_CSPICTRL_TC		        (1 << 7)
+#define MXC_CSPICTRL_RXOVF	        (1 << 6)
+#define MXC_CSPIPERIOD_32KHZ	    (1 << 15)
+#define MXC_MAX_SPI_BYTES	        32
+
+/* CCM */
+#define IMX_CCM_CCR_BASE_ADDR       0x020C4000
+#define IMX_CCM_CCGR1_BASE_ADDR     0x020C406C
+
+#define IMX_CGR_CLK_ENABLED 0x3     /* Clock enabled except in STOP mode */
+#define IMX_CCM_CCGR1_ECSPI2_CLK_SHIFT      2
+#define IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED    \
+    (IMX_CGR_CLK_ENABLED << IMX_CCM_CCGR1_ECSPI2_CLK_SHIFT) /* ECSPI2 clock enabled */
+
 #endif // #if defined(CFG_MX6Q)

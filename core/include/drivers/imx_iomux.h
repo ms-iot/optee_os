@@ -14,10 +14,10 @@
 *  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 *
 **/
-#ifndef _IMX_IOMUX_H_
-#define _IMX_IOMUX_H_
+#ifndef IMX_IOMUX_H
+#define IMX_IOMUX_H
 
 void imx_iomux_init(void);
-void imx_iomux_configure_spi2(int32_t *bank, int32_t *pin);
+bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin);
 
-#endif // _IMX_IOMUX_H_
+#endif // IMX_IOMUX_H

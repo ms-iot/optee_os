@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * All rights reserved.
- * Copyright (c) 2016, Wind River Systems.
+ * Copyright (c) 2014, Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,39 +25,29 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define SCU_BASE			0x00A00000
-#define PL310_BASE			0x00A02000
-#define SRC_BASE			0x020D8000
-#define SRC_SCR				0x000
-#define SRC_GPR1			0x020
-#define SRC_SCR_CPU_ENABLE_ALL		SHIFT_U32(0x7, 22)
-#define SRC_SCR_CORE1_RST_OFFSET	14
-#define SRC_SCR_CORE1_ENABLE_OFFSET	22
-#define GIC_BASE			0x00A00000
-#define GICC_OFFSET			0x100
-#define GICD_OFFSET			0x1000
-#define GIC_CPU_BASE			(GIC_BASE + GICC_OFFSET)
-#define GIC_DIST_BASE			(GIC_BASE + GICD_OFFSET)
+#include <stdint.h>
+#include <stdbool.h>
+#include <mm/core_memprot.h>
+#include <initcall.h>
+#include <RiotTarget.h>
+#include <RiotStatus.h>
+#include <RiotEcc.h>
+#include <RiotCrypt.h>
+#include <RiotSha256.h>
+#include <CyrepCommon.h>
+#include <platform_config.h>
 
-#define UART1_BASE			0x02020000
-#define UART2_BASE			0x021E8000
-#define UART4_BASE			0x021F0000
+static CyrepKeyPair key_pair;
 
-#if defined(CFG_MX6Q) || defined(CFG_MX6D)
-#define UART3_BASE			0x021EC000
-#define UART5_BASE			0x021F4000
-#endif
+static TEE_Result tee_cyrep_init(void)
+{
+	CyrepKeyPair *key_pair_in = (CyrepKeyPair *)phys_to_virt(
+		(paddr_t)CYREP_OPTEE_KEY_PAIR_ADDR,
+		MEM_AREA_IO_SEC);
 
-/* Central Security Unit register values */
-#define CSU_BASE			0x021C0000
-#define CSU_CSL_START			0x0
-#define CSU_CSL_END			0xA0
-#define CSU_CSL5			0x14
-#define CSU_CSL16			0x40
-#define CSU_ACCESS_ALL			0x00FF00FF
-#define CSU_SETTING_LOCK		0x01000100
+	Cyrep_CapturePrivateKey(&key_pair, key_pair_in);
 
-#define DRAM0_BASE			0x10000000
+	return TEE_SUCCESS;
+}
 
-#define CAAM_BASE			0x00100000
-
+service_init(tee_cyrep_init);

@@ -17,7 +17,10 @@
 #ifndef IMX_IOMUX_H
 #define IMX_IOMUX_H
 
+/* Initialize the iomux driver */
 void imx_iomux_init(void);
+
+/* Configure iomux pads for a given SPI bus */
 bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin);
 
 #endif // IMX_IOMUX_H

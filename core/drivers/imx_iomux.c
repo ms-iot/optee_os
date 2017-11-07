@@ -2810,6 +2810,11 @@ typedef enum {
 
 register_phys_mem(MEM_AREA_IO_SEC, IMX_IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
 
+/*
+ * This routine is not platform+flavor specific, but it currently has a single
+ * caller, that is platform-flavor specific.
+ */
+#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
 static void imx_pad_config(IMX_PAD Pad, IMX_PADCFG PadConfig)
 {
     /* Configure Mux Control */
@@ -2824,10 +2829,21 @@ static void imx_pad_config(IMX_PAD Pad, IMX_PADCFG PadConfig)
     /* Configure Pad Control */
     write32(_IMX_PADCFG_PAD_CTL(PadConfig), iomuxc_base + _IMX_PAD_CTL_OFFSET(Pad));
 }
+#endif /* #if defined(PLATFORM_FLAVOR_mx6qhmbedge) */
 
-#if defined(CFG_MX6Q) || defined(CFG_MX6D)
+/* Configure iomux pads for a given SPI bus */
 bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
 {
+    /* SPI iomux pad configuration is platform+flavor specific */
+#if !defined(PLATFORM_FLAVOR_mx6qhmbedge)
+    #error SPI iomux pad configuration is not implemented for this platform
+    
+    #define IOMUX_UNUSED(param) (void)(param)
+    IOMUX_UNUSED(spiBus);
+    IOMUX_UNUSED(bank);
+    IOMUX_UNUSED(pin);
+    return false;
+#else
     uint32_t initialValue, newValue;
     uint32_t misoSelectInputVA;
 
@@ -2837,18 +2853,18 @@ bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
         return false;
     }
 
-    // CS0 (PAD_EIM_RW) GPIO2_IO26 -> bank 1, pin 26
+    /* CS0 (PAD_EIM_RW) GPIO2_IO26 -> bank 1, pin 26 */
     imx_pad_config(IMX_PAD_EIM_RW, IMX_PAD_EIM_RW_GPIO2_IO26);
     *bank = 1;
     *pin = 26;
 
-    // CS1 (PAD_EIM_LBA) GPIO2_IO27
+    /* CS1 (PAD_EIM_LBA) GPIO2_IO27 */
     imx_pad_config(IMX_PAD_EIM_LBA, IMX_PAD_EIM_LBA_ECSPI2_SS1);
 
-    // MISO: PAD_EIM_OE_B (GPIO2_IO25) Alt2
+    /* MISO: PAD_EIM_OE_B (GPIO2_IO25) Alt2 */
     imx_pad_config(IMX_PAD_EIM_OE, IMX_PAD_EIM_OE_ECSPI2_MISO);
 
-    // IOMUXC_ECSPI2_MISO_SELECT_INPUT
+    /* IOMUXC_ECSPI2_MISO_SELECT_INPUT */
     misoSelectInputVA = (uint32_t)phys_to_virt(
         IOMUXC_ECSPI2_MISO_SELECT_INPUT,
         MEM_AREA_IO_SEC);
@@ -2857,16 +2873,17 @@ bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
     newValue |= (IMX_IOMUXC_ECSPI2_MISO_EIM_OE_B_ALT2 << 0);
     write32(newValue, misoSelectInputVA);
 
-    // MOSI: PAD_EIM_CS1_B (GPIO2_IO24) Alt2
+    /* MOSI: PAD_EIM_CS1_B (GPIO2_IO24) Alt2 */
     imx_pad_config(IMX_PAD_EIM_CS1, IMX_PAD_EIM_CS1_ECSPI2_MOSI);
 
-    // SCLK: PAD_EIM_CS0_B (GPIO2_IO23) Alt2
+    /* SCLK: PAD_EIM_CS0_B (GPIO2_IO23) Alt2 */
     imx_pad_config(IMX_PAD_EIM_CS0, IMX_PAD_EIM_CS0_ECSPI2_SCLK);
 
     return true;
+#endif /* #if !defined(PLATFORM_FLAVOR_mx6qhmbedge) */
 }
-#endif /* #if defined(CFG_MX6Q) || defined(CFG_MX6D) */
 
+/* Initialize the iomux driver */
 void imx_iomux_init(void)
 {
     assert((IOMUXC_SELECT_INPUT_UPPER_BOUND - 

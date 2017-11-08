@@ -17,10 +17,14 @@
 /* SPI mode flags */
 #define	MXC_SPI_CPHA        0x01			/* clock phase */
 #define	MXC_SPI_CPOL	    0x02			/* clock polarity */
-#define	MXC_SPI_MODE_0	    (0|0)			/* (original MicroWire) */
-#define	MXC_SPI_MODE_1	    (0|SPI_CPHA)
-#define	MXC_SPI_MODE_2	    (SPI_CPOL|0)
-#define	MXC_SPI_MODE_3	    (SPI_CPOL|SPI_CPHA)
+
+enum MXC_SPI_MODE {
+    MXC_SPI_MODE_0 = (0|0),			        /* (original MicroWire) */
+    MXC_SPI_MODE_1 = (0|MXC_SPI_CPHA),
+    MXC_SPI_MODE_2 = (MXC_SPI_CPOL|0),
+    MXC_SPI_MODE_3 = (MXC_SPI_CPOL|MXC_SPI_CPHA),
+};
+
 #define	MXC_SPI_CS_HIGH	    0x04			/* CS active high */
 #define	MXC_SPI_LSB_FIRST   0x08			/* per-word bits-on-wire */
 #define	MXC_SPI_3WIRE	    0x10			/* SI/SO signals shared */

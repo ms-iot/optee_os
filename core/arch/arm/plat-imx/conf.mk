@@ -67,6 +67,10 @@ ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 # - UART1 is used for Windows kernel debugging
 CFG_CONSOLE_UART ?= UART1_BASE
 
+ifeq ($(CFG_TA_SPI),y)
+$(call force,CFG_SPI,y)
+endif
+
 ifeq ($(CFG_SPI),y)
 $(call force,CFG_IMX_SPI,y)
 endif

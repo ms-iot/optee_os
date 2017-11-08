@@ -15,3 +15,4 @@ cppflags-se_api_self_tests.c-y += -Icore/tee/se
 endif
 
 srcs-$(CFG_TA_SPI) += pta_spi.c
+srcs-$(CFG_TA_RPC) += pta_rpc.c

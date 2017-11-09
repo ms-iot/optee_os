@@ -61,6 +61,8 @@
 
 #define DRAM0_BASE			0x10000000
 
+#define CAAM_BASE			0x00100000
+
 #if defined(CFG_MX6Q)
 
 #define AIPS1_ARB_BASE_ADDR         0x02000000

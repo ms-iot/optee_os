@@ -21,7 +21,6 @@ srcs-y += tee_cryp_utl.c
 srcs-$(CFG_CRYPTO_HKDF) += tee_cryp_hkdf.c
 srcs-$(CFG_CRYPTO_CONCAT_KDF) += tee_cryp_concat_kdf.c
 srcs-$(CFG_CRYPTO_PBKDF2) += tee_cryp_pbkdf2.c
-srcs-$(CFG_CYREP) += tee_cyrep.c
 
 ifeq ($(CFG_WITH_USER_TA),y)
 

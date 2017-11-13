@@ -54,6 +54,7 @@ struct user_ta_store_handle {
 	struct shdr *shdr; /* Verified secure copy of @nw_ta's signed header */
 	void *hash_ctx;
 	uint32_t hash_algo;
+	void *sha256_ctx;
 };
 
 static TEE_Result alloc_and_copy_shdr(struct shdr **shdr,
@@ -181,6 +182,8 @@ static TEE_Result ta_open(const TEE_UUID *uuid,
 	struct mobj *mobj = NULL;
 	void *hash_ctx = NULL;
 	size_t hash_ctx_size;
+	void *sha256_ctx = NULL;
+	size_t sha256_ctx_size;
 	uint32_t hash_algo;
 	struct shdr *ta = NULL;
 	size_t ta_size = 0;
@@ -232,6 +235,21 @@ static TEE_Result ta_open(const TEE_UUID *uuid,
 	if (res != TEE_SUCCESS)
 		goto error_free_payload;
 
+	// set up sha256 context
+	res = crypto_ops.hash.get_ctx_size(TEE_ALG_SHA256, &sha256_ctx_size);
+	if (res != TEE_SUCCESS)
+		goto error_free_payload;
+
+	sha256_ctx = malloc(sha256_ctx_size);
+	if (!sha256_ctx) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
+		goto error_free_payload;
+	}
+
+	res = crypto_ops.hash.init(sha256_ctx, TEE_ALG_SHA256);
+	if (res != TEE_SUCCESS)
+		goto error_free_payload;
+
 	if (ta_size != SHDR_GET_SIZE(shdr) + shdr->img_size) {
 		res = TEE_ERROR_SECURITY;
 		goto error_free_payload;
@@ -243,6 +261,7 @@ static TEE_Result ta_open(const TEE_UUID *uuid,
 	handle->offs = SHDR_GET_SIZE(shdr);
 	handle->hash_algo = hash_algo;
 	handle->hash_ctx = hash_ctx;
+	handle->sha256_ctx = sha256_ctx;
 	handle->shdr = shdr;
 	handle->mobj = mobj;
 	*h = handle;
@@ -251,6 +270,7 @@ static TEE_Result ta_open(const TEE_UUID *uuid,
 error_free_payload:
 	thread_rpc_free_payload(cookie, mobj);
 error:
+	free(sha256_ctx);
 	free(hash_ctx);
 	free(shdr);
 	free(handle);
@@ -303,6 +323,11 @@ static TEE_Result ta_read(struct user_ta_store_handle *h, void *data,
 	res = crypto_ops.hash.update(h->hash_ctx, h->hash_algo, dst, len);
 	if (res != TEE_SUCCESS)
 		return TEE_ERROR_SECURITY;
+
+	res = crypto_ops.hash.update(h->sha256_ctx, TEE_ALG_SHA256, dst, len);
+	if (res != TEE_SUCCESS)
+		return TEE_ERROR_SECURITY;
+
 	h->offs += len;
 	if (h->offs == h->nw_ta_size) {
 		/*
@@ -319,9 +344,28 @@ static void ta_close(struct user_ta_store_handle *h)
 	if (!h)
 		return;
 	thread_rpc_free_payload(h->cookie, h->mobj);
+	free(h->sha256_ctx);
 	free(h->hash_ctx);
 	free(h->shdr);
 	free(h);
+}
+
+static TEE_Result ta_get_hash(
+	struct user_ta_store_handle *h,
+	uint8_t *hash,
+	size_t hash_len
+	)
+{
+	// This can only be called after the whole image has been read
+	if (h->offs != h->nw_ta_size) {
+		return TEE_ERROR_BAD_STATE;
+	}
+
+	return crypto_ops.hash.final(
+		h->sha256_ctx,
+		TEE_ALG_SHA256,
+		hash,
+		hash_len);
 }
 
 static const struct user_ta_store_ops ops = {
@@ -329,6 +373,7 @@ static const struct user_ta_store_ops ops = {
 	.get_size = ta_get_size,
 	.read = ta_read,
 	.close = ta_close,
+	.get_hash = ta_get_hash,
 };
 
 static TEE_Result register_supplicant_user_ta(void)

@@ -23,6 +23,6 @@
 // [in/out] memref[1]: 
 //  [out] Output buffer (input buffer transposed)
 // 
-#define PTA_HELLO_WORLD_CMD1    0
+#define PTA_HELLO_WORLD_CMD1    1
 
 #endif /* __PTA_HELLO_WORLD_H */

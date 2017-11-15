@@ -60,7 +60,6 @@
 #define CSU_SETTING_LOCK		0x01000100
 
 #define DRAM0_BASE			0x10000000
-
 #define CAAM_BASE			0x00100000
 
 #if defined(CFG_MX6Q)

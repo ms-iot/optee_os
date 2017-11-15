@@ -49,20 +49,21 @@ static TEE_Result hellow_world_cmd1(uint32_t param_types,
     uint8_t* out_buffer;
     uint32_t out_buffer_size;
 
-    uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+    uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
+        TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_INOUT,
-        TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
     DMSG("PTA_HELLO_WORLD_CMD1\n");
 
     if (exp_pt != param_types) {
+        EMSG("Invalid parameters!\n");
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    in_buffer = (uint8_t*)params[0].memref.buffer;
-    out_buffer_size = params[0].memref.size;
-    out_buffer = (uint8_t*)params[1].memref.buffer;
+    in_buffer = (uint8_t*)params[1].memref.buffer;
+    out_buffer = (uint8_t*)params[2].memref.buffer;
+    out_buffer_size = params[2].memref.size;
     if (out_buffer_size > params[1].memref.size) {
         out_buffer_size = params[1].memref.size;
     }

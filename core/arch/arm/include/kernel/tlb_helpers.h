@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2017, Linaro Limited
+ * Copyright (c) 2017, Microsoft.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,6 +47,27 @@ static inline void tlbi_mva_allasid_nosync(vaddr_t va)
 #endif
 }
 #endif /*!ASM*/
+
+/*
+ * Grant R+W access:
+ * - Just to TZ Supervisor execution mode, and
+ * - Just to a single device
+ */
+#define CSU_TZ_SUPERVISOR		0x22
+
+/*
+ * Grant R+W access:
+ * - To all execution modes, and
+ * - To a single device
+ */
+#define CSU_ALL_MODES			0xFF
+
+/*
+ * Grant R+W access:
+ * - To all execution modes, and
+ * - To both devices sharing a single CSU_CSL register
+ */
+#define CSU_ACCESS_ALL			((CSU_ALL_MODES << 16) | (CSU_ALL_MODES << 0))
 
 #define DRAM0_BASE			0x10000000
 

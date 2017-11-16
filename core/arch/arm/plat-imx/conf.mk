@@ -44,9 +44,21 @@ endif
 
 # i.MX6Q specific config
 ifeq ($(CFG_MX6Q),y)
+
 # CFG_TZC380 is required for systems having the TZASC_ENABLE fuse burnt.
 CFG_TZC380 ?= y
-endif
+
+# One bit for each SPI controller to reserve for TZ Supervisor execution mode.
+# Examples:
+# - CFG_TZ_SPI_CONTROLLERS=0x0  -> no reserved controllers
+# - CFG_TZ_SPI_CONTROLLERS=0x1  -> reserve ECSPI1
+# - CFG_TZ_SPI_CONTROLLERS=0x2  -> reserve ECSPI2
+# - CFG_TZ_SPI_CONTROLLERS=0x3  -> reserve ECSPI1 and ECSPI2
+# - CFG_TZ_SPI_CONTROLLERS=0x4  -> reserve ECSPI3
+# - CFG_TZ_SPI_CONTROLLERS=0x1f -> reserve ECSPI1, 2, 3, 4, and 5
+CFG_TZ_SPI_CONTROLLERS ?= 0x0
+
+endif # ifeq ($(CFG_MX6Q),y)
 
 # i.MX6 Solo/DualLite/Dual/Quad specific config
 ifeq ($(filter y, $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) $(CFG_MX6S)), y)

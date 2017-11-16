@@ -52,14 +52,12 @@ typedef uint64_t hashMagic_t;
  * structure to be dynamically allocated based on a size it provides.
  * That would require changing the RIOT interface, which we don't want to do,
  * so instead we ensure the static context structure is big enough. 
- * Size of this structure must be at least as big as sha256_state in
+ * Size of this structure must be at least as big as hash_state in
  * tomcrypt_hash.h. We cannot include this header directly, but there are
  * runtime checks to ensure this structure is the proper size.
  */
 typedef struct _RIOT_SHA256_CONTEXT {
-	uint64_t length;
-    uint32_t state[8], curlen;
-    uint8_t buf[64];
+    uint8_t dummy[256];
 } RIOT_SHA256_CONTEXT;
 #else
 typedef struct _RIOT_SHA256_CONTEXT {

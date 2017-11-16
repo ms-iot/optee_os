@@ -30,6 +30,7 @@
 #include <arm32.h>
 #include <console.h>
 #include <drivers/gic.h>
+#include <drivers/imx_iomux.h>
 #include <drivers/imx_uart.h>
 #include <drivers/tzc380.h>
 #include <io.h>
@@ -163,3 +164,13 @@ static TEE_Result init_tzc380(void)
 
 service_init(init_tzc380);
 #endif // #ifdef CFG_TZC380
+
+#ifdef CFG_IMX_IOMUX
+static TEE_Result iomux_init(void)
+{
+    imx_iomux_init();
+    return TEE_SUCCESS;
+}
+
+driver_init(iomux_init);
+#endif // #ifdef CFG_IMX_IOMUX

@@ -62,6 +62,9 @@ struct user_ta_store_ops {
 	 * Close a TA handle. Do nothing if @h == NULL.
 	 */
 	void (*close)(struct user_ta_store_handle *h);
+
+	TEE_Result (*get_hash)(struct user_ta_store_handle *h,
+				uint8_t *hash, size_t hash_len);
 };
 
 TEE_Result elf_load_init(const struct user_ta_store_ops *ta_store,

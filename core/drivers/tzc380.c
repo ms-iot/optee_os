@@ -115,7 +115,12 @@ void tzc_configure_region(uint8_t region, vaddr_t region_base, uint32_t attr)
 {
 	assert(tzc.base);
 
-	assert(region < tzc.num_regions);
+	if (region >= tzc.num_regions) {
+        EMSG("region = %u, num_regions = %u",
+             (uint32_t)region,
+             (uint32_t)tzc.num_regions);
+        panic();
+    }
 
 	tzc_write_region_base_low(tzc.base, region, addr_low(region_base));
 	tzc_write_region_base_high(tzc.base, region, addr_high(region_base));

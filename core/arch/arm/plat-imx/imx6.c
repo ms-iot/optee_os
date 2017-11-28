@@ -40,7 +40,6 @@
 register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 
 /* Bits included in the CFG_TZ_SPI_CONTROLLERS build parameter */
-#define TZ_SPI_NONE     0x00
 #define TZ_SPI1         0x01
 #define TZ_SPI2         0x02
 #define TZ_SPI3         0x04
@@ -55,7 +54,7 @@ register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 
 #if (CFG_TZ_SPI_CONTROLLERS & (~TZ_SPI_ALL))
     #error "Unsupported CFG_TZ_SPI_CONTROLLERS value"
-#elif (CFG_TZ_SPI_CONTROLLERS != TZ_SPI_NONE)
+#endif
 
 struct csu_csl_access_control {
     uint32_t csl_index;
@@ -67,6 +66,10 @@ struct csu_csl_access_control {
  * accessed from any execution mode.
  */
 static struct csu_csl_access_control access_control[] = {
+
+    /* TZASC1   - CSL16 [7:0] */
+    /* TZASC2   - CSL16 [23:16] */
+    {16, ((CSU_TZ_SUPERVISOR << 0)  | (CSU_TZ_SUPERVISOR << 16))},
 
     /* SPDIF    - CSL18 [7:0] */
     /* eCSPI1   - CSL18 [23:16] */
@@ -95,11 +98,9 @@ static struct csu_csl_access_control access_control[] = {
 #endif
 
 };
-#endif /* CFG_TZ_SPI_CONTROLLERS != TZ_SPI_NONE */
 
 static uint32_t get_csl_value(uint32_t csl_index __maybe_unused)
 {
-#if (CFG_TZ_SPI_CONTROLLERS != TZ_SPI_NONE)
     uint32_t i;
 
     /* Check if this csl_index corresponds to any protected peripherals */
@@ -108,7 +109,6 @@ static uint32_t get_csl_value(uint32_t csl_index __maybe_unused)
             return access_control[i].csl_value;
         }
     }
-#endif /* CFG_TZ_SPI_CONTROLLERS != TZ_SPI_NONE */
 
     return CSU_ACCESS_ALL;
 }

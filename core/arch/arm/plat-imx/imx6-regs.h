@@ -3,6 +3,8 @@
  * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
+ * Copyright (c) 2017, Microsoft.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -54,10 +56,28 @@
 #define CSU_BASE			0x021C0000
 #define CSU_CSL_START			0x0
 #define CSU_CSL_END			0xA0
-#define CSU_CSL5			0x14
-#define CSU_CSL16			0x40
-#define CSU_ACCESS_ALL			0x00FF00FF
 #define CSU_SETTING_LOCK		0x01000100
+
+/*
+ * Grant R+W access:
+ * - Just to TZ Supervisor execution mode, and
+ * - Just to a single device
+ */
+#define CSU_TZ_SUPERVISOR		0x22
+
+/*
+ * Grant R+W access:
+ * - To all execution modes, and
+ * - To a single device
+ */
+#define CSU_ALL_MODES			0xFF
+
+/*
+ * Grant R+W access:
+ * - To all execution modes, and
+ * - To both devices sharing a single CSU_CSL register
+ */
+#define CSU_ACCESS_ALL			((CSU_ALL_MODES << 16) | (CSU_ALL_MODES << 0))
 
 #define DRAM0_BASE			0x10000000
 #define CAAM_BASE			0x00100000

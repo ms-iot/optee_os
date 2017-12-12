@@ -14,15 +14,22 @@
 #include <RiotCrypt.h>
 #include <CyrepCommon.h>
 
+#ifdef CONFIG_CYREP_OPTEE_BUILD
+#include <string_ext.h>
+#include <util.h>
+#endif
+
 //
 // Byte value used to set memory to when clearing a memory region.
 //
-#define CYREP_CLEAR_MEM_VALUE	0x5A
+#define CYREP_CLEAR_MEM_VALUE 0x5A
 
 //
 // Macro to get the length of a string literal instead of calling strlen
 //
-#define STR_LITERAL_LEN(S)		  (sizeof(S) - 1)
+#define STR_LITERAL_LEN(S) (sizeof(S) - 1)
+
+#define END_CERT_MARKER "-----END CERTIFICATE-----\n"
 
 // The static data fields that make up the Alias Cert "to be signed" region
 static const RIOT_X509_TBS_DATA x509AliasTBSData = { { 0 },
@@ -61,9 +68,12 @@ static const uint8_t TestEccKeyPriv[sizeof(ecc_privatekey)] = {
     0x53, 0xf1, 0x56, 0x15, 0x02, 0xf0, 0x71, 0xc0, 0x53, 0x49, 0xc8, 0xda,
     0xe6, 0x26, 0xa9, 0x0b, 0x17, 0x88, 0xe5, 0x70, 0x00, 0x00, 0x00, 0x00 };
 
-static bool Cyrep_AppendCert(
+static bool Cyrep_AppendPemGetIndexes(
     DERBuilderContext *DerContext,
-    CyrepCertChain *CertChain
+    uint32_t Type,
+    CyrepCertChain *CertChain,
+    size_t *StartIndex,
+    size_t *Length
     )
 {
     size_t certChainLen;
@@ -76,7 +86,7 @@ static bool Cyrep_AppendCert(
     certBufferRemaining = CertChain->CertBufferSize - certChainLen - 1;
     if (DERtoPEM(
             DerContext,
-            CERT_TYPE,
+            Type,
             &CertChain->CertBuffer[certChainLen],
             &certBufferRemaining) != 0) {
 
@@ -85,6 +95,80 @@ static bool Cyrep_AppendCert(
     }
 
     CertChain->CertBuffer[certChainLen + certBufferRemaining] = '\0';
+
+    *StartIndex = certChainLen;
+    *Length = certBufferRemaining;
+    return true;
+}
+
+bool Cyrep_AppendPem(
+    DERBuilderContext *DerContext,
+    uint32_t Type,
+    CyrepCertChain *CertChain)
+{
+    size_t dummy1, dummy2;
+    return Cyrep_AppendPemGetIndexes(
+        DerContext,
+        Type,
+        CertChain,
+        &dummy1,
+        &dummy2);
+}
+
+/*
+ * Return the index of the next available slot in the certificate index,
+ * or CYREP_CERT_INDEX_INVALID if there are no available slots.
+ */
+static size_t Cyrep_FindNextFreeIndex(const CyrepCertChain *CertChain)
+{
+    size_t index;
+    for (index = 0; index < ARRAY_SIZE(CertChain->CertIndex); ++index) {
+        if (CertChain->CertIndex[index].CertBufferStartIndex ==
+            CYREP_CERT_INDEX_INVALID) {
+
+            return index;
+        }
+    }
+
+    return CYREP_CERT_INDEX_INVALID;
+}
+
+/*
+ * Append a certificate to the certificate chain. Updates the index and
+ * appends the PEM to the certificate buffer.
+ */
+static bool Cyrep_AppendCert(
+    CyrepCertChain *CertChain,
+    DERBuilderContext *DerContext,
+    const char *IssuerName,
+    const char *SubjectName
+    )
+{
+    size_t index;
+    size_t length;
+    CyrepCertIndexEntry *entry;
+
+    index = Cyrep_FindNextFreeIndex(CertChain);
+    if (index == CYREP_CERT_INDEX_INVALID) {
+        CYREP_INTERNAL_ERROR("Failed to find free cert index\n");
+        return false;
+    }
+
+    entry = &CertChain->CertIndex[index];
+    strlcpy(entry->Subject, SubjectName, ARRAY_SIZE(entry->Subject));
+
+    if (!Cyrep_AppendPemGetIndexes(
+            DerContext,
+            CERT_TYPE,
+            CertChain,
+            &entry->CertBufferStartIndex,
+            &length)) {
+
+        return false;
+    }
+
+    entry->IssuerIndex =
+        Cyrep_FindCertBySubjectName(CertChain, IssuerName);
 
     return true;
 }
@@ -131,14 +215,14 @@ static bool Cyrep_GenerateRootCert(
     DERBuilderContext derCtx;
     RIOT_ECC_SIGNATURE tbsSig;
     RIOT_X509_TBS_DATA tbsData;
-	RIOT_ECC_PUBLIC testPublicKey;
-	RIOT_ECC_PRIVATE testPrivateKey;
+    RIOT_ECC_PUBLIC testPublicKey;
+    RIOT_ECC_PRIVATE testPrivateKey;
     uint8_t derBuffer[DER_MAX_TBS];
     bool ret = false;
 
     memcpy(&tbsData, &x509RootTBSData, sizeof(tbsData));
-	memcpy(&testPublicKey, TestEccKeyPub, sizeof(testPublicKey));
-	memcpy(&testPrivateKey, TestEccKeyPriv, sizeof(testPrivateKey));
+    memcpy(&testPublicKey, TestEccKeyPub, sizeof(testPublicKey));
+    memcpy(&testPrivateKey, TestEccKeyPriv, sizeof(testPrivateKey));
 
     if (!Cyrep_DeriveCertSerialNum(
             TestEccKeyPub,
@@ -181,7 +265,7 @@ static bool Cyrep_GenerateRootCert(
         goto Exit;
     }
 
-    if (!Cyrep_AppendCert(&derCtx, CertChain)) {
+    if (!Cyrep_AppendCert(CertChain, &derCtx, CertIssuer, CertSubject)) {
         CYREP_INTERNAL_ERROR("Failed to append cert\n");
         goto Exit;
     }
@@ -202,14 +286,14 @@ static bool Cyrep_GenerateDeviceCert(
     DERBuilderContext derCtx;
     RIOT_ECC_SIGNATURE tbsSig;
     RIOT_X509_TBS_DATA tbsData;
-	RIOT_ECC_PUBLIC testPublicKey;
-	RIOT_ECC_PRIVATE testPrivateKey;
+    RIOT_ECC_PUBLIC testPublicKey;
+    RIOT_ECC_PRIVATE testPrivateKey;
     uint8_t derBuffer[DER_MAX_TBS];
     bool ret = false;
 
     memcpy(&tbsData, &x509DeviceTBSData, sizeof(tbsData));
-	memcpy(&testPublicKey, TestEccKeyPub, sizeof(testPublicKey));
-	memcpy(&testPrivateKey, TestEccKeyPriv, sizeof(testPrivateKey));
+    memcpy(&testPublicKey, TestEccKeyPub, sizeof(testPublicKey));
+    memcpy(&testPrivateKey, TestEccKeyPriv, sizeof(testPrivateKey));
 
     if (!Cyrep_DeriveCertSerialNum(
             (const uint8_t *)&CertChain->DeviceIDPub,
@@ -253,7 +337,7 @@ static bool Cyrep_GenerateDeviceCert(
         goto Exit;
     }
 
-    if (!Cyrep_AppendCert(&derCtx, CertChain)) {
+    if (!Cyrep_AppendCert(CertChain, &derCtx, CertIssuer, CertSubject)) {
         CYREP_INTERNAL_ERROR("Failed to append cert\n");
         goto Exit;
     }
@@ -271,7 +355,19 @@ bool Cyrep_InitCertChain(
     size_t CertChainSize
     )
 {
+    size_t i;
+    CertChain->Magic = CYREP_CERT_CHAIN_MAGIC;
+    CertChain->Version = CYREP_CERT_CHAIN_VERSION;
     CertChain->PathLenRemaining = InitialPathLen;
+
+    for (i = 0; i < ARRAY_SIZE(CertChain->CertIndex); ++i) {
+        CertChain->CertIndex[i].CertBufferStartIndex =
+            CYREP_CERT_INDEX_INVALID;
+
+        CertChain->CertIndex[i].IssuerIndex = CYREP_CERT_INDEX_INVALID;
+        CertChain->CertIndex[i].Subject[0] = '\0';
+    }
+
     CertChain->CertBufferSize =
         CertChainSize - offsetof(CyrepCertChain, CertBuffer);
 
@@ -359,7 +455,7 @@ bool Cyrep_MeasureImageAndAppendCert(
 {
     RIOT_ECC_SIGNATURE tbsSig;
     DERBuilderContext cerCtx;
-    RIOT_X509_TBS_DATA	x509TBSData;
+    RIOT_X509_TBS_DATA x509TBSData;
     uint8_t digest[RIOT_DIGEST_LENGTH];
     uint8_t cerBuffer[DER_MAX_TBS];
     bool ret;
@@ -448,7 +544,7 @@ bool Cyrep_MeasureImageAndAppendCert(
         goto Exit;
     }
 
-    if (!Cyrep_AppendCert(&cerCtx, CertChain)) {
+    if (!Cyrep_AppendCert(CertChain, &cerCtx, IssuerName, ImageSubjectName)) {
         CYREP_INTERNAL_ERROR("Failed to append cert\n");
         goto Exit;
     }
@@ -475,6 +571,180 @@ void Cyrep_CapturePrivateKey(
     Cyrep_SecureClearMemory(Source, sizeof(*Source));
 }
 
+bool Cyrep_ValidateCertChainVersion(
+    const CyrepCertChain *CertChain
+    )
+{
+    if (CertChain->Magic != CYREP_CERT_CHAIN_MAGIC) {
+        CYREP_INTERNAL_ERROR("Cyrep cert chain: bad magic\n");
+        return false;
+    }
+
+    if (CertChain->Version != CYREP_CERT_CHAIN_VERSION) {
+        CYREP_INTERNAL_ERROR("Cyrep cert chain: bad version\n");
+        return false;
+    }
+
+    return true;
+}
+
+#ifdef CONFIG_CYREP_OPTEE_BUILD
+/**
+ * strstr - Find the first substring in a %NUL terminated string
+ * @s1: The string to be searched
+ * @s2: The string to search for
+ */
+char * strstr(const char * s1,const char * s2);
+char * strstr(const char * s1,const char * s2)
+{
+        int l1, l2;
+
+        l2 = strlen(s2);
+        if (!l2)
+                return (char *) s1;
+        l1 = strlen(s1);
+        while (l1 >= l2) {
+                l1--;
+                if (!memcmp(s1,s2,l2))
+                        return (char *) s1;
+                s1++;
+        }
+        return NULL;
+}
+#endif
+
+#ifdef CONFIG_CYREP_OPTEE_BUILD
+/**
+ * strncpy - Copy a length-limited, %NUL-terminated string
+ * @dest: Where to copy the string to
+ * @src: Where to copy the string from
+ * @count: The maximum number of bytes to copy
+ *
+ * Note that unlike userspace strncpy, this does not %NUL-pad the buffer.
+ * However, the result is not %NUL-terminated if the source exceeds
+ * @count bytes.
+ */
+char * strncpy(char * dest,const char *src,size_t count);
+char * strncpy(char * dest,const char *src,size_t count)
+{
+        char *tmp = dest;
+
+        while (count-- && (*dest++ = *src++) != '\0')
+                /* nothing */;
+
+        return tmp;
+}
+#endif
+
+size_t Cyrep_FindCertBySubjectName(
+    const CyrepCertChain *CertChain,
+    const char *SubjectName
+    )
+{
+    size_t index;
+
+    for (index = 0; index < ARRAY_SIZE(CertChain->CertIndex); ++index) {
+        if (CertChain->CertIndex[index].CertBufferStartIndex ==
+            CYREP_CERT_INDEX_INVALID) {
+
+            break;
+        }
+
+        if (strcmp(CertChain->CertIndex[index].Subject,
+               SubjectName) == 0) {
+
+            return index;
+        }
+    }
+
+    return CYREP_CERT_INDEX_INVALID;
+}
+
+size_t Cyrep_GetCertLength(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex
+    )
+{
+    const char *start;
+    const char *marker;
+    size_t bufferIndex;
+
+    bufferIndex = CertChain->CertIndex[CertIndex].CertBufferStartIndex;
+    start = &CertChain->CertBuffer[bufferIndex];
+
+    marker = strstr(start, END_CERT_MARKER);
+    if (!marker)
+        return 0;
+
+    return (marker - start) + sizeof(END_CERT_MARKER) - 1;
+}
+
+/*
+ * Get the length of this cert plus all it's parent certs.
+ */
+size_t Cyrep_GetCertAndIssuersLength(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex
+    )
+{
+    size_t index = CertIndex;
+    size_t length = 0;
+
+    while (index != CYREP_CERT_INDEX_INVALID) {
+        length += Cyrep_GetCertLength(CertChain, index);
+
+        if (index == CertChain->CertIndex[index].IssuerIndex) {
+            /* self-signed cert */
+            break;
+        }
+        index = CertChain->CertIndex[index].IssuerIndex;
+    }
+
+    /* length does not include space for null terminator! */
+    return length;
+}
+
+/*
+ * Copy the cert at CertIndex and all of it's parent certs to a
+ * null-terminated buffer
+ */
+bool Cyrep_GetCertAndIssuers(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex,
+    char *Buffer,
+    size_t BufferSize
+    )
+{
+    size_t index = CertIndex;
+    size_t length = 0;
+    size_t charsCopied = 0;
+    const CyrepCertIndexEntry *entry;
+
+    while (index != CYREP_CERT_INDEX_INVALID) {
+        entry = &CertChain->CertIndex[index];
+        length = Cyrep_GetCertLength(CertChain, index);
+        if ((charsCopied + length + 1) > BufferSize) {
+            return false;
+        }
+
+        strncpy(
+            Buffer + charsCopied,
+            &CertChain->CertBuffer[entry->CertBufferStartIndex],
+            length);
+
+        charsCopied += length;
+
+        if (index == entry->IssuerIndex) {
+            /* self-signed cert */
+            break;
+        }
+        index = entry->IssuerIndex;
+    }
+
+    Buffer[charsCopied] = '\0';
+    return true;
+}
+
 void Cyrep_SecureClearMemory(void *Mem, size_t Size)
 {
     volatile char *vMem;
@@ -490,4 +760,3 @@ void Cyrep_SecureClearMemory(void *Mem, size_t Size)
         Size--;
     }
 }
-

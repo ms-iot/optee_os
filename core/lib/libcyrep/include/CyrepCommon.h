@@ -31,11 +31,24 @@ typedef struct CyrepDigest {
 	uint8_t digest[RIOT_DIGEST_LENGTH];
 } CyrepDigest;
 
+#define CYREP_CERT_CHAIN_MAGIC 0x50525943 /* 'PRYC' */
+#define CYREP_CERT_CHAIN_VERSION 1
+#define CYREP_CERT_INDEX_INVALID ((size_t)-1)
+
 typedef struct {
-    RIOT_ECC_PUBLIC DeviceIDPub;
-    uint32_t        PathLenRemaining;
-    size_t          CertBufferSize;
-    char            CertBuffer[1];
+    size_t          CertBufferStartIndex;
+    size_t          IssuerIndex;
+    char            Subject[64];
+} CyrepCertIndexEntry;
+
+typedef struct {
+    uint32_t            Magic;
+    uint32_t            Version;
+    RIOT_ECC_PUBLIC     DeviceIDPub;
+    uint32_t            PathLenRemaining;
+    CyrepCertIndexEntry CertIndex[8];
+    size_t              CertBufferSize;
+    char                CertBuffer[1];
 } CyrepCertChain;
 
 typedef struct {
@@ -47,6 +60,12 @@ bool Cyrep_InitCertChain(
     uint32_t InitialPathLen,
     CyrepCertChain *CertChain,
     size_t CertChainSize
+    );
+
+bool Cyrep_AppendPem(
+    DERBuilderContext *DerContext,
+    uint32_t Type,
+    CyrepCertChain *CertChain
     );
 
 bool Cyrep_AppendRootAndDeviceCerts(
@@ -61,7 +80,7 @@ bool Cyrep_MeasureImageAndAppendCert(
     const CyrepKeyPair *IssuerKeyPair,
     const void *SeedData,
     size_t SeedDataSize,
-	const CyrepDigest *ImageDigest,
+    const CyrepDigest *ImageDigest,
     const char *ImageSubjectName,
     const char *IssuerName,
     CyrepCertChain *CertChain,
@@ -74,6 +93,51 @@ bool Cyrep_MeasureImageAndAppendCert(
 void Cyrep_CapturePrivateKey(
     CyrepKeyPair *Dest,
     CyrepKeyPair *Source
+    );
+
+/*
+ * Returns true if the magic number and version match this version
+ * of the Cyrep library, false otherwise.
+ */
+bool Cyrep_ValidateCertChainVersion(
+    const CyrepCertChain *CertChain
+    );
+
+/*
+ * Returns the index of the cert with the given subject name, or
+ * CYREP_CERT_INDEX_INVALID if not found.
+ */
+size_t Cyrep_FindCertBySubjectName(
+    const CyrepCertChain *CertChain,
+    const char *SubjectName
+    );
+
+/*
+ * Returns the length of the PEM certificate string of the given cert.
+ */
+size_t Cyrep_GetCertLength(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex
+    );
+
+/*
+ * Gets the total length of the PEM certificate strings of the given cert
+ * and all it's issuers.
+ */
+size_t Cyrep_GetCertAndIssuersLength(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex
+    );
+
+/*
+ * Copy the PEM certificate strings of the given cert and all it's issuers
+ * up to the root to the supplied buffer.
+ */
+bool Cyrep_GetCertAndIssuers(
+    const CyrepCertChain *CertChain,
+    size_t CertIndex,
+    char *Buffer,
+    size_t BufferSize
     );
 
 /*

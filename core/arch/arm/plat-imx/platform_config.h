@@ -44,14 +44,7 @@
 #error "LPAE not supported for now"
 #endif
 
-
-#define CFG_TEE_CORE_NB_CORE		1
-
-#define DDR_PHYS_START			DRAM0_BASE
-#define DDR_SIZE			DRAM0_SIZE
-
-#define CFG_DDR_START			DDR_PHYS_START
-#define CFG_DDR_SIZE			DDR_SIZE
+#define CFG_TEE_CORE_NB_CORE           1
 
 /* Full GlobalPlatform test suite requires CFG_SHMEM_SIZE to be at least 2MB */
 #define CFG_SHMEM_START			(TZDRAM_BASE - 0x100000)
@@ -114,61 +107,32 @@
 
 #endif /* #if defined(CFG_CONSOLE_UART) */
 
-/* Board specific RAM size */
-#if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6qhmbedge)
-#define DRAM0_SIZE			0x40000000
-#endif
-#if defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
-        defined(PLATFORM_FLAVOR_mx6dlhmbedge)
-#define DRAM0_SIZE                      0x20000000
-#endif
-#if defined(PLATFORM_FLAVOR_mx6shmbedge)
-#define DRAM0_SIZE                      0x10000000
-#endif
-
-/* Core number depends of SoC version. */
-#if defined(CFG_MX6Q)
+/* This is OK even if SOC has fewer than 4 cores */
 #define CFG_TEE_CORE_NB_CORE		4
-#endif
-#if defined(CFG_MX6D) || defined(CFG_MX6DL)
-#define CFG_TEE_CORE_NB_CORE		2
-#endif
-#if defined(CFG_MX6S)
-#define CFG_TEE_CORE_NB_CORE		1
-#endif
 
 /* Common RAM and cache controller configuration */
 #define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
-
-#define DDR_PHYS_START			DRAM0_BASE
-#define DDR_SIZE			DRAM0_SIZE
-
-#define CFG_DDR_START			DDR_PHYS_START
-#define CFG_DDR_SIZE			DDR_SIZE
 
 /*
  * PL310 TAG RAM Control Register
  *
  * bit[10:8]:1 - 2 cycle of write accesses latency
- * bit[6:4]:1 - 2 cycle of read accesses latency
- * bit[2:0]:1 - 2 cycle of setup latency
+ * bit[6:4]:3 - 4 cycle of read accesses latency
+ * bit[2:0]:2 - 3 cycle of setup latency
  */
 #ifndef PL310_TAG_RAM_CTRL_INIT
-#define PL310_TAG_RAM_CTRL_INIT		0x00000111
+#define PL310_TAG_RAM_CTRL_INIT		0x00000132
 #endif
 
 /*
  * PL310 DATA RAM Control Register
  *
- * bit[10:8]:2 - 3 cycle of write accesses latency
- * bit[6:4]:2 - 3 cycle of read accesses latency
+ * bit[10:8]:1 - 2 cycle of write accesses latency
+ * bit[6:4]:3 - 4 cycle of read accesses latency
  * bit[2:0]:2 - 3 cycle of setup latency
  */
 #ifndef PL310_DATA_RAM_CTRL_INIT
-#define PL310_DATA_RAM_CTRL_INIT	0x00000222
+#define PL310_DATA_RAM_CTRL_INIT	0x00000132
 #endif
 
 /*

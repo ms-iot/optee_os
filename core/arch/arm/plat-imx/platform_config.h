@@ -143,22 +143,22 @@
  * PL310 TAG RAM Control Register
  *
  * bit[10:8]:1 - 2 cycle of write accesses latency
- * bit[6:4]:1 - 2 cycle of read accesses latency
- * bit[2:0]:1 - 2 cycle of setup latency
+ * bit[6:4]:3 - 4 cycle of read accesses latency
+ * bit[2:0]:2 - 3 cycle of setup latency
  */
 #ifndef PL310_TAG_RAM_CTRL_INIT
-#define PL310_TAG_RAM_CTRL_INIT		0x00000111
+#define PL310_TAG_RAM_CTRL_INIT		0x00000132
 #endif
 
 /*
  * PL310 DATA RAM Control Register
  *
- * bit[10:8]:2 - 3 cycle of write accesses latency
- * bit[6:4]:2 - 3 cycle of read accesses latency
+ * bit[10:8]:1 - 2 cycle of write accesses latency
+ * bit[6:4]:3 - 4 cycle of read accesses latency
  * bit[2:0]:2 - 3 cycle of setup latency
  */
 #ifndef PL310_DATA_RAM_CTRL_INIT
-#define PL310_DATA_RAM_CTRL_INIT	0x00000222
+#define PL310_DATA_RAM_CTRL_INIT	0x00000132
 #endif
 
 /*

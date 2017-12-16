@@ -7,9 +7,7 @@
 
 #include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
-#include <drivers/imx_clock.h>
 #include <drivers/imx_gpio.h>
-#include <drivers/imx_iomux.h>
 #include <drivers/imx_spi.h>
 #include <assert.h>
 #include <io.h>
@@ -297,13 +295,6 @@ static void mxc_spi_configure(struct spi_chip *chip)
 
     mxc_gpio_init(&spiData->gpioOps);
     
-    success = enable_cspi_clk(spiData->bus) &&
-        imx_iomux_configure_spi(spiData->bus, &gpioPort, &gpioPin);
-
-    if (!success) {
-        goto done;
-    }
-
     assert(gpioPort < IMX_GPIO_PORTS);
     assert(gpioPin < IMX_GPIO_REGISTER_BITS);
     spiData->gpio = (gpioPort * IMX_GPIO_REGISTER_BITS) + gpioPin;

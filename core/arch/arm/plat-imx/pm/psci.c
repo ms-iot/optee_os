@@ -54,6 +54,9 @@ int psci_features(uint32_t psci_fid)
     case PSCI_CPU_ON:
 		return 0;
 #endif
+    case PSCI_SYSTEM_OFF:
+    case PSCI_SYSTEM_RESET:
+		return 0;
 
     default:
 		return PSCI_RET_NOT_SUPPORTED;
@@ -111,6 +114,7 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 
 	return PSCI_RET_SUCCESS;
 }
+
 
 int psci_cpu_off(void)
 {
@@ -231,5 +235,24 @@ int psci_cpu_suspend(uint32_t power_state,
 void psci_system_reset(void)
 {
 	imx_wdog_restart();
+}
+
+void __attribute__((noreturn)) psci_system_off(void)
+{
+	vaddr_t snvs = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
+	uint32_t val;
+
+	/* Reset power glitch detector */
+	write32(SNVS_LPPGDR_INIT, snvs + SNVS_LPPGDR);
+	write32(SNVS_LPSR_PGD, snvs + SNVS_LPSR);
+
+	/* Set dumb power manager mode to 1 and turn off power */
+	val = read32(snvs + SNVS_LPCR);
+	val |= SNVS_LPCR_DP_EN;
+	val |= SNVS_LPCR_TOP;
+	write32(val, snvs + SNVS_LPCR);
+
+	/* Wait for the end */
+	for (;;) wfi();
 }
 

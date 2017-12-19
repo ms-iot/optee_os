@@ -397,6 +397,11 @@ static inline void wfe(void)
 	asm volatile ("wfe");
 }
 
+static inline void wfi(void)
+{
+	asm volatile ("wfi");
+}
+
 /* Address translate privileged write translation (current state secure PL1) */
 static inline void write_ats1cpw(uint32_t va)
 {

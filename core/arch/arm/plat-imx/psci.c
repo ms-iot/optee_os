@@ -50,6 +50,8 @@ int psci_features(uint32_t psci_fid)
 {
     switch (psci_fid) {
     case PSCI_CPU_ON:
+    case PSCI_SYSTEM_OFF:
+    case PSCI_SYSTEM_RESET:
 		return 0;
 
     default:
@@ -104,6 +106,54 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 	write32(val, va + SRC_SCR);
 
 	return PSCI_RET_SUCCESS;
+}
+
+void __attribute__((noreturn)) psci_system_off(void)
+{
+	vaddr_t snvs = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
+	uint32_t val;
+
+	/* Reset power glitch detector */
+	write32(SNVS_LPPGDR_INIT, snvs + SNVS_LPPGDR);
+	write32(SNVS_LPSR_PGD, snvs + SNVS_LPSR);
+
+	/* Set dumb power manager mode to 1 and turn off power */
+	val = read32(snvs + SNVS_LPCR);
+	val |= SNVS_LPCR_DP_EN;
+	val |= SNVS_LPCR_TOP;
+	write32(val, snvs + SNVS_LPCR);
+
+	/* Wait for the end */
+	for (;;) wfi();
+}
+
+void __attribute__((noreturn)) psci_system_reset(void)
+{
+	vaddr_t src = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
+	vaddr_t wdog = core_mmu_get_va(WDOG_BASE, MEM_AREA_IO_SEC);
+	uint32_t val;
+	
+	/* Ensure watchdog is not masked */
+	val = read32(src + SRC_SCR);
+	val &= ~SRC_SCR_WARM_RESET_ENABLE;
+	val &= ~SRC_SCR_MASK_WDOG_RST;
+	val |= SRC_SCR_WDOG_NOTMASKED;
+	write32(val, src + SRC_SCR);
+
+	/* Enable watchdog timer */
+	val = WDOG_WCR_WDE |
+	      WDOG_WCR_WDT |
+	      WDOG_WCR_SRS |
+	      WDOG_WCR_WDA;
+
+	write16(val, wdog + WDOG1_WCR);
+
+	/* Watchdog timer feed sequence */
+	write16(WDOG_WSR_FEED1, wdog + WDOG1_WSR);
+	write16(WDOG_WSR_FEED2, wdog + WDOG1_WSR);
+
+	/* Wait for the end */
+	for (;;) wfi();
 }
 
 int psci_cpu_off(void)

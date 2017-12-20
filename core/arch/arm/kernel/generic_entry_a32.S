@@ -282,7 +282,7 @@ KEEP_INIT _start
 	 * Use ANSI #define to trap source file line number for PL310 assertion
 	 */
 	.macro __inval_cache_vrange vbase, vend, line
-#ifdef CFG_PL310
+#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
 		assert_flat_mapped_range (\vbase), (\line)
 		bl	pl310_base
 		ldr	r1, =(\vbase)
@@ -296,7 +296,7 @@ KEEP_INIT _start
 	.endm
 
 	.macro __flush_cache_vrange vbase, vend, line
-#ifdef CFG_PL310
+#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
 		assert_flat_mapped_range (\vbase), (\line)
 		ldr	r0, =(\vbase)
 		ldr	r1, =(\vend)
@@ -422,7 +422,7 @@ shadow_stack_access_ok:
 	inval_cache_vrange(__text_start, __end)
 #endif
 
-#ifdef CFG_PL310
+#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
 	/* Enable PL310 if not yet enabled */
 	bl	pl310_base
 	bl	arm_cl2_enable
@@ -458,7 +458,7 @@ shadow_stack_access_ok:
 	flush_cpu_semaphores
 	wait_secondary
 
-#ifdef CFG_PL310_LOCKED
+#if defined(CFG_PL310_LOCKED) && !defined(CFG_SKIP_L2_INIT)
 	/* lock/invalidate all lines: pl310 behaves as if disable */
 	bl	pl310_base
 	bl	arm_cl2_lockallways

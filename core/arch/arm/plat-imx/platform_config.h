@@ -216,6 +216,12 @@
 #define PL310_POWER_CTRL_INIT		0x00000003
 
 /*
+ * Do not enable L2 during OPTEE initialization. Windows will invoke
+ * an SMC to turn on L2.
+ */
+#define CFG_SKIP_L2_INIT
+
+/*
  * SCU Invalidate Register
  *
  * Invalidate all registers

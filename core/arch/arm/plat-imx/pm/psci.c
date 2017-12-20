@@ -47,6 +47,8 @@
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
 
+#define CORE_IDX_L2CACHE                   0x00100000
+
 int psci_features(uint32_t psci_fid)
 {
     switch (psci_fid) {
@@ -68,8 +70,14 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		uint32_t context_id)
 {
 	uint32_t val;
-	vaddr_t va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
+	vaddr_t va;
 
+#ifdef CFG_PL310
+	if (core_idx == CORE_IDX_L2CACHE)
+		return l2cache_op(entry);
+#endif
+
+	va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 	if (!va)
 		EMSG("No SRC mapping\n");
 

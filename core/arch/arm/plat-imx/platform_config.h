@@ -93,8 +93,7 @@
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
 
-#if (defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-    defined(PLATFORM_FLAVOR_mx6qhmbedge) || \
+#if (defined(PLATFORM_FLAVOR_mx6qgeneric) || \
     defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
     defined(PLATFORM_FLAVOR_mx6dlhmbedge) || \
     defined(PLATFORM_FLAVOR_mx6shmbedge) )

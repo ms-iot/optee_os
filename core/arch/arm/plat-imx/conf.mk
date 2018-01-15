@@ -96,6 +96,7 @@ include core/arch/arm/cpu/cortex-a7.mk
 
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 CFG_BOOT_SECONDARY_REQUEST ?= y
+CFG_INIT_CNTVOFF ?= y
 endif
 
 ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)

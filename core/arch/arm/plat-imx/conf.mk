@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 PLATFORM_FLAVOR ?= mx6ulevk
 
 # Get SoC associated with the PLATFORM_FLAVOR

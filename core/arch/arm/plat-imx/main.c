@@ -170,7 +170,7 @@ static struct secure_area secure_areas[] = {
 
 static void allow_unsecure_readwrite_entire_memory(void)
 {
-	// Region 0 always includes the entire physical memory. 
+	// Region 0 always includes the entire physical memory.
 	tzc_configure_region(0, 0, TZC_ATTR_SP_ALL);
 }
 

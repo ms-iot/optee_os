@@ -139,7 +139,7 @@ void __attribute__((noreturn)) psci_system_reset(void)
 	vaddr_t src = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 	vaddr_t wdog = core_mmu_get_va(WDOG_BASE, MEM_AREA_IO_SEC);
 	uint32_t val;
-	
+
 	/* Ensure watchdog is not masked */
 	val = read32(src + SRC_SCR);
 	val &= ~SRC_SCR_WARM_RESET_ENABLE;

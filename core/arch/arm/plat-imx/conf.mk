@@ -105,6 +105,6 @@ ifeq ($(CFG_IMX_SPI),y)
 $(call force,CFG_IMX_IOMUX,y)
 $(call force,CFG_IMX_GPIO,y)
 $(call force,CFG_IMX_CLOCK,y)
-endif 
+endif
 
 ta-targets = ta_arm32

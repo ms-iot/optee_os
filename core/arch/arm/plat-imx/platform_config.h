@@ -183,7 +183,7 @@
  * - 16-way associciativity (bit16=1)
  * Platform fmavor specific way config (dual lite / solo):
  * - 32kb way size (bit19:17=3b010)
- * - no 16-way associciativity (bit16=0)
+ * - 16-way associciativity (bit16=1)
  * Store buffer device limitation enabled (bit11=1)
  * Cacheable accesses have high prio (bit10=0)
  * Full Line Zero (FLZ) disabled (bit0=0)
@@ -192,7 +192,7 @@
 #if defined(CFG_MX6Q) || defined(CFG_MX6D)
 #define PL310_AUX_CTRL_INIT		0x3C470800
 #else
-#define PL310_AUX_CTRL_INIT		0x3C440800
+#define PL310_AUX_CTRL_INIT		0x3C450800
 #endif
 #endif
 

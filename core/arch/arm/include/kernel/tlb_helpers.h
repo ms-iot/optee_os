@@ -47,6 +47,7 @@ static inline void tlbi_mva_allasid_nosync(vaddr_t va)
 #endif
 }
 #endif /*!ASM*/
+<<<<<<< HEAD
 #define DRAM0_BASE			0x10000000
 
 #if defined(CFG_MX6Q)
@@ -57,8 +58,5 @@ static inline void tlbi_mva_allasid_nosync(vaddr_t va)
 #endif
 
 #endif /* TLB_HELPERS_H */
-
-
-
 
 

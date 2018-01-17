@@ -46,6 +46,7 @@
 #include <sm/psci.h>
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
+#include "imx_pl310.h"
 
 #define CORE_IDX_L2CACHE                   0x00100000
 

@@ -123,9 +123,9 @@ enum pll_clocks {
 	PLL_ENET,	/* ENET PLL */
 };
 
-register_phys_mem(MEM_AREA_IO_SEC, CCM_BASE_ADDR, CORE_MMU_DEVICE_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, CCM_BASE, CORE_MMU_DEVICE_SIZE);
 
-struct mxc_ccm_reg *imx_ccm = (struct mxc_ccm_reg *)CCM_BASE_ADDR;
+struct mxc_ccm_reg *imx_ccm = (struct mxc_ccm_reg *)CCM_BASE;
 
 static unsigned int decode_pll(enum pll_clocks pll, unsigned int infreq)
 {
@@ -171,7 +171,9 @@ unsigned int get_cspi_clk(void)
 
 bool enable_cspi_clk(unsigned int spiBus)
 {
-    vaddr_t va;
+    uint32_t val;
+    struct mxc_ccm_reg *ccm = (struct mxc_ccm_reg *)
+	phys_to_virt(CCM_BASE, MEM_AREA_IO_SEC);
 
     /* Just ECSPI2 is currently supported */
     if (spiBus != 1) {
@@ -179,9 +181,10 @@ bool enable_cspi_clk(unsigned int spiBus)
         return false;
     }
 
-    va = (vaddr_t)phys_to_virt(IMX_CCM_CCGR1_BASE_ADDR,  MEM_AREA_IO_SEC);
-    FMSG("Enabling ECSPI2 clock @ %#x", (uint32_t)va);
-    write32(read32(va) | IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED, va);
+    FMSG("Enabling ECSPI2 clock");
+    val = read32((vaddr_t)&ccm->CCGR1);
+    val |=  IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED;
+    write32(val, (vaddr_t)&ccm->CCGR1);
 
     return true;
 }

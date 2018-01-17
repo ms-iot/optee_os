@@ -2,7 +2,7 @@ PLATFORM_FLAVOR ?= mx6ulevk
 
 # Get SoC associated with the PLATFORM_FLAVOR
 mx6ul-flavorlist = mx6ulevk
-mx6q-flavorlist = mx6qsabrelite mx6qgeneric
+mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
 mx6d-flavorlist = mx6dhmbedge
 mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
 mx6s-flavorlist = mx6shmbedge
@@ -72,6 +72,13 @@ $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 //CFG_BOOT_SECONDARY_REQUEST ?= y
 endif
 
+ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+
+# In the default configuration: 
+# - UART3 is used for OPTEE console
+# - UART1 is used for Windows kernel debugging
+CFG_CONSOLE_UART ?= UART1_BASE
+
 ifeq ($(CFG_TA_SPI),y)
 $(call force,CFG_SPI,y)
 endif
@@ -85,5 +92,7 @@ $(call force,CFG_IMX_IOMUX,y)
 $(call force,CFG_IMX_GPIO,y)
 $(call force,CFG_IMX_CLOCK,y)
 endif 
+
+endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 
 ta-targets = ta_arm32

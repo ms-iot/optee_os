@@ -28,14 +28,15 @@
 
 #include <arm.h>
 #include <assert.h>
+#include <kernel/cache_helpers.h>
 #include <kernel/generic_boot.h>
 #include <kernel/linker.h>
 #include <kernel/panic.h>
+#include <kernel/tlb_helpers.h>
 #include <kernel/tee_l2cc_mutex.h>
 #include <kernel/tee_misc.h>
 #include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
-#include <kernel/tz_ssvce.h>
 #include <kernel/tz_ssvce_pl310.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
@@ -156,7 +157,7 @@ static struct tee_mmap_region *find_map_by_type(enum teecore_memtypes type)
 {
 	struct tee_mmap_region *map;
 
-	for (map = static_memory_map; map->type != MEM_AREA_NOTYPE; map++)
+	for (map = static_memory_map; !core_mmap_is_end_of_table(map); map++)
 		if (map->type == type)
 			return map;
 	return NULL;
@@ -167,7 +168,7 @@ static struct tee_mmap_region *find_map_by_type_and_pa(
 {
 	struct tee_mmap_region *map;
 
-	for (map = static_memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+	for (map = static_memory_map; !core_mmap_is_end_of_table(map); map++) {
 		if (map->type != type)
 			continue;
 		if (pa_is_in_map(map, pa))
@@ -181,7 +182,7 @@ static struct tee_mmap_region *find_map_by_va(void *va)
 	struct tee_mmap_region *map = static_memory_map;
 	unsigned long a = (unsigned long)va;
 
-	while (map->type != MEM_AREA_NOTYPE) {
+	while (!core_mmap_is_end_of_table(map)) {
 		if ((a >= map->va) && (a <= (map->va - 1 + map->size)))
 			return map;
 		map++;
@@ -193,7 +194,7 @@ static struct tee_mmap_region *find_map_by_pa(unsigned long pa)
 {
 	struct tee_mmap_region *map = static_memory_map;
 
-	while (map->type != MEM_AREA_NOTYPE) {
+	while (!core_mmap_is_end_of_table(map)) {
 		if ((pa >= map->pa) && (pa < (map->pa + map->size)))
 			return map;
 		map++;
@@ -215,15 +216,165 @@ static bool pbuf_is_special_mem(paddr_t pbuf, size_t len,
 	return false;
 }
 
+#ifdef CFG_DT
+static void carve_out_phys_mem(struct core_mmu_phys_mem **mem, size_t *nelems,
+			       paddr_t pa, size_t size)
+{
+	struct core_mmu_phys_mem *m = *mem;
+	size_t n = 0;
+
+	while (true) {
+		if (n >= *nelems) {
+			DMSG("No need to carve out %#" PRIxPA " size %#zx",
+			     pa, size);
+			return;
+		}
+		if (core_is_buffer_inside(pa, size, m[n].addr, m[n].size))
+			break;
+		if (!core_is_buffer_outside(pa, size, m[n].addr, m[n].size))
+			panic();
+		n++;
+	}
+
+	if (pa == m[n].addr && size == m[n].size) {
+		/* Remove this entry */
+		(*nelems)--;
+		memmove(m + n, m + n + 1, sizeof(*m) * (*nelems - n));
+		m = realloc(m, sizeof(*m) * *nelems);
+		if (!m)
+			panic();
+		*mem = m;
+	} else if (pa == m[n].addr) {
+		m[n].addr += size;
+	} else if ((pa + size) == (m[n].addr + m[n].size)) {
+		m[n].size -= size;
+	} else {
+		/* Need to split the memory entry */
+		m = realloc(m, sizeof(*m) * (*nelems + 1));
+		if (!m)
+			panic();
+		*mem = m;
+		memmove(m + n + 1, m + n, sizeof(*m) * (*nelems - n));
+		(*nelems)++;
+		m[n].size = pa - m[n].addr;
+		m[n + 1].size -= size + m[n].size;
+		m[n + 1].addr = pa + size;
+	}
+}
+
+static void check_phys_mem_is_outside(struct core_mmu_phys_mem *start,
+				      size_t nelems,
+				      struct tee_mmap_region *map)
+{
+	size_t n;
+
+	for (n = 0; n < nelems; n++) {
+		if (!core_is_buffer_outside(start[n].addr, start[n].size,
+					    map->pa, map->size)) {
+			EMSG(
+"Non-sec mem (%#" PRIxPA ":%#zx) overlaps map (type %d %#" PRIxPA ":%#zx)",
+			     start[n].addr, start[n].size,
+			     map->type, map->pa, map->size);
+			panic();
+		}
+	}
+}
+
+static const struct core_mmu_phys_mem *discovered_nsec_ddr_start;
+static size_t discovered_nsec_ddr_nelems;
+
+static int cmp_pmem_by_addr(const void *a, const void *b)
+{
+	return ((const struct core_mmu_phys_mem *)a)->addr -
+	       ((const struct core_mmu_phys_mem *)b)->addr;
+}
+
+void core_mmu_set_discovered_nsec_ddr(struct core_mmu_phys_mem *start,
+				      size_t nelems)
+{
+	struct core_mmu_phys_mem *m = start;
+	size_t num_elems = nelems;
+	struct tee_mmap_region *map = static_memory_map;
+	const struct core_mmu_phys_mem __maybe_unused *pmem;
+
+	assert(!discovered_nsec_ddr_start);
+	assert(m && num_elems);
+
+	qsort(m, num_elems, sizeof(*m), cmp_pmem_by_addr);
+
+	/*
+	 * Non-secure shared memory and also secure data
+	 * path memory are supposed to reside inside
+	 * non-secure memory. Since NSEC_SHM and SDP_MEM
+	 * are used for a specific purpose make holes for
+	 * those memory in the normal non-secure memory.
+	 *
+	 * This has to be done since for instance QEMU
+	 * isn't aware of which memory range in the
+	 * non-secure memory is used for NSEC_SHM.
+	 */
+
+#ifdef CFG_SECURE_DATA_PATH
+	for (pmem = &__start_phys_sdp_mem_section;
+	     pmem < &__end_phys_sdp_mem_section; pmem++)
+		carve_out_phys_mem(&m, &num_elems, pmem->addr, pmem->size);
+#endif
+
+	for (map = static_memory_map; core_mmap_is_end_of_table(map); map++) {
+		if (map->type == MEM_AREA_NSEC_SHM)
+			carve_out_phys_mem(&m, &num_elems, map->pa, map->size);
+		else
+			check_phys_mem_is_outside(m, num_elems, map);
+	}
+
+	discovered_nsec_ddr_start = m;
+	discovered_nsec_ddr_nelems = num_elems;
+}
+
+static bool get_discovered_nsec_ddr(const struct core_mmu_phys_mem **start,
+				    const struct core_mmu_phys_mem **end)
+{
+	if (!discovered_nsec_ddr_start)
+		return false;
+
+	*start = discovered_nsec_ddr_start;
+	*end = discovered_nsec_ddr_start + discovered_nsec_ddr_nelems;
+
+	return true;
+}
+#else /*!CFG_DT*/
+static bool
+get_discovered_nsec_ddr(const struct core_mmu_phys_mem **start __unused,
+			const struct core_mmu_phys_mem **end __unused)
+{
+	return false;
+}
+#endif /*!CFG_DT*/
+
 static bool pbuf_is_nsec_ddr(paddr_t pbuf, size_t len)
 {
-	return pbuf_is_special_mem(pbuf, len, &__start_phys_nsec_ddr_section,
-				    &__end_phys_nsec_ddr_section);
+	const struct core_mmu_phys_mem *start;
+	const struct core_mmu_phys_mem *end;
+
+	if (!get_discovered_nsec_ddr(&start, &end)) {
+		start = &__start_phys_nsec_ddr_section;
+		end = &__end_phys_nsec_ddr_section;
+	}
+
+	return pbuf_is_special_mem(pbuf, len, start, end);
 }
 
 bool core_mmu_nsec_ddr_is_defined(void)
 {
-	return &__start_phys_nsec_ddr_section != &__end_phys_nsec_ddr_section;
+	const struct core_mmu_phys_mem *start;
+	const struct core_mmu_phys_mem *end;
+
+	if (!get_discovered_nsec_ddr(&start, &end)) {
+		start = &__start_phys_nsec_ddr_section;
+		end = &__end_phys_nsec_ddr_section;
+	}
+
+	return start != end;
 }
 
 #define MSG_MEM_INSTERSECT(pa1, sz1, pa2, sz2) \
@@ -308,7 +459,7 @@ static void verify_special_mem_areas(struct tee_mmap_region *mem_map,
 	size_t n;
 
 	if (start == end) {
-		IMSG("No %s memory area defined", area_name);
+		DMSG("No %s memory area defined", area_name);
 		return;
 	}
 
@@ -331,9 +482,17 @@ static void verify_special_mem_areas(struct tee_mmap_region *mem_map,
 	/*
 	 * Check memories do not intersect any mapped memory.
 	 * This is called before reserved VA space is loaded in mem_map.
+	 *
+	 * Only exception is with MEM_AREA_RAM_NSEC and MEM_AREA_NSEC_SHM,
+	 * which may overlap since they are used for the same purpose
+	 * except that MEM_AREA_NSEC_SHM is always mapped and
+	 * MEM_AREA_RAM_NSEC only uses a dynamic mapping.
 	 */
 	for (mem = start; mem < end; mem++) {
 		for (mmap = mem_map, n = 0; n < len; mmap++, n++) {
+			if (mem->type == MEM_AREA_RAM_NSEC &&
+			    mmap->type == MEM_AREA_NSEC_SHM)
+				continue;
 			if (core_is_buffer_intersect(mem->addr, mem->size,
 						     mmap->pa, mmap->size)) {
 				MSG_MEM_INSTERSECT(mem->addr, mem->size,
@@ -519,7 +678,7 @@ static void dump_mmap_table(struct tee_mmap_region *memory_map)
 {
 	struct tee_mmap_region *map;
 
-	for (map = memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+	for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 		vaddr_t __maybe_unused vstart;
 
 		vstart = map->va + ((vaddr_t)map->pa & (map->region_size - 1));
@@ -546,6 +705,7 @@ static void init_mem_map(struct tee_mmap_region *memory_map, size_t num_elems)
 	     mem < &__end_phys_mem_map_section; mem++) {
 		struct core_mmu_phys_mem m = *mem;
 
+		/* Discard null size entries */
 		if (!m.size)
 			continue;
 
@@ -578,13 +738,13 @@ static void init_mem_map(struct tee_mmap_region *memory_map, size_t num_elems)
 	add_va_space(memory_map, num_elems, MEM_AREA_SHM_VASPACE,
 		     RES_VASPACE_SIZE, &last);
 
-	memory_map[last].type = MEM_AREA_NOTYPE;
+	memory_map[last].type = MEM_AREA_END;
 
 	/*
 	 * Assign region sizes, note that MEM_AREA_TEE_RAM always uses
 	 * SMALL_PAGE_SIZE if paging is enabled.
 	 */
-	for (map = memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+	for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 		paddr_t mask = map->pa | map->size;
 
 		if (!(mask & CORE_MMU_PGDIR_MASK))
@@ -627,7 +787,7 @@ static void init_mem_map(struct tee_mmap_region *memory_map, size_t num_elems)
 	 */
 	va = (vaddr_t)~0UL;
 	end = 0;
-	for (map = memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+	for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 		if (!map_is_flat_mapped(map))
 			continue;
 
@@ -641,7 +801,7 @@ static void init_mem_map(struct tee_mmap_region *memory_map, size_t num_elems)
 
 	if (core_mmu_place_tee_ram_at_top(va)) {
 		/* Map non-flat mapped addresses below flat mapped addresses */
-		for (map = memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 			if (map_is_flat_mapped(map))
 				continue;
 
@@ -663,7 +823,7 @@ static void init_mem_map(struct tee_mmap_region *memory_map, size_t num_elems)
 	} else {
 		/* Map non-flat mapped addresses above flat mapped addresses */
 		va = ROUNDUP(va + CFG_TEE_RAM_VA_SIZE, CORE_MMU_PGDIR_SIZE);
-		for (map = memory_map; map->type != MEM_AREA_NOTYPE; map++) {
+		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 			if (map_is_flat_mapped(map))
 				continue;
 
@@ -712,7 +872,7 @@ void core_init_mmu_map(void)
 		init_mem_map(static_memory_map, ARRAY_SIZE(static_memory_map));
 
 	map = static_memory_map;
-	while (map->type != MEM_AREA_NOTYPE) {
+	while (!core_mmap_is_end_of_table(map)) {
 		switch (map->type) {
 		case MEM_AREA_TEE_RAM:
 		case MEM_AREA_TEE_RAM_RX:
@@ -871,64 +1031,79 @@ enum teecore_memtypes core_mmu_get_type_by_pa(paddr_t pa)
 	struct tee_mmap_region *map = find_map_by_pa(pa);
 
 	if (!map)
-		return MEM_AREA_NOTYPE;
+		return MEM_AREA_MAXTYPE;
 	return map->type;
 }
 
-int core_tlb_maintenance(int op, unsigned int a)
+int __deprecated core_tlb_maintenance(int op, unsigned long a)
 {
 	switch (op) {
 	case TLBINV_UNIFIEDTLB:
-		secure_mmu_unifiedtlbinvall();
+		tlbi_all();
 		break;
 	case TLBINV_CURRENT_ASID:
-		secure_mmu_unifiedtlbinv_curasid();
+#ifdef ARM32
+		tlbi_asid(read_contextidr());
+#endif
+#ifdef ARM64
+		tlbi_asid(read_contextidr_el1());
+#endif
 		break;
 	case TLBINV_BY_ASID:
-		secure_mmu_unifiedtlbinv_byasid(a);
+		tlbi_asid(a);
 		break;
 	case TLBINV_BY_MVA:
-		EMSG("TLB_INV_SECURE_MVA is not yet supported!");
-		while (1)
-			;
-		secure_mmu_unifiedtlbinvbymva(a);
-		break;
+		panic();
 	default:
 		return 1;
 	}
 	return 0;
 }
 
+void tlbi_mva_range(vaddr_t va, size_t size, size_t granule)
+{
+	size_t sz = size;
+
+	assert(granule == CORE_MMU_PGDIR_SIZE || granule == SMALL_PAGE_SIZE);
+
+	dsb_ishst();
+	while (sz) {
+		tlbi_mva_allasid_nosync(va);
+		if (sz < granule)
+			break;
+		sz -= granule;
+		va += granule;
+	}
+	dsb_ish();
+	isb();
+}
+
 TEE_Result cache_op_inner(enum cache_op op, void *va, size_t len)
 {
 	switch (op) {
 	case DCACHE_CLEAN:
-		arm_cl1_d_cleanbysetway();
+		dcache_op_all(DCACHE_OP_CLEAN);
 		break;
 	case DCACHE_AREA_CLEAN:
-		if (len)
-			arm_cl1_d_cleanbyva(va, (char *)va + len - 1);
+		dcache_clean_range(va, len);
 		break;
 	case DCACHE_INVALIDATE:
-		arm_cl1_d_invbysetway();
+		dcache_op_all(DCACHE_OP_INV);
 		break;
 	case DCACHE_AREA_INVALIDATE:
-		if (len)
-			arm_cl1_d_invbyva(va, (char *)va + len - 1);
+		dcache_inv_range(va, len);
 		break;
 	case ICACHE_INVALIDATE:
-		arm_cl1_i_inv_all();
+		icache_inv_all();
 		break;
 	case ICACHE_AREA_INVALIDATE:
-		if (len)
-			arm_cl1_i_inv(va, (char *)va + len - 1);
+		icache_inv_range(va, len);
 		break;
 	case DCACHE_CLEAN_INV:
-		arm_cl1_d_cleaninvbysetway();
+		dcache_op_all(DCACHE_OP_CLEAN_INV);
 		break;
 	case DCACHE_AREA_CLEAN_INV:
-		if (len)
-			arm_cl1_d_cleaninvbyva(va, (char *)va + len - 1);
+		dcache_cleaninv_range(va, len);
 		break;
 	default:
 		return TEE_ERROR_NOT_IMPLEMENTED;
@@ -1150,7 +1325,7 @@ void core_mmu_unmap_pages(vaddr_t vstart, size_t num_pages)
 		idx = core_mmu_va2idx(&tbl_info, vstart);
 		core_mmu_set_entry(&tbl_info, idx, 0, 0);
 	}
-	core_tlb_maintenance(TLBINV_UNIFIEDTLB, 0);
+	tlbi_all();
 }
 
 void core_mmu_populate_user_map(struct core_mmu_table_info *dir_info,
@@ -1229,14 +1404,14 @@ bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len)
 
 	/* Find end of the memory map */
 	n = 0;
-	while (static_memory_map[n].type != MEM_AREA_NOTYPE)
+	while (!core_mmap_is_end_of_table(static_memory_map + n))
 		n++;
 
 	if (n < (ARRAY_SIZE(static_memory_map) - 1)) {
 		/* There's room for another entry */
 		static_memory_map[n].va = map->va;
 		static_memory_map[n].size = l;
-		static_memory_map[n + 1].type = MEM_AREA_NOTYPE;
+		static_memory_map[n + 1].type = MEM_AREA_END;
 		map->va += l;
 		map->size -= l;
 		map = static_memory_map + n;

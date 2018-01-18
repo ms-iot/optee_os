@@ -381,13 +381,13 @@ static TEE_Result ree_fs_write_primitive(struct tee_file_handle *fh, size_t pos,
 	return out_of_place_write(fdp, pos, buf, len);
 }
 
-static TEE_Result ree_fs_open_primitive(bool create, const TEE_UUID *uuid,
+static TEE_Result ree_fs_open_primitive(bool create, uint8_t *hash,
+					const TEE_UUID *uuid,
 					struct tee_fs_dirfile_fileh *dfh,
 					struct tee_file_handle **fh)
 {
 	TEE_Result res;
 	struct tee_fs_fd *fdp;
-	uint8_t *hash = NULL;
 
 	fdp = calloc(1, sizeof(struct tee_fs_fd));
 	if (!fdp)
@@ -404,8 +404,6 @@ static TEE_Result ree_fs_open_primitive(bool create, const TEE_UUID *uuid,
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	if (dfh)
-		hash = dfh->hash;
 	res = tee_fs_htree_open(create, hash, uuid, &ree_fs_storage_ops,
 				fdp, &fdp->ht);
 out:
@@ -462,39 +460,110 @@ static const struct tee_fs_dirfile_operations ree_dirf_ops = {
 static struct tee_fs_dirfile_dirh *ree_fs_dirh;
 static size_t ree_fs_dirh_refcount;
 
-static TEE_Result get_dirh(struct tee_fs_dirfile_dirh **dirh)
-{
-	if (!ree_fs_dirh_refcount) {
-		TEE_Result res;
+#ifdef CFG_RPMB_FS
+static struct tee_file_handle *ree_fs_rpmb_fh;
 
-		assert(!ree_fs_dirh);
-		res = tee_fs_dirfile_open(&ree_dirf_ops, &ree_fs_dirh);
+static TEE_Result open_dirh(struct tee_fs_dirfile_dirh **dirh)
+{
+	TEE_Result res;
+	uint8_t hash[TEE_FS_HTREE_HASH_SIZE];
+	uint8_t *hashp = NULL;
+	const char fname[] = "dirfile.db.hash";
+
+	res = tee_rpmb_fs_raw_open(fname, false, &ree_fs_rpmb_fh);
+	if (!res) {
+		size_t l = sizeof(hash);
+
+		res = rpmb_fs_ops.read(ree_fs_rpmb_fh, 0, hash, &l);
 		if (res)
 			return res;
+		if (l == sizeof(hash))
+			hashp = hash;
+	} else if (res == TEE_ERROR_ITEM_NOT_FOUND) {
+		res = tee_rpmb_fs_raw_open(fname, true, &ree_fs_rpmb_fh);
 	}
-	assert(ree_fs_dirh);
+	if (res)
+		return res;
+
+	if (!tee_fs_dirfile_open(false, hashp, &ree_dirf_ops, dirh))
+		return TEE_SUCCESS;
+
+	res = tee_fs_dirfile_open(true, NULL, &ree_dirf_ops, dirh);
+	if (res)
+		rpmb_fs_ops.close(&ree_fs_rpmb_fh);
+	return res;
+}
+
+static TEE_Result commit_dirh_writes(struct tee_fs_dirfile_dirh *dirh)
+{
+	TEE_Result res;
+	uint8_t hash[TEE_FS_HTREE_HASH_SIZE];
+
+	res = tee_fs_dirfile_commit_writes(dirh, hash);
+	if (res)
+		return res;
+	return rpmb_fs_ops.write(ree_fs_rpmb_fh, 0, hash, sizeof(hash));
+}
+
+static void close_dirh(struct tee_fs_dirfile_dirh **dirh)
+{
+	tee_fs_dirfile_close(*dirh);
+	*dirh = NULL;
+	rpmb_fs_ops.close(&ree_fs_rpmb_fh);
+}
+
+#else /*!CFG_RPMB_FS*/
+static TEE_Result open_dirh(struct tee_fs_dirfile_dirh **dirh)
+{
+	if (!tee_fs_dirfile_open(false, NULL, &ree_dirf_ops, dirh))
+		return TEE_SUCCESS;
+	return tee_fs_dirfile_open(true, NULL, &ree_dirf_ops, dirh);
+}
+
+static TEE_Result commit_dirh_writes(struct tee_fs_dirfile_dirh *dirh)
+{
+	return tee_fs_dirfile_commit_writes(dirh, NULL);
+}
+
+static void close_dirh(struct tee_fs_dirfile_dirh **dirh)
+{
+	tee_fs_dirfile_close(*dirh);
+	*dirh = NULL;
+}
+#endif /*!CFG_RPMB_FS*/
+
+static TEE_Result get_dirh(struct tee_fs_dirfile_dirh **dirh)
+{
+	if (!ree_fs_dirh) {
+		TEE_Result res = open_dirh(&ree_fs_dirh);
+
+		if (res) {
+			*dirh = NULL;
+			return res;
+		}
+	}
 	ree_fs_dirh_refcount++;
+	assert(ree_fs_dirh);
+	assert(ree_fs_dirh_refcount);
 	*dirh = ree_fs_dirh;
 	return TEE_SUCCESS;
 }
 
-static void put_dirh_primitive(void)
+static void put_dirh_primitive(bool close)
 {
 	assert(ree_fs_dirh_refcount);
 	assert(ree_fs_dirh);
 
 	ree_fs_dirh_refcount--;
-	if (!ree_fs_dirh_refcount) {
-		tee_fs_dirfile_close(ree_fs_dirh);
-		ree_fs_dirh = NULL;
-	}
+	if (!ree_fs_dirh_refcount || close)
+		close_dirh(&ree_fs_dirh);
 }
 
-static void put_dirh(struct tee_fs_dirfile_dirh *dirh)
+static void put_dirh(struct tee_fs_dirfile_dirh *dirh, bool close)
 {
 	if (dirh) {
 		assert(dirh == ree_fs_dirh);
-		put_dirh_primitive();
+		put_dirh_primitive(close);
 	}
 }
 
@@ -516,7 +585,7 @@ static TEE_Result ree_fs_open(struct tee_pobj *po, size_t *size,
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	res = ree_fs_open_primitive(false, &po->uuid, &dfh, fh);
+	res = ree_fs_open_primitive(false, dfh.hash, &po->uuid, &dfh, fh);
 	if (res == TEE_ERROR_ITEM_NOT_FOUND) {
 		/*
 		 * If the object isn't found someone has tampered with it,
@@ -531,7 +600,7 @@ static TEE_Result ree_fs_open(struct tee_pobj *po, size_t *size,
 
 out:
 	if (res)
-		put_dirh(dirh);
+		put_dirh(dirh, false);
 	mutex_unlock(&ree_fs_mutex);
 
 	return res;
@@ -564,7 +633,7 @@ static TEE_Result set_name(struct tee_fs_dirfile_dirh *dirh,
 	if (res)
 		return res;
 
-	res = tee_fs_dirfile_commit_writes(dirh);
+	res = commit_dirh_writes(dirh);
 	if (res)
 		return res;
 
@@ -578,7 +647,7 @@ static void ree_fs_close(struct tee_file_handle **fh)
 {
 	if (*fh) {
 		mutex_lock(&ree_fs_mutex);
-		put_dirh_primitive();
+		put_dirh_primitive(false);
 		mutex_unlock(&ree_fs_mutex);
 
 		ree_fs_close_primitive(*fh);
@@ -609,7 +678,7 @@ static TEE_Result ree_fs_create(struct tee_pobj *po, bool overwrite,
 	if (res)
 		goto out;
 
-	res = ree_fs_open_primitive(true, &po->uuid, &dfh, fh);
+	res = ree_fs_open_primitive(true, dfh.hash, &po->uuid, &dfh, fh);
 	if (res)
 		goto out;
 
@@ -641,7 +710,7 @@ static TEE_Result ree_fs_create(struct tee_pobj *po, bool overwrite,
 	res = set_name(dirh, fdp, po, overwrite);
 out:
 	if (res) {
-		put_dirh(dirh);
+		put_dirh(dirh, true);
 		if (*fh) {
 			ree_fs_close_primitive(*fh);
 			*fh = NULL;
@@ -677,9 +746,9 @@ static TEE_Result ree_fs_write(struct tee_file_handle *fh, size_t pos,
 	res = tee_fs_dirfile_update_hash(dirh, &fdp->dfh);
 	if (res)
 		goto out;
-	res = tee_fs_dirfile_commit_writes(dirh);
+	res = commit_dirh_writes(dirh);
 out:
-	put_dirh(dirh);
+	put_dirh(dirh, res);
 	mutex_unlock(&ree_fs_mutex);
 
 	return res;
@@ -724,7 +793,7 @@ static TEE_Result ree_fs_rename(struct tee_pobj *old, struct tee_pobj *new,
 			goto out;
 	}
 
-	res = tee_fs_dirfile_commit_writes(dirh);
+	res = commit_dirh_writes(dirh);
 	if (res)
 		goto out;
 
@@ -732,7 +801,7 @@ static TEE_Result ree_fs_rename(struct tee_pobj *old, struct tee_pobj *new,
 		tee_fs_rpc_remove_dfh(OPTEE_MSG_RPC_CMD_FS, &remove_dfh);
 
 out:
-	put_dirh(dirh);
+	put_dirh(dirh, res);
 	mutex_unlock(&ree_fs_mutex);
 
 	return res;
@@ -759,7 +828,7 @@ static TEE_Result ree_fs_remove(struct tee_pobj *po)
 	if (res)
 		goto out;
 
-	res = tee_fs_dirfile_commit_writes(dirh);
+	res = commit_dirh_writes(dirh);
 	if (res)
 		goto out;
 
@@ -768,7 +837,7 @@ static TEE_Result ree_fs_remove(struct tee_pobj *po)
 	assert(tee_fs_dirfile_find(dirh, &po->uuid, po->obj_id, po->obj_id_len,
 				   &dfh));
 out:
-	put_dirh(dirh);
+	put_dirh(dirh, res);
 	mutex_unlock(&ree_fs_mutex);
 
 	return res;
@@ -797,7 +866,7 @@ static TEE_Result ree_fs_truncate(struct tee_file_handle *fh, size_t len)
 	res = tee_fs_dirfile_update_hash(dirh, &fdp->dfh);
 
 out:
-	put_dirh(dirh);
+	put_dirh(dirh, res);
 	mutex_unlock(&ree_fs_mutex);
 
 	return res;
@@ -833,7 +902,7 @@ out:
 		*dir = d;
 	} else {
 		if (d)
-			put_dirh(d->dirh);
+			put_dirh(d->dirh, false);
 		free(d);
 	}
 	mutex_unlock(&ree_fs_mutex);
@@ -846,7 +915,7 @@ static void ree_fs_closedir_rpc(struct tee_fs_dir *d)
 	if (d) {
 		mutex_lock(&ree_fs_mutex);
 
-		put_dirh(d->dirh);
+		put_dirh(d->dirh, false);
 		free(d);
 
 		mutex_unlock(&ree_fs_mutex);

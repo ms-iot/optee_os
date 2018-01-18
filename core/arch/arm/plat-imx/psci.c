@@ -29,7 +29,10 @@
 #include <console.h>
 #include <drivers/imx_uart.h>
 #include <io.h>
+#include <imx.h>
+#include <imx-regs.h>
 #include <kernel/generic_boot.h>
+#include <kernel/misc.h>
 #include <kernel/panic.h>
 #include <kernel/pm_stubs.h>
 #include <mm/core_mmu.h>
@@ -44,6 +47,7 @@
 
 #define CORE_IDX_L2CACHE                   0x00100000
 
+#ifdef CFG_BOOT_SECONDARY_REQUEST
 int psci_features(uint32_t psci_fid)
 {
     switch (psci_fid) {
@@ -83,6 +87,21 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		&ns_entry_contexts[core_idx],
 		sizeof(struct ns_entry_context));
 
+	if (soc_is_imx7ds()) {
+		write32((uint32_t)CFG_TEE_LOAD_ADDR,
+			va + SRC_GPR1_MX7 + core_idx * 8);
+
+		imx_gpcv2_set_core1_pup_by_software();
+
+		/* release secondary core */
+		val = read32(va + SRC_A7RCR1);
+		val |=  BIT32(SRC_A7RCR1_A7_CORE1_ENABLE_OFFSET +
+			      (core_idx - 1));
+		write32(val, va + SRC_A7RCR1);
+
+		return PSCI_RET_SUCCESS;
+	}
+
 	/* boot secondary cores from OP-TEE load address */
 	write32((uint32_t)CFG_TEE_LOAD_ADDR, va + SRC_GPR1 + core_idx * 8);
 
@@ -119,7 +138,7 @@ void __attribute__((noreturn)) psci_system_reset(void)
 	vaddr_t src = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 	vaddr_t wdog = core_mmu_get_va(WDOG_BASE, MEM_AREA_IO_SEC);
 	uint32_t val;
-	
+
 	/* Ensure watchdog is not masked */
 	val = read32(src + SRC_SCR);
 	val &= ~SRC_SCR_WARM_RESET_ENABLE;
@@ -142,4 +161,73 @@ void __attribute__((noreturn)) psci_system_reset(void)
 	/* Wait for the end */
 	for (;;) wfi();
 }
+
+int psci_cpu_off(void)
+{
+	uint32_t core_id;
+
+	core_id = get_core_pos();
+
+	DMSG("core_id: %" PRIu32, core_id);
+
+	psci_armv7_cpu_off();
+
+	imx_set_src_gpr(core_id, UINT32_MAX);
+
+	thread_mask_exceptions(THREAD_EXCP_ALL);
+
+	while (true)
+		wfi();
+
+	return PSCI_RET_INTERNAL_FAILURE;
+}
+
+int psci_affinity_info(uint32_t affinity,
+		       uint32_t lowest_affnity_level __unused)
+{
+	vaddr_t va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
+	vaddr_t gpr5 = core_mmu_get_va(IOMUXC_BASE, MEM_AREA_IO_SEC) +
+				       IOMUXC_GPR5_OFFSET;
+	uint32_t cpu, val;
+	bool wfi;
+
+	cpu = affinity;
+
+	if (soc_is_imx7d())
+		wfi = true;
+	else
+		wfi = read32(gpr5) & ARM_WFI_STAT_MASK(cpu);
+
+	if ((imx_get_src_gpr(cpu) == 0) || !wfi)
+		return PSCI_AFFINITY_LEVEL_ON;
+
+	DMSG("cpu: %" PRIu32 "GPR: %" PRIx32, cpu, imx_get_src_gpr(cpu));
+	/*
+	 * Wait secondary cpus ready to be killed
+	 * TODO: Change to non dead loop
+	 */
+	if (soc_is_imx7d()) {
+		while (read32(va + SRC_GPR1_MX7 + cpu * 8 + 4) != UINT_MAX)
+			;
+
+		val = read32(va + SRC_A7RCR1);
+		val &=  ~BIT32(SRC_A7RCR1_A7_CORE1_ENABLE_OFFSET + (cpu - 1));
+		write32(val, va + SRC_A7RCR1);
+	} else {
+		while (read32(va + SRC_GPR1 + cpu * 8 + 4) != UINT32_MAX)
+			;
+
+		/* Kill cpu */
+		val = read32(va + SRC_SCR);
+		val &= ~BIT32(SRC_SCR_CORE1_ENABLE_OFFSET + cpu - 1);
+		val |=  BIT32(SRC_SCR_CORE1_RST_OFFSET + cpu - 1);
+		write32(val, va + SRC_SCR);
+	}
+
+	/* Clean arg */
+	imx_set_src_gpr(cpu, 0);
+
+	return PSCI_AFFINITY_LEVEL_OFF;
+}
+#endif
 

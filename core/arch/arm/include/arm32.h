@@ -368,6 +368,16 @@ static inline void dsb(void)
 	asm volatile ("dsb");
 }
 
+static inline void dsb_ish(void)
+{
+	asm volatile ("dsb ish");
+}
+
+static inline void dsb_ishst(void)
+{
+	asm volatile ("dsb ishst");
+}
+
 static inline void dmb(void)
 {
 	asm volatile ("dmb");
@@ -381,11 +391,6 @@ static inline void sev(void)
 static inline void wfe(void)
 {
 	asm volatile ("wfe");
-}
-
-static inline void wfi(void)
-{
-	asm volatile ("wfi");
 }
 
 /* Address translate privileged write translation (current state secure PL1) */
@@ -426,6 +431,13 @@ static inline uint64_t read_par64(void)
 	return val;
 }
 #endif
+
+static inline void write_tlbimvaais(uint32_t mva)
+{
+	asm volatile ("mcr	p15, 0, %[mva], c8, c3, 3"
+			: : [mva] "r" (mva)
+	);
+}
 
 static inline void write_mair0(uint32_t mair0)
 {
@@ -645,6 +657,11 @@ static inline uint64_t read_pmu_ccnt(void)
 
 	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(val));
 	return val;
+}
+
+static inline void wfi(void)
+{
+	asm volatile("wfi");
 }
 #endif /*ASM*/
 

@@ -57,7 +57,11 @@ static void call_initcalls(void)
 	}
 }
 
-TEE_Result init_teecore(void)
+/*
+ * Note: this function is weak just to make it possible to exclude it from
+ * the unpaged area.
+ */
+TEE_Result __weak init_teecore(void)
 {
 	static int is_first = 1;
 

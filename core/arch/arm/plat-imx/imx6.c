@@ -153,4 +153,3 @@ void plat_cpu_reset_late(void)
 			write32(read32(addr) | CSU_SETTING_LOCK, addr);
 	}
 }
-

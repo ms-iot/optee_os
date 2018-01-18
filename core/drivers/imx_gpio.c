@@ -29,7 +29,7 @@ struct gpio_regs {
 /* GPIO1 virtual address */
 static vaddr_t gpio_port0_base;
 
-register_phys_mem(MEM_AREA_IO_SEC, IMX_GPIO1_BASE_ADDR, CORE_MMU_DEVICE_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, GPIO_BASE, CORE_MMU_DEVICE_SIZE);
 
 static struct gpio_regs *mxc_gpio_get_reg_base(unsigned int gpio_pin)
 {
@@ -114,6 +114,6 @@ static const struct gpio_ops mxc_gpio_ops = {
 
 void mxc_gpio_init(struct gpio_ops *ops)
 {
-    gpio_port0_base = (vaddr_t)phys_to_virt_io(IMX_GPIO1_BASE_ADDR);
+    gpio_port0_base = (vaddr_t)phys_to_virt_io(GPIO_BASE);
     *ops = mxc_gpio_ops;
 }

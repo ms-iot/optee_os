@@ -89,9 +89,12 @@
 #define CAAM_BASE			0x02140000
 #else
 #define GICC_OFFSET			0x100
+#if defined(CFG_CYREP)
+#define CAAM_BASE			0x00100000
+#else
 #define CAAM_BASE			0x02100000
 #endif
-// #define CAAM_BASE			0x00100000
+#endif
 
 #if defined(CFG_MX6Q)
 #define ATZ1_BASE_ADDR			AIPS1_BASE

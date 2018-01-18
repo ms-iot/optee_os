@@ -30,6 +30,7 @@
 #include <assert.h>
 #include <keep.h>
 #include <kernel/panic.h>
+#include <kernel/tlb_helpers.h>
 #include <kernel/thread.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
@@ -552,8 +553,9 @@ bool core_mmu_divide_block(struct core_mmu_table_info *tbl_info,
 	/* Update descriptor at current level */
 	*entry = new_table_desc;
 
+	/* TODO: only invalidate entries touched above */
 	if (flush_tlb)
-		core_tlb_maintenance(TLBINV_UNIFIEDTLB, 0);
+		tlbi_all();
 	return true;
 }
 
@@ -643,11 +645,13 @@ void core_mmu_set_user_map(struct core_mmu_user_map *map)
 		write_ttbr0(map->ttbr0);
 		isb();
 		write_contextidr(map->ctxid);
+		isb();
 	} else {
 		write_ttbr0(read_ttbr1());
+		isb();
 	}
-	isb();
-	core_tlb_maintenance(TLBINV_UNIFIEDTLB, 0);
+
+	tlbi_all();
 
 	/* Restore interrupts */
 	thread_unmask_exceptions(exceptions);
@@ -719,7 +723,7 @@ static void map_page_memarea_in_pgdirs(const struct tee_mmap_region *mm,
 	paddr_t pa = 0;
 	size_t n;
 
-	if (!mm->size)
+	if (core_mmap_is_end_of_table(mm))
 		return;
 
 	print_mmap_area(mm, "4k page map");
@@ -746,7 +750,7 @@ static void map_memarea_sections(const struct tee_mmap_region *mm,
 	paddr_t pa = 0;
 	size_t n;
 
-	if (!mm->size)
+	if (core_mmap_is_end_of_table(mm))
 		return;
 
 	print_mmap_area(mm, "section map");
@@ -815,7 +819,7 @@ void core_init_mmu_tables(struct tee_mmap_region *mm)
 	/* reset L1 table */
 	memset(ttb1, 0, L1_TBL_SIZE);
 
-	for (n = 0; mm[n].size; n++)
+	for (n = 0; !core_mmap_is_end_of_table(mm + n); n++)
 		if (!core_mmu_is_dynamic_vaspace(mm + n))
 			map_memarea(mm + n, ttb1);
 }

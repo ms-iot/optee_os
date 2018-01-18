@@ -78,7 +78,7 @@
 
 /*
  * Memory area type:
- * MEM_AREA_NOTYPE:   Undefined type. Used as end of table.
+ * MEM_AREA_END:      Reserved, marks the end of a table of mapping areas.
  * MEM_AREA_TEE_RAM:  core RAM (read/write/executable, secure, reserved to TEE)
  * MEM_AREA_TEE_RAM_RX:  core private read-only/executable memory (secure)
  * MEM_AREA_TEE_RAM_RO:  core private read-only/non-executable memory (secure)
@@ -96,7 +96,7 @@
  * MEM_AREA_MAXTYPE:  lower invalid 'type' value
  */
 enum teecore_memtypes {
-	MEM_AREA_NOTYPE = 0,
+	MEM_AREA_END = 0,
 	MEM_AREA_TEE_RAM,
 	MEM_AREA_TEE_RAM_RX,
 	MEM_AREA_TEE_RAM_RO,
@@ -118,7 +118,7 @@ enum teecore_memtypes {
 static inline const char *teecore_memtype_name(enum teecore_memtypes type)
 {
 	static const char * const names[] = {
-		[MEM_AREA_NOTYPE] = "NOTYPE",
+		[MEM_AREA_END] = "END",
 		[MEM_AREA_TEE_RAM] = "TEE_RAM_RWX",
 		[MEM_AREA_TEE_RAM_RX] = "TEE_RAM_RX",
 		[MEM_AREA_TEE_RAM_RO] = "TEE_RAM_RO",
@@ -446,9 +446,13 @@ enum teecore_tlb_op {
 	TLBINV_BY_MVA,		/* invalidate unified tlb by MVA */
 };
 
-int core_tlb_maintenance(int op, unsigned int a);
+/* TLB invalidation for a range of virtual address */
+void tlbi_mva_range(vaddr_t va, size_t size, size_t granule);
 
-/* Cache maintenance operation type */
+/* deprecated: please call straight tlbi_all() and friends */
+int core_tlb_maintenance(int op, unsigned long a) __deprecated;
+
+/* Cache maintenance operation type (deprecated with core_tlb_maintenance()) */
 enum cache_op {
 	DCACHE_CLEAN,
 	DCACHE_AREA_CLEAN,
@@ -483,6 +487,11 @@ bool cpu_mmu_enabled(void);
  * always present.
  */
 bool core_mmu_nsec_ddr_is_defined(void);
+
+#ifdef CFG_DT
+void core_mmu_set_discovered_nsec_ddr(struct core_mmu_phys_mem *start,
+				      size_t nelems);
+#endif
 
 #ifdef CFG_SECURE_DATA_PATH
 /* Alloc and fill SDP memory objects table - table is NULL terminated */

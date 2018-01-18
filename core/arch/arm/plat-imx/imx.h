@@ -1,8 +1,8 @@
 /*
- * Copyright (C) 2015 Freescale Semiconductor, Inc.
+ * Copyright 2017 NXP
  * All rights reserved.
- * Copyright (c) 2016, Wind River Systems.
- * All rights reserved.
+ *
+ * Peng Fan <peng.fan@nxp.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -26,32 +26,36 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef PLAT_IMX_IMX_H
+#define PLAT_IMX_IMX_H
 
-#define GIC_BASE			0xA00000
-#define GIC_SIZE			0x8000
-#define GICC_OFFSET			0x2000
-#define GICD_OFFSET			0x1000
-#define UART0_BASE			0x2020000
-#define UART1_BASE			0x21E8000
-#define UART2_BASE			0x21EC000
+#include <stdint.h>
+#include <stdbool.h>
 
-#define AHB1_BASE			0x02000000
-#define AHB1_SIZE			0x100000
-#define AHB2_BASE			0x02100000
-#define AHB2_SIZE			0x100000
-#define AHB3_BASE			0x02200000
-#define AHB3_SIZE			0x100000
+#define SOC_MX6SL	0x60
+#define SOC_MX6DL	0x61
+#define SOC_MX6SX	0x62
+#define SOC_MX6Q	0x63
+#define SOC_MX6UL	0x64
+#define SOC_MX6ULL	0x65
+#define SOC_MX6SLL	0x67
+#define SOC_MX6D	0x6A
+#define SOC_MX7D	0x72
 
-#define AIPS_TZ1_BASE_ADDR		0x02000000
-#define AIPS1_OFF_BASE_ADDR		(AIPS_TZ1_BASE_ADDR + 0x80000)
+uint32_t imx_get_src_gpr(int cpu);
+void imx_set_src_gpr(int cpu, uint32_t val);
 
-#define DRAM0_BASE			0x80000000
-#define DRAM0_SIZE			0x20000000
+bool soc_is_imx6ul(void);
+bool soc_is_imx6ull(void);
+bool soc_is_imx6sdl(void);
+bool soc_is_imx6dq(void);
+bool soc_is_imx6dqp(void);
+bool soc_is_imx7ds(void);
+bool soc_is_imx7d(void);
+bool soc_is_imx7s(void);
+uint32_t imx_soc_type(void);
+void imx_gpcv2_set_core1_pdn_by_software(void);
+void imx_gpcv2_set_core1_pup_by_software(void);
+void imx_gpcv2_set_core_pgc(bool enable, uint32_t offset);
 
-/* Central Security Unit register values */
-#define CSU_BASE			0x021C0000
-#define CSU_CSL_START			0x0
-#define CSU_CSL_END			0xA0
-#define CSU_ACCESS_ALL			0x00FF00FF
-#define CSU_SETTING_LOCK		0x01000100
-
+#endif

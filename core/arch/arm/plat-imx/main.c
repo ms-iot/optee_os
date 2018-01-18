@@ -67,7 +67,7 @@ static const struct thread_handlers handlers = {
 static struct imx_uart_data console_data;
 
 register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE, CORE_MMU_DEVICE_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_DEVICE_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, ANATOP_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, SNVS_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, WDOG_BASE, CORE_MMU_DEVICE_SIZE);
 #ifdef CFG_WITH_PAGER
@@ -110,7 +110,8 @@ void main_init_gic(void)
 	itr_init(&gic_data.chip);
 }
 
-#if defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL)
+#if defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
+	defined(CFG_MX7)
 void main_secondary_init_gic(void)
 {
 	gic_cpu_init(&gic_data);
@@ -169,7 +170,7 @@ static struct secure_area secure_areas[] = {
 
 static void allow_unsecure_readwrite_entire_memory(void)
 {
-	// Region 0 always includes the entire physical memory. 
+	// Region 0 always includes the entire physical memory.
 	tzc_configure_region(0, 0, TZC_ATTR_SP_ALL);
 }
 
@@ -265,8 +266,8 @@ static TEE_Result init_tzc380(void)
 	// been burnt.
 	allow_unsecure_readwrite_entire_memory();
 
-    // Reserve some of the memory regions for Secure (TZ) access only.
-    protect_tz_memory();
+	// Reserve some of the memory regions for Secure (TZ) access only.
+	protect_tz_memory();
 
 	return TEE_SUCCESS;
 }

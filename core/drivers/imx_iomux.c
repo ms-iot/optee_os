@@ -18,7 +18,7 @@
 #include <mm/core_memprot.h>
 #include <drivers/imx_iomux.h>
 
-/* The VA corresponding to IMX_IOMUXC_BASE */
+/* The VA corresponding to IOMUXC_BASE */
 static vaddr_t iomuxc_base;
 
 /* The VA corresponding to IOMUXC_SELECT_INPUT_BASE_ADDRESS */
@@ -2808,7 +2808,7 @@ typedef enum {
 		                    IMX_IOMUXC_EIM_CS0_ALT2_ECSPI2_SCLK),
 } ECSPI2_Mux;
 
-register_phys_mem(MEM_AREA_IO_SEC, IMX_IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
 
 /*
  * This routine is not platform+flavor specific, but it currently has a single
@@ -2890,7 +2890,7 @@ void imx_iomux_init(void)
         IOMUXC_SELECT_INPUT_BASE_ADDRESS) < (0xff * 4));
 
     iomuxc_base = (vaddr_t)phys_to_virt(
-        IMX_IOMUXC_BASE,  MEM_AREA_IO_SEC);
+        IOMUXC_BASE,  MEM_AREA_IO_SEC);
 
     iomuxc_select_input_base = (vaddr_t)phys_to_virt(
         IOMUXC_SELECT_INPUT_BASE_ADDRESS,  MEM_AREA_IO_SEC);

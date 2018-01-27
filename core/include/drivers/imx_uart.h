@@ -31,11 +31,20 @@
 #include <types_ext.h>
 #include <drivers/serial.h>
 
+struct imx_uart_config {
+    uint32_t clock_hz;
+    uint32_t baud_rate;
+};
+
 struct imx_uart_data {
 	struct io_pa_va base;
 	struct serial_chip chip;
+	struct imx_uart_config config;
 };
 
 void imx_uart_init(struct imx_uart_data *pd, paddr_t base);
+bool imx_uart_init_ex(struct imx_uart_data *pd, 
+                      paddr_t base, 
+                      struct imx_uart_config *uart_config);
 
 #endif /* IMX_UART_H */

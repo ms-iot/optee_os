@@ -203,6 +203,17 @@ static int imx_uart_getchar(struct serial_chip *chip)
 	return (read32(base + URXD) & URXD_RX_DATA);
 }
 
+static bool imx_uart_have_rx_data(struct serial_chip *chip)
+{
+	vaddr_t base = chip_to_base(chip);
+
+	if (read32(base + UTS) & UTS_RXEMPTY) {
+		return false;
+	}
+
+	return true;
+}
+
 static void imx_uart_putc(struct serial_chip *chip, int ch)
 {
 	vaddr_t base = chip_to_base(chip);
@@ -218,6 +229,7 @@ static const struct serial_ops imx_uart_ops = {
 	.flush = imx_uart_flush,
 	.getchar = imx_uart_getchar,
 	.putc = imx_uart_putc,
+	.have_rx_data = imx_uart_have_rx_data,
 };
 KEEP_PAGER(imx_uart_ops);
 

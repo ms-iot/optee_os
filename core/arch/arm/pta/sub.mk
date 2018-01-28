@@ -17,3 +17,4 @@ endif
 
 srcs-$(CFG_TA_SPI) += pta_spi.c
 srcs-$(CFG_TA_RPC) += pta_rpc.c
+srcs-$(CFG_TA_GT511C3) += pta_gt511c3.c

@@ -29,9 +29,9 @@
 #define GT511C3_MAX_BAUDRATE 115200
 
 /*
- * Max payload that can be read from scanner
+ * Largest frame that can be read from scanner
  */
-#define GT511C3_MAX_PAYLOAD (64 * 1024)
+#define GT511C3_MAX_FRAME (64 * 1024)
 
 /*
  * Max RX retry
@@ -184,18 +184,13 @@ struct _gt511c3_data {
 } __packed;
 typedef struct _gt511c3_data gt511c3_data;
 
-union _gt511c3_data_frame {
-    gt511c3_data frame;
-    uint8_t raw[GT511C3_MAX_PAYLOAD];
-};
-typedef union _gt511c3_data_frame gt511c3_data_frame;
 
 
 /*
  * Auxiliary macros
  */
 
-#define GT511C3_INIT_COMMAND(cmd_frame, cmd_code) { \
+#define GT511C3_INIT_COMMAND_FRAME(cmd_frame, cmd_code) { \
     memset((cmd_frame),0,sizeof(gt511c3_command)); \
     (cmd_frame)->start_code1 = GT511C3_CMD_START_CODE1; \
     (cmd_frame)->start_code2 = GT511C3_CMD_START_CODE2; \
@@ -203,8 +198,19 @@ typedef union _gt511c3_data_frame gt511c3_data_frame;
     (cmd_frame)->command = (cmd_code); \
 }
 
+#define GT511C3_INIT_DATA_FRAME(data_frame, payload_size) { \
+    memset((data_frame),0,GT511C3_DATA_FRAME_SIZE(payload_size)); \
+    (data_frame)->start_code1 = GT511C3_DATA_START_CODE1; \
+    (data_frame)->start_code2 = GT511C3_DATA_START_CODE2; \
+    (data_frame)->device_id = GT511C3_DATA_DEVICE_ID; \
+}
+
+#define GT511C3_CS_SIZE (sizeof(int16_t))
+
 #define GT511C3_DATA_FRAME_SIZE(payload_size) \
-    (sizeof(gt511c3_data) - sizeof(uint8_t) + (payload_size) + sizeof(int16_t))
+    (sizeof(gt511c3_data) - sizeof(uint8_t) + (payload_size))
+
+#define GT511C3_DATA_HEADER_SIZE (GT511C3_DATA_FRAME_SIZE(0))
 
 #define FIELD_OFFSET(type, field) ((uint32_t)&(((type *)0)->field))
 #define FIELD_SIZE(type, field) (sizeof(((type *)0)->field))
@@ -229,7 +235,7 @@ static TEE_Result gt511c3_close(void);
 static struct imx_uart_data uart_driver;
 static struct serial_chip* serial = NULL;
 
-volatile int pta_is_idle = 0;
+volatile int pta_is_idle = 1;
 
 /*
  * GT511C3 driver private methods
@@ -347,6 +353,9 @@ static uint16_t gt511c3_get_byte(void)
 #else
     uint32_t i;
 
+    /*
+     * TODO: Fix the retry to match the baudrate.
+     */
     for (i = 0; i < GT511C3_RX_RETRY; ++i) {
 #endif
         if (serial->ops->have_rx_data(serial)) {
@@ -356,30 +365,17 @@ static uint16_t gt511c3_get_byte(void)
     return NO_RX_DATA;
 }
 
-static TEE_Result gt511c3_recv(uint8_t *msg, uint32_t *length)
+static TEE_Result gt511c3_recv(uint8_t *rx_data, uint32_t length)
 {
-    int16_t msg_cs;
-    int16_t calculated_cs;
-    uint16_t cs_length;
     uint16_t b;
     uint16_t i;
 
-    for (i = 0; i < *length; ++i) {
+    for (i = 0; i < length; ++i) {
         b = gt511c3_get_byte();
         if (b == NO_RX_DATA) {
             return GT511C3_STATUS_TIMEOUT;
         }
-        msg[i] = (uint8_t)b;
-    }
-    *length = i;
-    
-    cs_length = i - sizeof(uint16_t);
-
-    msg_cs = (int16_t)((msg[cs_length + 1] << 8) + msg[cs_length]);
-    calculated_cs = gt511c3_checksum(msg, cs_length);
-
-    if (msg_cs != calculated_cs) {
-        return TEE_ERROR_COMMUNICATION;
+        rx_data[i] = (uint8_t)b;
     }
     
     return TEE_SUCCESS;
@@ -388,16 +384,24 @@ static TEE_Result gt511c3_recv(uint8_t *msg, uint32_t *length)
 static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
 {
     TEE_Result status;
-    uint32_t rsp_length;
 
-    rsp_length = sizeof(gt511c3_response);
-    status = gt511c3_recv((uint8_t *)rsp, &rsp_length);
+    status = gt511c3_recv((uint8_t *)rsp, sizeof(gt511c3_response));
     if (status != TEE_SUCCESS) {
         return status;
     }
 
     if ((rsp->start_code1 != GT511C3_RSP_START_CODE1) ||
         (rsp->start_code2 != GT511C3_RSP_START_CODE2)) {
+
+        EMSG("gt511c3 - response framing error");
+        return TEE_ERROR_COMMUNICATION;
+    }
+
+    if (rsp->checksum != 
+        gt511c3_checksum((uint8_t*)rsp, 
+            FIELD_OFFSET(gt511c3_response, checksum))) {
+
+        EMSG("gt511c3 - response checksum error");
         return TEE_ERROR_COMMUNICATION;
     }
 
@@ -410,29 +414,43 @@ static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
 
 static TEE_Result gt511c3_recv_data(uint8_t* data, uint32_t length)
 {
-    static gt511c3_data_frame data_frame;
-    size_t recv_bytes;
     TEE_Result status;
+    gt511c3_data data_frame;
+    int16_t calc_cs;
+    int16_t msg_cs;
 
-    recv_bytes = GT511C3_DATA_FRAME_SIZE(length);
-    if (recv_bytes > sizeof(data_frame)) {
-        return TEE_ERROR_SHORT_BUFFER;
+    if (length > GT511C3_MAX_FRAME) {
+        return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    status = gt511c3_recv(&data_frame.raw[0], &recv_bytes);
+    status = gt511c3_recv((uint8_t*)&data_frame, GT511C3_DATA_FRAME_SIZE(0));
     if (status != TEE_SUCCESS) {
         return status;
     }
 
-    if ((data_frame.frame.start_code1 != GT511C3_DATA_START_CODE1) ||
-        (data_frame.frame.start_code2 != GT511C3_DATA_START_CODE2)) {
+    status = gt511c3_recv(data, length + GT511C3_CS_SIZE);
+    if (status != TEE_SUCCESS) {
+        return status;
+    }
+
+    if ((data_frame.start_code1 != GT511C3_DATA_START_CODE1) ||
+        (data_frame.start_code2 != GT511C3_DATA_START_CODE2)) {
+
+        EMSG("gt511c3 - rx data framing error");
         return TEE_ERROR_COMMUNICATION;
     }
 
-    memcpy(data, data_frame.frame.data, length);
+    calc_cs = gt511c3_checksum((uint8_t*)&data_frame, GT511C3_DATA_FRAME_SIZE(0));
+    calc_cs += gt511c3_checksum(data, length); 
+    msg_cs = (int16_t)((data[length + 1] << 8) + data[length]);
+
+    if (calc_cs != msg_cs) {
+        EMSG("gt511c3 - rx data checksum error");
+        return TEE_ERROR_COMMUNICATION;
+    }
+
     return TEE_SUCCESS;
 }
-
 
 static TEE_Result gt511c3_send_cmd(
     gt511c3_command *cmd,
@@ -455,6 +473,50 @@ static TEE_Result gt511c3_send_cmd(
     }
  
     status = gt511c3_recv_response(rsp);
+    if (status != TEE_SUCCESS) {
+        return status;
+    }
+
+    return TEE_SUCCESS;
+}
+
+static TEE_Result gt511c3_send_data(
+    uint8_t *payload,
+    uint32_t payload_size)
+{
+    TEE_Result status;
+    int16_t cs;
+    uint8_t *tx_data; 
+    gt511c3_data data_frame;
+    gt511c3_response rsp;
+    uint32_t i;
+ 
+    if ((payload == NULL) || (payload_size == 0)) {
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    GT511C3_INIT_DATA_FRAME(&data_frame, 0);
+
+    cs = gt511c3_checksum((uint8_t*)&data_frame, 
+            GT511C3_DATA_FRAME_SIZE(0));
+    cs += gt511c3_checksum(payload, payload_size);
+
+    tx_data = (uint8_t*)&data_frame;
+    for (i = 0; i < GT511C3_DATA_FRAME_SIZE(0); ++i) {
+        serial->ops->putc(serial, tx_data[i]);
+    }
+
+    tx_data = payload;
+    for (i = 0; i < payload_size; ++i) {
+        serial->ops->putc(serial, tx_data[i]);
+    }
+
+    tx_data = (uint8_t*)&cs;
+    for (i = 0; i < sizeof(cs); ++i) {
+        serial->ops->putc(serial, tx_data[i]);
+    }
+ 
+    status = gt511c3_recv_response(&rsp);
     if (status != TEE_SUCCESS) {
         return status;
     }
@@ -509,7 +571,7 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
 
     status = gt511c3_init(device_config, true);
     if (status != TEE_SUCCESS) {
-        EMSG("Initial gt511c3_init failed, status 0x%X \n", status);
+        EMSG("gt511c3_init failed, status 0x%X \n", status);
         return status;
     }
 
@@ -518,7 +580,7 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
         return TEE_ERROR_BAD_STATE;
     }
 #else  
-    GT511C3_INIT_COMMAND(&cmd, GT511C3_CMD_OPEN);
+    GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_OPEN);
     if (device_info != NULL) {
         cmd.parameter = 1;
     }
@@ -538,7 +600,7 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
 
     /*
     if (device_config->baud_rate != GT511C3_RESET_BAUDRATE) {
-        GT511C3_INIT_COMMAND(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
+        GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
         cmd.parameter = device_config->baud_rate;
 
         status = gt511c3_send_cmd(&cmd, NULL);
@@ -567,7 +629,7 @@ static TEE_Result gt511c3_close(void)
     TEE_Result status;
 
     /*
-    GT511C3_INIT_COMMAND(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
+    GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
     cmd.parameter = GT511C3_RESET_BAUDRATE;
 
     status = gt511c3_send_cmd(&cmd, NULL);
@@ -581,7 +643,7 @@ static TEE_Result gt511c3_close(void)
     }
     */
 
-    GT511C3_INIT_COMMAND(&cmd, GT511C3_CMD_CLOSE);
+    GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CLOSE);
     status = gt511c3_send_cmd(&cmd, NULL);
 
     return status;
@@ -634,7 +696,7 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
         return TEE_ERROR_BAD_PARAMETERS;
     }
    
-    GT511C3_INIT_COMMAND(&cmd, params[0].value.a);
+    GT511C3_INIT_COMMAND_FRAME(&cmd, params[0].value.a);
     cmd.parameter = params[0].value.b;
 
     status = gt511c3_send_cmd(&cmd, NULL);
@@ -642,8 +704,25 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
         return status;
     }
 
-    return gt511c3_recv_data((uint8_t*)params[1].memref.buffer, 
-            params[1].memref.size);
+    if (params[0].memref.size != 0) {
+        status = gt511c3_send_data((uint8_t*)params[0].memref.buffer,
+                     params[0].memref.size);
+
+        if (status != TEE_SUCCESS) {
+            return status;
+        }
+    }
+
+    if (params[1].memref.size != 0) {
+        status = gt511c3_recv_data((uint8_t*)params[1].memref.buffer,
+                     params[1].memref.size);
+
+        if (status != TEE_SUCCESS) {
+            return status;
+        }
+    }
+    
+    return TEE_SUCCESS;
 }
 
 /* 
@@ -654,6 +733,12 @@ static TEE_Result pta_gt511c3_open_session(uint32_t param_types __unused,
                     TEE_Param params[TEE_NUM_PARAMS] __unused,
                     void **sess_ctx __unused)
 {
+    /* Access is restricted to TA only */
+    if (tee_ta_get_calling_session() == NULL) {
+        EMSG("gt511c3 open session failed, REE access is not allowed!");
+        return TEE_ERROR_ACCESS_DENIED;
+    }
+
     DMSG("gt511c3 open session succeeded!\n");
     return TEE_SUCCESS;
 }

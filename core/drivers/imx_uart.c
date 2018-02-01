@@ -154,7 +154,7 @@
 
 #define RTS_TRIGGER_LEVEL   30
 #define TX_TRIGGER_LEVEL    2
-#define RX_TRIGGER_LEVEL    1
+#define RX_TRIGGER_LEVEL    30
 #define RESET_TIMEOUT_COUNT 100
 
 #ifndef min
@@ -259,6 +259,7 @@ bool imx_uart_init_ex(struct imx_uart_data *pd,
 		UFCR_RFDIV_7,
 		};
 	imx_uart_regs uart_reg_image;
+	vaddr_t reg_base;
 	uint32_t rfdiv;
 	uint32_t num;
 	uint32_t denom;
@@ -267,26 +268,32 @@ bool imx_uart_init_ex(struct imx_uart_data *pd,
 	uint32_t ubir_plus1;
 	uint32_t i;
 
-	memset(&uart_reg_image, 0, sizeof(uart_reg_image));
+	pd->base.pa = base;
+	pd->chip.ops = &imx_uart_ops;
+	memcpy(&pd->config, uart_config, sizeof(*uart_config));
+
+ 	memset(&uart_reg_image, 0, sizeof(uart_reg_image));
+
+	reg_base = chip_to_base(&pd->chip);
 
 	/*
 	 * Disable UART and reset control registers
 	 */
-	write32(0, base + UCR1);
-	write32(0, base + UCR3);
-	write32(0, base + UCR4);
-	write32(0, base + UMCR);
+	write32(0, reg_base + UCR1);
+	write32(0, reg_base + UCR3);
+	write32(0, reg_base + UCR4);
+	write32(0, reg_base + UMCR);
 
 	/*
 	 * Initiate a reset, and wait for completion
 	 */
-	write32(0, base + UCR2);
+	write32(0, reg_base + UCR2);
 	for (i = 0; i < RESET_TIMEOUT_COUNT; ++i) {
-		if ((read32(base + UTS) & UTS_SOFTRST) == 0) {
+		if ((read32(reg_base + UTS) & UTS_SOFTRST) == 0) {
 			break;
 		}
 	}
-	if ((read32(base + UTS) & UTS_SOFTRST) != 0) {
+	if ((read32(reg_base + UTS) & UTS_SOFTRST) != 0) {
 		return false;
 	}
 
@@ -313,8 +320,6 @@ bool imx_uart_init_ex(struct imx_uart_data *pd,
 		UCR2_WS;    /* 8 bits */
 
 	uart_reg_image.ucr3 =
-		UCR3_RI  |
-		UCR3_DCD | /* CTS ignored */
 		UCR3_DSR |
 		UCR3_RXDMUXSEL;
 
@@ -357,38 +362,34 @@ bool imx_uart_init_ex(struct imx_uart_data *pd,
 	/*
 	 * Apply to HW.
 	 */
-	write32(uart_reg_image.ucr3, base + UCR3);
-	write32(uart_reg_image.ucr4, base + UCR4);
-	write32(uart_reg_image.ufcr, base + UFCR);
-	write32(uart_reg_image.ubir, base + UBIR);
-	write32(uart_reg_image.ubmr, base + UBMR);
-	write32(uart_reg_image.ucr2, base + UCR2);
-	write32(uart_reg_image.ucr1, base + UCR1);
+	write32(uart_reg_image.ucr3, reg_base + UCR3);
+	write32(uart_reg_image.ucr4, reg_base + UCR4);
+	write32(uart_reg_image.ufcr, reg_base + UFCR);
+	write32(uart_reg_image.ubir, reg_base + UBIR);
+	write32(uart_reg_image.ubmr, reg_base + UBMR);
+	write32(uart_reg_image.ucr2, reg_base + UCR2);
+	write32(uart_reg_image.ucr1, reg_base + UCR1);
 
 	/*
 	 * Purge FIFOs
 	 */
-	while ((read32(base + URXD) & URXD_CHARRDY) != 0)
+	while ((read32(reg_base + URXD) & URXD_CHARRDY) != 0)
 	;
-	while ((read32(base + UTS) & UTS_TXEMPTY) == 0)
+	while ((read32(reg_base + UTS) & UTS_TXEMPTY) == 0)
 	;
 
 	/*
 	 * For debug read back.
 	 */
-	uart_reg_image.ucr1 = read32(base + UCR1);
-	uart_reg_image.ucr2 = read32(base + UCR2);
-	uart_reg_image.ucr3 = read32(base + UCR3);
-	uart_reg_image.ucr4 = read32(base + UCR4);
-	uart_reg_image.usr1 = read32(base + USR1);
-	uart_reg_image.usr2 = read32(base + USR2);
-	uart_reg_image.ufcr = read32(base + UFCR);
-	uart_reg_image.ubir = read32(base + UBIR);
-	uart_reg_image.ubmr = read32(base + UBMR);
-
-	pd->base.pa = base;
-	pd->chip.ops = &imx_uart_ops;
-	memcpy(&pd->config, uart_config, sizeof(*uart_config));
+	uart_reg_image.ucr1 = read32(reg_base + UCR1);
+	uart_reg_image.ucr2 = read32(reg_base + UCR2);
+	uart_reg_image.ucr3 = read32(reg_base + UCR3);
+	uart_reg_image.ucr4 = read32(reg_base + UCR4);
+	uart_reg_image.usr1 = read32(reg_base + USR1);
+	uart_reg_image.usr2 = read32(reg_base + USR2);
+	uart_reg_image.ufcr = read32(reg_base + UFCR);
+	uart_reg_image.ubir = read32(reg_base + UBIR);
+	uart_reg_image.ubmr = read32(reg_base + UBMR);
 
 	return true;
 }

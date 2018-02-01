@@ -34,6 +34,10 @@
 struct imx_uart_config {
     uint32_t clock_hz;
     uint32_t baud_rate;
+    /*
+     * TODO:
+     * Add line control and handshake configuration
+     */
 };
 
 struct imx_uart_data {

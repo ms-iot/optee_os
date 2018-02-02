@@ -235,7 +235,7 @@ static TEE_Result gt511c3_close(void);
 static struct imx_uart_data uart_driver;
 static struct serial_chip* serial = NULL;
 
-volatile int pta_is_idle = 1;
+volatile int pta_is_idle = 0;
 
 /*
  * GT511C3 driver private methods
@@ -454,16 +454,13 @@ static TEE_Result gt511c3_recv_data(uint8_t* data, uint32_t length)
 
 static TEE_Result gt511c3_send_cmd(
     gt511c3_command *cmd,
-    gt511c3_response *rsp __maybe_unused)
+    uint32_t *result __maybe_unused)
 {
     TEE_Result status;
     uint8_t *payload = (uint8_t *)cmd;
-    gt511c3_response local_rsp;
+    gt511c3_response rsp;
     uint32_t i;
  
-    if (rsp == NULL) {
-        rsp = &local_rsp;
-    }
 
     cmd->checksum = gt511c3_checksum((uint8_t*)cmd, 
         FIELD_OFFSET(gt511c3_command, checksum));
@@ -472,17 +469,19 @@ static TEE_Result gt511c3_send_cmd(
         serial->ops->putc(serial, payload[i]);
     }
  
-    status = gt511c3_recv_response(rsp);
-    if (status != TEE_SUCCESS) {
-        return status;
+    status = gt511c3_recv_response(&rsp);
+
+    if (result != NULL) {
+        *result = rsp.parameter;
     }
 
-    return TEE_SUCCESS;
+    return status;
 }
 
 static TEE_Result gt511c3_send_data(
     uint8_t *payload,
-    uint32_t payload_size)
+    uint32_t payload_size,
+    uint32_t *result __maybe_unused)
 {
     TEE_Result status;
     int16_t cs;
@@ -517,11 +516,12 @@ static TEE_Result gt511c3_send_data(
     }
  
     status = gt511c3_recv_response(&rsp);
-    if (status != TEE_SUCCESS) {
-        return status;
+
+    if (result != NULL) {
+        *result = rsp.parameter;
     }
 
-    return TEE_SUCCESS;
+    return status;
 }
 
 #if UART_DEBUG
@@ -673,11 +673,7 @@ static TEE_Result gt511c3_cmd_initialize(uint32_t param_types,
         (GT511C3_DeviceConfig *)params[0].memref.buffer,
         (GT511C3_DeviceInfo *)params[1].memref.buffer);
 
-    if (status != TEE_SUCCESS) {
-        return status;
-    }
-
-    return TEE_SUCCESS;
+    return status;
 }
 
 static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
@@ -685,37 +681,38 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
 {
     TEE_Result status;
     gt511c3_command cmd;
-    uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_MEMREF_INOUT,
-        TEE_PARAM_TYPE_NONE,
-        TEE_PARAM_TYPE_NONE);
 
     DMSG("gt511c3_cmd_exec\n");
 
-    if (exp_pt != param_types) {
+    if (TEE_PARAM_TYPE_GET(param_types, 0) != TEE_PARAM_TYPE_VALUE_INOUT) {
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    if (params[0].value.a == GT511C3_CMD_INVALID) {
         return TEE_ERROR_BAD_PARAMETERS;
     }
    
     GT511C3_INIT_COMMAND_FRAME(&cmd, params[0].value.a);
     cmd.parameter = params[0].value.b;
 
-    status = gt511c3_send_cmd(&cmd, NULL);
+    status = gt511c3_send_cmd(&cmd, &params[0].value.b);
     if (status != TEE_SUCCESS) {
         return status;
     }
 
-    if (params[0].memref.size != 0) {
-        status = gt511c3_send_data((uint8_t*)params[0].memref.buffer,
-                     params[0].memref.size);
+    if (params[1].memref.size != 0) {
+        status = gt511c3_send_data((uint8_t*)params[1].memref.buffer,
+                     params[1].memref.size,
+                     &params[0].value.b);
 
         if (status != TEE_SUCCESS) {
             return status;
         }
     }
 
-    if (params[1].memref.size != 0) {
-        status = gt511c3_recv_data((uint8_t*)params[1].memref.buffer,
-                     params[1].memref.size);
+    if (params[2].memref.size != 0) {
+        status = gt511c3_recv_data((uint8_t*)params[2].memref.buffer,
+                     params[2].memref.size);
 
         if (status != TEE_SUCCESS) {
             return status;

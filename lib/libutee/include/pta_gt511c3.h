@@ -53,8 +53,9 @@ typedef struct _GT511C3_DeviceInfo GT511C3_DeviceInfo;
  * 
  * [in]  params[0].value.a: GT511C3 command 
  * [in]  params[0].value.b: Command parameter
- * [out] params[0].memref: [optional] Command data
- * [out] params[1].memref: [optional] Response data
+ * [out] params[0].value.b: Command status (GT511C3 status code)
+ * [in  optional] params[1].memref: Command input
+ * [out optional] params[2].memref: Command output
  */ 
 #define PTA_GT511C3_EXEC    1
 

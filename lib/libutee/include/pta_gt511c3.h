@@ -59,12 +59,4 @@ typedef struct _GT511C3_DeviceInfo GT511C3_DeviceInfo;
  */ 
 #define PTA_GT511C3_EXEC    1
 
-/*
- * Description: Suspend execution (sleep)
- * 
- * [in]  params[0].value.a: Suspend time in mSec
- */ 
-#define PTA_GT511C3_SUSPEND 2
-
-
 #endif /* __PTA_GT511C3_H */

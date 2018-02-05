@@ -723,25 +723,6 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
     return TEE_SUCCESS;
 }
 
-static TEE_Result gt511c3_cmd_suspend(uint32_t param_types,
-                    TEE_Param params[TEE_NUM_PARAMS])
-{
-    uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_NONE,
-        TEE_PARAM_TYPE_NONE,
-        TEE_PARAM_TYPE_NONE);
-
-    DMSG("gt511c3_cmd_suspend\n");
-
-    if (exp_pt != param_types) {
-        return TEE_ERROR_BAD_PARAMETERS;
-    }
-    
-    tee_time_wait(params[0].value.a);
-
-    return TEE_SUCCESS;
-}
-
 /* 
  * Trusted Application Entry Points
  */
@@ -790,10 +771,6 @@ static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t c
         res = gt511c3_cmd_exec(param_types, params);
         break;
 
-    case PTA_GT511C3_SUSPEND:
-        res = gt511c3_cmd_suspend(param_types, params);
-        break;
-        
     default:
         EMSG("Command not implemented %d\n", cmd_id);
         res = TEE_ERROR_NOT_IMPLEMENTED;

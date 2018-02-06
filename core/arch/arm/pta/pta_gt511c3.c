@@ -17,6 +17,8 @@
 
 #include <pta_gt511c3.h>
 
+#include "pta_utils.h"
+
 #define UART_DEBUG 0
 
 /*
@@ -35,14 +37,29 @@
 #define GT511C3_MAX_FRAME (64 * 1024)
 
 /*
+ * Scanner response timeout in msec
+ */
+#define GT511C3_RESPONSE_TIMEOUT_MSEC 500L
+
+/*
  * Max RX retry
  */
-#define GT511C3_RX_RETRY 1000000
+#define RX_RETRY_COUNT 10000L
 
 /*
  * NO RX data code
  */
 #define NO_RX_DATA ((uint16_t)-1)
+
+/* 
+ * For timeout calculations assume 10 bits/char
+ */
+#define	BITS_PER_CHAR 10L
+
+/*
+ * Minimum RX timeout in mSec
+ */
+#define MIN_RX_TIMEOUT_MSEC 50L
 
 /*
  * GT511C3 error codes
@@ -235,6 +252,7 @@ static TEE_Result gt511c3_close(void);
  */
 static struct imx_uart_data uart_driver;
 static struct serial_chip* serial = NULL;
+uint32_t usec_per_char;
 
 volatile int pta_is_idle = 0;
 
@@ -344,7 +362,26 @@ static TEE_Result gt511c3_init(GT511C3_DeviceConfig *device_config,
 
     serial = &uart_driver.chip;
     
+    /*
+     * RX timeout parameters, assuming 10 bits/char
+     */
+    usec_per_char = BITS_PER_CHAR * (1000000L/uart_config.baud_rate + 1);
+    
     return TEE_SUCCESS;
+}
+
+static uint32_t gt611c3_get_frame_timeout_msec(uint32_t length)
+{
+    uint32_t rx_frame_timeout_msec;
+
+    rx_frame_timeout_msec = usec_per_char * length / 1000L;
+    rx_frame_timeout_msec = rx_frame_timeout_msec * 3 / 2;
+
+    if (rx_frame_timeout_msec < MIN_RX_TIMEOUT_MSEC) {
+        rx_frame_timeout_msec = MIN_RX_TIMEOUT_MSEC;
+    }
+
+    return rx_frame_timeout_msec;
 }
 
 static uint16_t gt511c3_get_byte(void) 
@@ -354,29 +391,40 @@ static uint16_t gt511c3_get_byte(void)
 #else
     uint32_t i;
 
-    /*
-     * TODO: Fix the retry to match the baudrate.
-     */
-    for (i = 0; i < GT511C3_RX_RETRY; ++i) {
+    for (i = 0; i < RX_RETRY_COUNT; ++i) {
 #endif
         if (serial->ops->have_rx_data(serial)) {
             return (uint16_t)serial->ops->getchar(serial);
         }
     }
+
     return NO_RX_DATA;
 }
 
 static TEE_Result gt511c3_recv(uint8_t *rx_data, uint32_t length)
 {
     uint16_t b;
-    uint16_t i;
+    uint32_t i;
+    uint32_t rx_timeout_msec;
+    stopwatch sw;
 
-    for (i = 0; i < length; ++i) {
+    rx_timeout_msec = GT511C3_RESPONSE_TIMEOUT_MSEC;
+    stopwatch_start(&sw);
+
+    for (i = 0; i < length; ) {
         b = gt511c3_get_byte();
         if (b == NO_RX_DATA) {
-            return GT511C3_STATUS_TIMEOUT;
+            if (stopwatch_elapsed_millis(&sw) < rx_timeout_msec) {
+                continue;
+            }
+            return TEE_ERROR_NO_DATA;
         }
-        rx_data[i] = (uint8_t)b;
+
+        if (i == 0) {
+            rx_timeout_msec = gt611c3_get_frame_timeout_msec(length);
+            stopwatch_start(&sw);
+        }
+        rx_data[i++] = (uint8_t)b;
     }
     
     return TEE_SUCCESS;

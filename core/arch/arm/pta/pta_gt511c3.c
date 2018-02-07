@@ -4,6 +4,7 @@
 
 #include <arm.h>
 #include <kernel/misc.h>
+#include <kernel/spinlock.h>
 #include <kernel/pseudo_ta.h>
 #include <kernel/user_ta.h>
 #include <kernel/tee_time.h>
@@ -65,7 +66,7 @@
  * GT511C3 error codes
  */
 
-enum GT511C3_status {
+enum GT511C3_STATUS {
     GT511C3_SUCCESS = 0x0000,	                    // Success
     GT511C3_STATUS_TIMEOUT = 0x1001,	            // Obsolete, capture timeout 
     GT511C3_STATUS_INVALID_BAUDRATE = 0x1002,	    // Obsolete, Invalid serial baud rate 
@@ -93,7 +94,7 @@ enum GT511C3_status {
  * GT511C3 command codes
  */
 
-enum GT511C3_commands {
+enum GT511C3_COMMANDS {
     GT511C3_CMD_INVALID = 0x00,
     GT511C3_CMD_OPEN = 0x01,                // Open Initialization 
     GT511C3_CMD_CLOSE = 0x02,               // Close Termination 
@@ -137,7 +138,7 @@ enum GT511C3_commands {
  * Command frame
  */
 
-enum GT511C3_command_frame_codes {
+enum GT511C3_COMMAND_FRAME_CODES {
     GT511C3_CMD_START_CODE1 = 0x55,
     GT511C3_CMD_START_CODE2 = 0xAA,
 
@@ -159,7 +160,7 @@ typedef struct _gt511c3_command gt511c3_command;
  * Response frame
  */
 
-enum GT511C3_response_frame_codes {
+enum GT511C3_RESPONSE_FRAME_CODES {
     GT511C3_RSP_START_CODE1 = 0x55,
     GT511C3_RSP_START_CODE2 = 0xAA,
 
@@ -185,7 +186,7 @@ typedef struct _gt511c3_response gt511c3_response;
  * Data frame
  */
 
-enum GT511C3_data_frame_codes {
+enum GT511C3_DATA_FRAME_CODES {
     GT511C3_DATA_START_CODE1 = 0x5A,
     GT511C3_DATA_START_CODE2 = 0xA5,
 
@@ -207,6 +208,10 @@ typedef struct _gt511c3_data gt511c3_data;
 /*
  * Auxiliary macros
  */
+
+#define GT511C3_IS_VALID_CONFIG(config) ((config)->uart_base_pa != 0)
+#define GT511C3_INVALIDATE_CONFIG(config) \
+    (memset((config), 0, sizeof(GT511C3_DeviceConfig)))
 
 #define GT511C3_INIT_COMMAND_FRAME(cmd_frame, cmd_code) { \
     memset((cmd_frame),0,sizeof(gt511c3_command)); \
@@ -230,6 +235,8 @@ typedef struct _gt511c3_data gt511c3_data;
 
 #define GT511C3_DATA_HEADER_SIZE (GT511C3_DATA_FRAME_SIZE(0))
 
+#define UNREFERENCED_PARAMETER(p) (p) = (p)
+
 #define FIELD_OFFSET(type, field) ((uint32_t)&(((type *)0)->field))
 #define FIELD_SIZE(type, field) (sizeof(((type *)0)->field))
 
@@ -247,12 +254,12 @@ static TEE_Result gt511c3_close(void);
  * GT511C3 driver globals
  */
 
-/*
- * The UART driver
- */
+static unsigned int gt511c3_lock = SPINLOCK_UNLOCK;
+static struct tee_ta_session *curr_session = NULL;
 static struct imx_uart_data uart_driver;
-static struct serial_chip* serial = NULL;
-uint32_t usec_per_char;
+static struct serial_chip *serial = NULL;
+static GT511C3_DeviceConfig lkg_device_config = {0};
+static uint32_t usec_per_char;
 
 volatile int pta_is_idle = 0;
 
@@ -614,9 +621,12 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
                     GT511C3_DeviceInfo *device_info __maybe_unused)
 {
     TEE_Result status;
-#if !UART_DEBUG
     gt511c3_command cmd;
-#endif
+
+    if (device_config == NULL) {
+        EMSG("gt511c3_open failed, missing device configuration");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
 
     status = gt511c3_init(device_config, true);
     if (status != TEE_SUCCESS) {
@@ -625,6 +635,8 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
     }
 
 #if UART_DEBUG
+    UNREFERENCED_PARAMETER(cmd);
+
     if (!uart_test()) {
         return TEE_ERROR_BAD_STATE;
     }
@@ -636,37 +648,40 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
 
     status = gt511c3_send_cmd(&cmd, NULL);
     if (status != TEE_SUCCESS) {
-        EMSG("gt511c3_send_cmd failed, status 0x%X \n", status);
+        EMSG("gt511c3_send_cmd failed, status 0x%X", status);
         return status;
     }
 
     if (device_info != NULL) {
         status = gt511c3_recv_data((uint8_t*)device_info, sizeof(*device_info));
         if (status != TEE_SUCCESS) {
-            EMSG("gt511c3_recv_data failed, status 0x%X \n", status);
+            EMSG("gt511c3_recv_data failed, status 0x%X", status);
+            return status;
         }
     }
 
-    /*
+    /**/
     if (device_config->baud_rate != GT511C3_RESET_BAUDRATE) {
         GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
         cmd.parameter = device_config->baud_rate;
 
         status = gt511c3_send_cmd(&cmd, NULL);
         if (status != TEE_SUCCESS) {
+            EMSG("set baudrate failed, status 0x%X", status);
             return status;
         }
 
         status = gt511c3_init(device_config, false);
         if (status != TEE_SUCCESS) {
-            EMSG("gt511c3_init failed, status 0x%X \n", status);
+            EMSG("gt511c3_init failed, status 0x%X", status);
             return status;
         }
     }
-    */
+    /**/
 #endif
 
-    return status;
+    memcpy(&lkg_device_config, device_config, sizeof(*device_config));
+    return TEE_SUCCESS;
 }
 
 static TEE_Result gt511c3_close(void)
@@ -677,23 +692,38 @@ static TEE_Result gt511c3_close(void)
     gt511c3_command cmd;
     TEE_Result status;
 
-    /*
-    GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
-    cmd.parameter = GT511C3_RESET_BAUDRATE;
+    status = TEE_SUCCESS;
 
-    status = gt511c3_send_cmd(&cmd, NULL);
-    if (status != TEE_SUCCESS) {
-        EMSG("set baudrate failed, status 0x%X \n", status);
-    } else {
-        status = gt511c3_init(device_config, true);
+    /*
+     * If the device was opened successfully, we set it back
+     * to a known state, with the reset baud rate.
+     */
+
+    /**/   
+    if (GT511C3_IS_VALID_CONFIG(&lkg_device_config) &&
+        (lkg_device_config.baud_rate != GT511C3_RESET_BAUDRATE)) {
+
+        GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
+        cmd.parameter = GT511C3_RESET_BAUDRATE;
+
+        status = gt511c3_send_cmd(&cmd, NULL);
         if (status != TEE_SUCCESS) {
-            EMSG("gt511c3_init failed, status 0x%X \n", status);
+            EMSG("set baudrate failed, status 0x%X", status);
+        } else {
+            status = gt511c3_init(&lkg_device_config, true);
+            if (status != TEE_SUCCESS) {
+                EMSG("gt511c3_init failed, status 0x%X", status);
+            }
         }
     }
-    */
+    /**/
 
-    GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CLOSE);
-    status = gt511c3_send_cmd(&cmd, NULL);
+    GT511C3_INVALIDATE_CONFIG(&lkg_device_config);
+
+    if (status == TEE_SUCCESS) {
+        GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CLOSE);
+        status = gt511c3_send_cmd(&cmd, NULL);
+    }
 
     return status;
 #endif
@@ -712,7 +742,7 @@ static TEE_Result gt511c3_cmd_initialize(uint32_t param_types,
         TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
-    DMSG("gt511c3_cmd_initialize\n");
+    DMSG("gt511c3_cmd_initialize");
 
     if (exp_pt != param_types) {
         return TEE_ERROR_BAD_PARAMETERS;
@@ -731,7 +761,7 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
     TEE_Result status;
     gt511c3_command cmd;
 
-    DMSG("gt511c3_cmd_exec\n");
+    DMSG("gt511c3_cmd_exec");
 
     if (TEE_PARAM_TYPE_GET(param_types, 0) != TEE_PARAM_TYPE_VALUE_INOUT) {
         return TEE_ERROR_BAD_PARAMETERS;
@@ -779,13 +809,42 @@ static TEE_Result pta_gt511c3_open_session(uint32_t param_types __unused,
                     TEE_Param params[TEE_NUM_PARAMS] __unused,
                     void **sess_ctx __unused)
 {
+    TEE_Result status;
+    struct tee_ta_session *session;
+    
+    session = tee_ta_get_calling_session();
+    
     /* Access is restricted to TA only */
-    if (tee_ta_get_calling_session() == NULL) {
+    if (session == NULL) {
         EMSG("gt511c3 open session failed, REE access is not allowed!");
         return TEE_ERROR_ACCESS_DENIED;
     }
 
-    DMSG("gt511c3 open session succeeded!\n");
+    /* 
+     * Allow exclusive access only, acquire device 
+     */
+
+    { /* Locked op */
+        uint32_t exceptions;
+
+        exceptions = cpu_spin_lock_xsave(&gt511c3_lock);
+
+        if ((curr_session != NULL) && (session != curr_session)) {
+            status = TEE_ERROR_ACCESS_DENIED;
+        } else {
+            session = curr_session;
+            status = TEE_SUCCESS;
+        }
+   
+        cpu_spin_unlock_xrestore(&gt511c3_lock, exceptions);
+    } /* Locked op */
+    
+    if (status != TEE_SUCCESS) {
+        EMSG("gt511c3 open session failed, already opened (exclusive)!");
+        return TEE_ERROR_ACCESS_DENIED;
+    }
+    
+    DMSG("gt511c3 open session succeeded!");
     return TEE_SUCCESS;
 }
 
@@ -795,10 +854,24 @@ static void pta_gt511c3_close_session(void *sess_ctx __unused)
 
     status = gt511c3_close();
     if (status != TEE_SUCCESS) {
-        EMSG("gt511c3 close failed, status 0x%X!\n", status);
+        EMSG("gt511c3 close failed, status 0x%X!", status);
     } else {
-        DMSG("gt511c3 open session succeeded!\n");
+        DMSG("gt511c3 open session succeeded!");
     }
+
+    /* 
+     * Clear active session, release device 
+     */
+
+    { /* Locked op */
+        uint32_t exceptions;
+
+        exceptions = cpu_spin_lock_xsave(&gt511c3_lock);
+
+        curr_session = NULL;
+
+        cpu_spin_unlock_xrestore(&gt511c3_lock, exceptions);
+    } /* Locked op */
 }
 
 static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t cmd_id,
@@ -820,7 +893,7 @@ static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t c
         break;
 
     default:
-        EMSG("Command not implemented %d\n", cmd_id);
+        EMSG("Command not implemented %d", cmd_id);
         res = TEE_ERROR_NOT_IMPLEMENTED;
         break;
     }
@@ -829,8 +902,7 @@ static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t c
 }
 
 pseudo_ta_register(.uuid = PTA_GT511C3_UUID, .name = "pta_gt511c3",
-		   .flags = PTA_DEFAULT_FLAGS,
-
-		   .open_session_entry_point = pta_gt511c3_open_session,
-           .close_session_entry_point = pta_gt511c3_close_session,
-		   .invoke_command_entry_point = pta_gt511c3_invoke_command);
+    .flags = PTA_DEFAULT_FLAGS,
+    .open_session_entry_point = pta_gt511c3_open_session,
+    .close_session_entry_point = pta_gt511c3_close_session,
+    .invoke_command_entry_point = pta_gt511c3_invoke_command);

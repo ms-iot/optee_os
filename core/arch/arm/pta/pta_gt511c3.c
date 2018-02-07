@@ -832,7 +832,7 @@ static TEE_Result pta_gt511c3_open_session(uint32_t param_types __unused,
         if ((curr_session != NULL) && (session != curr_session)) {
             status = TEE_ERROR_ACCESS_DENIED;
         } else {
-            session = curr_session;
+            curr_session = session;
             status = TEE_SUCCESS;
         }
    

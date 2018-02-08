@@ -45,7 +45,9 @@
 #include <tee/entry_fast.h>
 #include "imx_pl310.h"
 
+#ifdef CFG_PL310
 #define CORE_IDX_L2CACHE                   0x00100000
+#endif
 
 #ifdef CFG_BOOT_SECONDARY_REQUEST
 int psci_features(uint32_t psci_fid)
@@ -67,8 +69,10 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 	uint32_t val;
 	vaddr_t va;
 
+#ifdef CFG_PL310
 	if (core_idx == CORE_IDX_L2CACHE)
 		return l2cache_op(entry);
+#endif
 
 	va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 	if (!va)
@@ -139,24 +143,34 @@ void __attribute__((noreturn)) psci_system_reset(void)
 	vaddr_t wdog = core_mmu_get_va(WDOG_BASE, MEM_AREA_IO_SEC);
 	uint32_t val;
 
-	/* Ensure watchdog is not masked */
-	val = read32(src + SRC_SCR);
-	val &= ~SRC_SCR_WARM_RESET_ENABLE;
-	val &= ~SRC_SCR_MASK_WDOG_RST;
-	val |= SRC_SCR_WDOG_NOTMASKED;
-	write32(val, src + SRC_SCR);
+	if (soc_is_imx7ds()) {
+	    /* Ensure watchdog is not masked */
+	    val = read32(src + SRC_A7RCR0);
+	    val &= ~SRC_SCR_MASK_WDOG_RST;
+	    val |= SRC_SCR_WDOG_NOTMASKED;
+	    write32(val, src + SRC_A7RCR0);
+	}
+	else
+	{
+	    /* Ensure watchdog is not masked */
+	    val = read32(src + SRC_SCR);
+	    val &= ~SRC_SCR_WARM_RESET_ENABLE;
+	    val &= ~SRC_SCR_MASK_WDOG_RST;
+	    val |= SRC_SCR_WDOG_NOTMASKED;
+	    write32(val, src + SRC_SCR);
+	}
 
-	/* Enable watchdog timer */
-	val = WDOG_WCR_WDE |
-	      WDOG_WCR_WDT |
-	      WDOG_WCR_SRS |
-	      WDOG_WCR_WDA;
+        /* Enable watchdog timer */
+        val = WDOG_WCR_WDE |
+    	  WDOG_WCR_WDT |
+    	  WDOG_WCR_SRS |
+    	  WDOG_WCR_WDA;
 
-	write16(val, wdog + WDOG1_WCR);
+        write16(val, wdog + WDOG1_WCR);
 
-	/* Watchdog timer feed sequence */
-	write16(WDOG_WSR_FEED1, wdog + WDOG1_WSR);
-	write16(WDOG_WSR_FEED2, wdog + WDOG1_WSR);
+        /* Watchdog timer feed sequence */
+        write16(WDOG_WSR_FEED1, wdog + WDOG1_WSR);
+        write16(WDOG_WSR_FEED2, wdog + WDOG1_WSR);
 
 	/* Wait for the end */
 	for (;;) wfi();

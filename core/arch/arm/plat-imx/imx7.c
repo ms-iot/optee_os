@@ -56,6 +56,7 @@ register_phys_mem(MEM_AREA_IO_SEC, DDRC_BASE, CORE_MMU_DEVICE_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, AIPS1_BASE, AIPS1_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, AIPS2_BASE, AIPS2_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, AIPS3_BASE, AIPS3_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, GIC_SIZE);
 
 void plat_cpu_reset_late(void)
 {
@@ -73,6 +74,9 @@ void plat_cpu_reset_late(void)
 		write32(CSU_ACCESS_ALL, core_mmu_get_va(addr, MEM_AREA_IO_SEC));
 
 	dsb();
+#if 0
+// TODO: get Security reference manual and update this section.
+
 	/* Protect OCRAM_S */
 	write32(0x003300FF, core_mmu_get_va(CSU_CSL_59, MEM_AREA_IO_SEC));
 	/* Proect TZASC */
@@ -88,7 +92,7 @@ void plat_cpu_reset_late(void)
 	 * write32(0x003300FF, get_base(CSU_CSL_12, MEM_AREA_IO_SEC));
 	 */
 	dsb();
-
+#endif
 	/* lock the settings */
 	for (addr = CSU_CSL_START; addr != CSU_CSL_END; addr += 4) {
 		val = read32(core_mmu_get_va(addr, MEM_AREA_IO_SEC));

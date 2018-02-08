@@ -52,6 +52,10 @@ register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
 #define TZ_CSL19_SPI    (TZ_SPI2 | TZ_SPI3)
 #define TZ_CSL20_SPI    (TZ_SPI4 | TZ_SPI5)
 
+#ifndef CFG_TZ_SPI_CONTROLLERS
+#define CFG_TZ_SPI_CONTROLLERS 0
+#endif
+
 #if (CFG_TZ_SPI_CONTROLLERS & (~TZ_SPI_ALL))
     #error "Unsupported CFG_TZ_SPI_CONTROLLERS value"
 #endif

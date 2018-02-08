@@ -48,7 +48,9 @@
 #include <tee/entry_fast.h>
 #include "imx_pl310.h"
 
+#ifdef CFG_PL310
 #define CORE_IDX_L2CACHE                   0x00100000
+#endif
 
 int psci_features(uint32_t psci_fid)
 {

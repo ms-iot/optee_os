@@ -40,7 +40,7 @@
 #define DRAM0_SIZE		CFG_DDR_SIZE
 
 /* Location of trusted dram */
-#define TZDRAM_BASE		(DRAM0_BASE + CFG_DDR_SIZE - 32 * 1024 * 1024)
+#define TZDRAM_BASE		DRAM0_BASE
 #define TZDRAM_SIZE		(30 * 1024 * 1024)
 
 /* Full GlobalPlatform test suite requires CFG_SHMEM_SIZE to be at least 2MB */

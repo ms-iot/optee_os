@@ -376,22 +376,9 @@ bool imx_uart_init_ex(struct imx_uart_data *pd,
 	 * Purge FIFOs
 	 */
 	while ((read32(reg_base + URXD) & URXD_CHARRDY) != 0)
-	;
+		;
 	while ((read32(reg_base + UTS) & UTS_TXEMPTY) == 0)
-	;
-
-	/*
-	 * For debug read back.
-	 */
-	uart_reg_image.ucr1 = read32(reg_base + UCR1);
-	uart_reg_image.ucr2 = read32(reg_base + UCR2);
-	uart_reg_image.ucr3 = read32(reg_base + UCR3);
-	uart_reg_image.ucr4 = read32(reg_base + UCR4);
-	uart_reg_image.usr1 = read32(reg_base + USR1);
-	uart_reg_image.usr2 = read32(reg_base + USR2);
-	uart_reg_image.ufcr = read32(reg_base + UFCR);
-	uart_reg_image.ubir = read32(reg_base + UBIR);
-	uart_reg_image.ubmr = read32(reg_base + UBMR);
+		;
 
 	return true;
 }

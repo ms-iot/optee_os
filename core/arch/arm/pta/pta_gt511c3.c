@@ -38,7 +38,7 @@
 #define GT511C3_MAX_FRAME (64 * 1024)
 
 /*
- * Scanner response timeout in msec
+ * Scanner response timeout in mSec
  */
 #define GT511C3_RESPONSE_TIMEOUT_MSEC 500L
 
@@ -61,6 +61,7 @@
  * Minimum RX timeout in mSec
  */
 #define MIN_RX_TIMEOUT_MSEC 50L
+
 
 /*
  * GT511C3 error codes
@@ -258,13 +259,13 @@ static unsigned int gt511c3_lock = SPINLOCK_UNLOCK;
 static struct tee_ta_session *curr_session = NULL;
 static struct imx_uart_data uart_driver;
 static struct serial_chip *serial = NULL;
+static bool is_com_error = false;
 static GT511C3_DeviceConfig lkg_device_config = {0};
 static uint32_t usec_per_char;
 
-volatile int pta_is_idle = 0;
 
 /*
- * GT511C3 driver private methods
+ * GT511C3 support methods
  */
 
 static TEE_Result gt511c3_to_tee(uint32_t status)
@@ -335,24 +336,18 @@ static TEE_Result gt511c3_to_tee(uint32_t status)
     }
 }
 
-static int16_t gt511c3_checksum(uint8_t *msg, uint16_t length)
-{
-    uint16_t i;
-    int16_t cs;
 
-    cs = 0;
-    for (i = 0; i < length; ++i) cs += msg[i];
+/*
+ * UART interface
+ */
 
-    return cs;
-}
-
-static TEE_Result gt511c3_init(GT511C3_DeviceConfig *device_config, 
+static TEE_Result gt511c3_init(GT511C3_DeviceConfig *device_config,
                       bool is_reset_baudrate)
 {
     struct imx_uart_config uart_config = {
         .clock_hz = device_config->uart_clock_hz,
-        .baud_rate = is_reset_baudrate ? 
-                         GT511C3_RESET_BAUDRATE : 
+        .baud_rate = is_reset_baudrate ?
+                         GT511C3_RESET_BAUDRATE :
                          device_config->baud_rate
     };
 
@@ -360,23 +355,24 @@ static TEE_Result gt511c3_init(GT511C3_DeviceConfig *device_config,
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    if (!imx_uart_init_ex(&uart_driver, 
-            device_config->uart_base_pa, 
+    if (!imx_uart_init_ex(&uart_driver,
+            device_config->uart_base_pa,
             &uart_config)) {
-                
+
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
     serial = &uart_driver.chip;
-    
+
     /*
      * RX timeout parameters, assuming 10 bits/char
      */
     usec_per_char = BITS_PER_CHAR * (1000000L/uart_config.baud_rate + 1);
-    
+    is_com_error = false;
+
     return TEE_SUCCESS;
 }
-
+ 
 static uint32_t gt611c3_get_frame_timeout_msec(uint32_t length)
 {
     uint32_t rx_frame_timeout_msec;
@@ -407,6 +403,52 @@ static uint16_t gt511c3_get_byte(void)
 
     return NO_RX_DATA;
 }
+ 
+#if UART_DEBUG
+static bool
+uart_test(void)
+{
+    static const char* uart_test_in = "12345678";
+    static const char* uart_out = "GT5311C3 UART Test";
+    char uart_in[8];
+    uint16_t b;
+    uint32_t i;
+
+    for (i = 0; i < strlen(&uart_out[0]); ++i) {
+        serial->ops->putc(serial, uart_out[i]);
+    }
+    
+    for (i = 0; i < strlen(&uart_test_in[0]); ++i) {
+        b = gt511c3_get_byte();
+        if (b == NO_RX_DATA) {
+            return false;
+        } 
+        uart_in[i] = (uint8_t)b;
+
+        if (uart_in[i] != uart_test_in[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+#endif // UART_DEBUG
+ 
+ 
+/*
+ * GT511C3 protocol implementation
+ */
+
+static int16_t gt511c3_checksum(uint8_t *msg, uint16_t length)
+{
+    uint16_t i;
+    int16_t cs;
+
+    cs = 0;
+    for (i = 0; i < length; ++i) cs += msg[i];
+
+    return cs;
+}
 
 static TEE_Result gt511c3_recv(uint8_t *rx_data, uint32_t length)
 {
@@ -424,6 +466,8 @@ static TEE_Result gt511c3_recv(uint8_t *rx_data, uint32_t length)
             if (stopwatch_elapsed_millis(&sw) < rx_timeout_msec) {
                 continue;
             }
+            EMSG("gt511c3_recv rx data timeout! Got %d out of %d", i, length);
+            is_com_error = true;
             return TEE_ERROR_NO_DATA;
         }
 
@@ -450,14 +494,16 @@ static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
         (rsp->start_code2 != GT511C3_RSP_START_CODE2)) {
 
         EMSG("gt511c3 - response framing error");
+        is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
 
-    if (rsp->checksum != 
-        gt511c3_checksum((uint8_t*)rsp, 
-            FIELD_OFFSET(gt511c3_response, checksum))) {
+    if (rsp->checksum != gt511c3_checksum(
+                            (uint8_t*)rsp, 
+                            FIELD_OFFSET(gt511c3_response, checksum))) {
 
         EMSG("gt511c3 - response checksum error");
+        is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
 
@@ -493,6 +539,7 @@ static TEE_Result gt511c3_recv_data(uint8_t* data, uint32_t length)
         (data_frame.start_code2 != GT511C3_DATA_START_CODE2)) {
 
         EMSG("gt511c3 - rx data framing error");
+        is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
 
@@ -502,6 +549,7 @@ static TEE_Result gt511c3_recv_data(uint8_t* data, uint32_t length)
 
     if (calc_cs != msg_cs) {
         EMSG("gt511c3 - rx data checksum error");
+        is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
 
@@ -516,10 +564,15 @@ static TEE_Result gt511c3_send_cmd(
     uint8_t *payload = (uint8_t *)cmd;
     gt511c3_response rsp;
     uint32_t i;
- 
 
-    cmd->checksum = gt511c3_checksum((uint8_t*)cmd, 
-        FIELD_OFFSET(gt511c3_command, checksum));
+    if (is_com_error) {
+        EMSG("flushing UART after failure");
+        serial->ops->flush(serial);
+    }
+
+    cmd->checksum = gt511c3_checksum(
+                        (uint8_t*)cmd, 
+                         FIELD_OFFSET(gt511c3_command, checksum));
 
     for (i = 0; i < sizeof(gt511c3_command); ++i) {
         serial->ops->putc(serial, payload[i]);
@@ -580,38 +633,6 @@ static TEE_Result gt511c3_send_data(
     return status;
 }
 
-#if UART_DEBUG
-static bool
-uart_test(void)
-{
-    static const char* uart_test_in = "12345678";
-    static const char* uart_out = "GT5311C3 UART Test";
-    char uart_in[8];
-    uint16_t b;
-    uint32_t i;
-
-    while (pta_is_idle);
-
-    for (i = 0; i < strlen(&uart_out[0]); ++i) {
-        serial->ops->putc(serial, uart_out[i]);
-    }
-    
-    for (i = 0; i < strlen(&uart_test_in[0]); ++i) {
-        b = gt511c3_get_byte();
-        if (b == NO_RX_DATA) {
-            return false;
-        } 
-        uart_in[i] = (uint8_t)b;
-
-        if (uart_in[i] != uart_test_in[i]) {
-            return false;
-        }
-    }
-
-    return true;
-}
-#endif // UART_DEBUG
-
 
 /*
  * GT511C3 interface implementation
@@ -660,7 +681,6 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
         }
     }
 
-    /**/
     if (device_config->baud_rate != GT511C3_RESET_BAUDRATE) {
         GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
         cmd.parameter = device_config->baud_rate;
@@ -677,7 +697,6 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
             return status;
         }
     }
-    /**/
 #endif
 
     memcpy(&lkg_device_config, device_config, sizeof(*device_config));
@@ -699,24 +718,17 @@ static TEE_Result gt511c3_close(void)
      * to a known state, with the reset baud rate.
      */
 
-    /**/   
-    if (GT511C3_IS_VALID_CONFIG(&lkg_device_config) &&
-        (lkg_device_config.baud_rate != GT511C3_RESET_BAUDRATE)) {
-
+    if (GT511C3_IS_VALID_CONFIG(&lkg_device_config)) {
         GT511C3_INIT_COMMAND_FRAME(&cmd, GT511C3_CMD_CHANGE_BAUD_RATE);
         cmd.parameter = GT511C3_RESET_BAUDRATE;
 
         status = gt511c3_send_cmd(&cmd, NULL);
         if (status != TEE_SUCCESS) {
             EMSG("set baudrate failed, status 0x%X", status);
-        } else {
-            status = gt511c3_init(&lkg_device_config, true);
-            if (status != TEE_SUCCESS) {
-                EMSG("gt511c3_init failed, status 0x%X", status);
-            }
         }
+
+        (void)gt511c3_init(&lkg_device_config, true);
     }
-    /**/
 
     GT511C3_INVALIDATE_CONFIG(&lkg_device_config);
 
@@ -749,8 +761,8 @@ static TEE_Result gt511c3_cmd_initialize(uint32_t param_types,
     }
 
     status = gt511c3_open(
-        (GT511C3_DeviceConfig *)params[0].memref.buffer,
-        (GT511C3_DeviceInfo *)params[1].memref.buffer);
+                (GT511C3_DeviceConfig *)params[0].memref.buffer,
+                (GT511C3_DeviceInfo *)params[1].memref.buffer);
 
     return status;
 }
@@ -761,7 +773,6 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
     TEE_Result status;
     gt511c3_command cmd;
 
-    DMSG("gt511c3_cmd_exec");
 
     if (TEE_PARAM_TYPE_GET(param_types, 0) != TEE_PARAM_TYPE_VALUE_INOUT) {
         return TEE_ERROR_BAD_PARAMETERS;
@@ -774,26 +785,37 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
     GT511C3_INIT_COMMAND_FRAME(&cmd, params[0].value.a);
     cmd.parameter = params[0].value.b;
 
+    DMSG(
+        "gt511c3_cmd_exec: cmd 0x%x, param %d, in size %d, outsize %d",
+        params[0].value.a,
+        params[0].value.b,
+        params[1].memref.size,
+        params[2].memref.size);
+
     status = gt511c3_send_cmd(&cmd, &params[0].value.b);
     if (status != TEE_SUCCESS) {
         return status;
     }
 
     if (params[1].memref.size != 0) {
-        status = gt511c3_send_data((uint8_t*)params[1].memref.buffer,
+        status = gt511c3_send_data(
+                     (uint8_t*)params[1].memref.buffer,
                      params[1].memref.size,
                      &params[0].value.b);
 
         if (status != TEE_SUCCESS) {
+            EMSG("gt511c3_send_data failed, status 0x%X", status);
             return status;
         }
     }
 
     if (params[2].memref.size != 0) {
-        status = gt511c3_recv_data((uint8_t*)params[2].memref.buffer,
+        status = gt511c3_recv_data(
+                     (uint8_t*)params[2].memref.buffer,
                      params[2].memref.size);
 
         if (status != TEE_SUCCESS) {
+            EMSG("gt511c3_recv_data failed, status 0x%X", status);
             return status;
         }
     }
@@ -856,7 +878,7 @@ static void pta_gt511c3_close_session(void *sess_ctx __unused)
     if (status != TEE_SUCCESS) {
         EMSG("gt511c3 close failed, status 0x%X!", status);
     } else {
-        DMSG("gt511c3 open session succeeded!");
+        DMSG("gt511c3 close session succeeded!");
     }
 
     /* 
@@ -880,8 +902,6 @@ static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t c
 {
     TEE_Result res;
     DMSG("gt511c3 invoke command %d\n", cmd_id);
-
-    while (pta_is_idle);	
 
     switch (cmd_id) {
     case PTA_GT511C3_INIT:

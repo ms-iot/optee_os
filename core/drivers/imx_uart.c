@@ -189,7 +189,9 @@ static void imx_uart_flush(struct serial_chip *chip)
 {
 	vaddr_t base = chip_to_base(chip);
 
-	while (!(read32(base + UTS) & UTS_TXEMPTY))
+	while ((read32(base + UTS) & UTS_TXEMPTY) == 0)
+		;
+	while ((read32(base + URXD) & URXD_CHARRDY) != 0)
 		;
 }
 

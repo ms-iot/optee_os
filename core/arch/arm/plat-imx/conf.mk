@@ -7,7 +7,7 @@ mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
 mx6d-flavorlist = mx6dhmbedge
 mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
 mx6s-flavorlist = mx6shmbedge
-mx7-flavorlist = mx7dsabresd
+mx7-flavorlist = mx7dsabresd mx7dclsom
 
 ifneq (,$(filter $(PLATFORM_FLAVOR),$(mx6ul-flavorlist)))
 $(call force,CFG_MX6UL,y)
@@ -33,7 +33,12 @@ CFG_DT ?= y
 CFG_NS_ENTRY_ADDR ?= 0x80800000
 CFG_PSCI_ARM32 ?= y
 CFG_TEE_CORE_NB_CORE ?= 2
+else ifneq (,$(filter $(PLATFORM_FLAVOR),mx7dclsom))
+CFG_DDR_SIZE ?= 0x40000000
+CFG_PSCI_ARM32 ?= y
+CFG_TEE_CORE_NB_CORE ?= 2
 endif
+
 
 # Common i.MX6 config
 core_arm32-platform-aflags	+= -mfpu=neon

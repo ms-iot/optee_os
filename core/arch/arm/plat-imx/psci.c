@@ -161,16 +161,16 @@ void __attribute__((noreturn)) psci_system_reset(void)
 	}
 
         /* Enable watchdog timer */
-        val = WDOG_WCR_WDE |
-    	  WDOG_WCR_WDT |
-    	  WDOG_WCR_SRS |
-    	  WDOG_WCR_WDA;
+	val = WDOG_WCR_WDE |
+	  WDOG_WCR_WDT |
+	  WDOG_WCR_SRS |
+	  WDOG_WCR_WDA;
 
-        write16(val, wdog + WDOG1_WCR);
+	write16(val, wdog + WDOG1_WCR);
 
-        /* Watchdog timer feed sequence */
-        write16(WDOG_WSR_FEED1, wdog + WDOG1_WSR);
-        write16(WDOG_WSR_FEED2, wdog + WDOG1_WSR);
+	/* Watchdog timer feed sequence */
+	write16(WDOG_WSR_FEED1, wdog + WDOG1_WSR);
+	write16(WDOG_WSR_FEED2, wdog + WDOG1_WSR);
 
 	/* Wait for the end */
 	for (;;) wfi();

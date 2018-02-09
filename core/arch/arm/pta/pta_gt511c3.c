@@ -71,23 +71,23 @@ enum GT511C3_STATUS {
     GT511C3_SUCCESS = 0x0000,	                    // Success
     GT511C3_STATUS_TIMEOUT = 0x1001,	            // Obsolete, capture timeout 
     GT511C3_STATUS_INVALID_BAUDRATE = 0x1002,	    // Obsolete, Invalid serial baud rate 
-    GT511C3_STATUS_INVALID_POS = 0x1003,	        // The specified ID is not between 0~199 
-    GT511C3_STATUS_IS_NOT_USED = 0x1004,	        // The specified ID is not used 
+    GT511C3_STATUS_INVALID_POS = 0x1003,	    // The specified ID is not between 0~199 
+    GT511C3_STATUS_IS_NOT_USED = 0x1004,	    // The specified ID is not used 
     GT511C3_STATUS_IS_ALREADY_USED = 0x1005,	    // The specified ID is already used 
     GT511C3_STATUS_COMM_ERR = 0x1006,	            // Communication Error 
-    GT511C3_STATUS_VERIFY_FAILED = 0x1007,	        // 1:1 Verification Failure 
+    GT511C3_STATUS_VERIFY_FAILED = 0x1007,	    // 1:1 Verification Failure 
     GT511C3_STATUS_IDENTIFY_FAILED = 0x1008,	    // 1:N Identification Failure 
     GT511C3_STATUS_DB_IS_FULL = 0x1009,	            // The database is full 
-    GT511C3_STATUS_DB_IS_EMPTY = 0x100A,	        // The database is empty 
+    GT511C3_STATUS_DB_IS_EMPTY = 0x100A,	    // The database is empty 
     GT511C3_STATUS_TURN_ERR = 0x100B,	            // Obsolete, Invalid order of the enrollment (The order was not as: EnrollStart -> Enroll1 -> Enroll2 -> Enroll3) 
     GT511C3_STATUS_BAD_FINGER = 0x100C,	            // Too bad fingerprint 
-    GT511C3_STATUS_ENROLL_FAILED = 0x100D,	        // Enrollment Failure 
+    GT511C3_STATUS_ENROLL_FAILED = 0x100D,	    // Enrollment Failure 
     GT511C3_STATUS_IS_NOT_SUPPORTED = 0x100E,	    // The specified command is not supported 
     GT511C3_STATUS_DEV_ERR = 0x100F,	            // Device Error, especially if Crypto-Chip is trouble 
     GT511C3_STATUS_CAPTURE_CANCELED = 0x1010,	    // Obsolete, The capturing is canceled 
-    GT511C3_STATUS_INVALID_PARAM = 0x1011,	        // Invalid parameter 
+    GT511C3_STATUS_INVALID_PARAM = 0x1011,	    // Invalid parameter 
     GT511C3_STATUS_FINGER_IS_NOT_PRESSED = 0x1012,  // Finger is not pressed 
-    GT511C3_STATUS_INVALID = 0XFFFF	                // Used when parsing fails 
+    GT511C3_STATUS_INVALID = 0XFFFF	            // Used when parsing fails 
 };
 
 
@@ -103,31 +103,31 @@ enum GT511C3_COMMANDS {
     GT511C3_CMD_CHANGE_BAUD_RATE = 0x04,    // ChangeBaudrate Change UART baud rate 
     GT511C3_CMD_SET_IAP_MODE = 0x05,        // SetIAPMode Enter IAP Mode In this mode, FW Upgrade is available 
     GT511C3_CMD_CMOS_LED = 0x12,            // CmosLed Control CMOS LED 
-    GT511C3_CMD_GET_ENROLL_COUNT = 0x20,	// Get enrolled fingerprint count 
-    GT511C3_CMD_CHECK_ENROLLED = 0x21,		// Check whether the specified ID is already enrolled 
-    GT511C3_CMD_ENROL_START = 0x22,		    // Start an enrollment 
-    GT511C3_CMD_ENROLL1 = 0x23,		        // Make 1st template for an enrollment 
-    GT511C3_CMD_ENROLL2 = 0x24,		        // Make 2nd template for an enrollment 
-    GT511C3_CMD_ENROLL3 = 0x25,		        // Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database 
-    GT511C3_CMD_IS_PRESS_FINGER = 0x26,		// Check if a finger is placed on the sensor 
-    GT511C3_CMD_DELETE_ID = 0x40,		    // Delete the fingerprint with the specified ID 
-    GT511C3_CMD_DELETE_ALL = 0x41,		    // Delete all fingerprints from the database 
-    GT511C3_CMD_VERIFY1_1 = 0x50,		    // Verification of the capture fingerprint image with the specified ID 
-    GT511C3_CMD_IDENTIFY1_N = 0x51,		    // Identification of the capture fingerprint image with the database 
+    GT511C3_CMD_GET_ENROLL_COUNT = 0x20,    // Get enrolled fingerprint count 
+    GT511C3_CMD_CHECK_ENROLLED = 0x21,	    // Check whether the specified ID is already enrolled 
+    GT511C3_CMD_ENROL_START = 0x22,	    // Start an enrollment 
+    GT511C3_CMD_ENROLL1 = 0x23,		    // Make 1st template for an enrollment 
+    GT511C3_CMD_ENROLL2 = 0x24,		    // Make 2nd template for an enrollment 
+    GT511C3_CMD_ENROLL3 = 0x25,		    // Make 3rd template for an enrollment, merge three templates into one template, save merged template to the database 
+    GT511C3_CMD_IS_PRESS_FINGER = 0x26,	    // Check if a finger is placed on the sensor 
+    GT511C3_CMD_DELETE_ID = 0x40,	    // Delete the fingerprint with the specified ID 
+    GT511C3_CMD_DELETE_ALL = 0x41,	    // Delete all fingerprints from the database 
+    GT511C3_CMD_VERIFY1_1 = 0x50,	    // Verification of the capture fingerprint image with the specified ID 
+    GT511C3_CMD_IDENTIFY1_N = 0x51,	    // Identification of the capture fingerprint image with the database 
     GT511C3_CMD_VERIFY_TEMPLATE1_1 = 0x52,  // Verification of a fingerprint template with the specified ID 
     GT511C3_CMD_IDENTIFY_TEMPLATE1_N = 0x53,// Identification of a fingerprint template with the database 
-    GT511C3_CMD_CAPTURE_FINGER = 0x60,		// Capture a fingerprint image(256x256) from the sensor 
-    GT511C3_CMD_MAKE_TEMPLATE = 0x61,		// Make template for transmission 
-    GT511C3_CMD_GET_IMAGE = 0x62,		    // Download the captured fingerprint image(256x256) 
-    GT511C3_CMD_GET_RAW_IMAGE = 0x63,		// Capture & Download raw fingerprint image(320x240) 
+    GT511C3_CMD_CAPTURE_FINGER = 0x60,	    // Capture a fingerprint image(256x256) from the sensor 
+    GT511C3_CMD_MAKE_TEMPLATE = 0x61,	    // Make template for transmission 
+    GT511C3_CMD_GET_IMAGE = 0x62,	    // Download the captured fingerprint image(256x256) 
+    GT511C3_CMD_GET_RAW_IMAGE = 0x63,	    // Capture & Download raw fingerprint image(320x240) 
     GT511C3_CMD_GET_TEMPLATE = 0x70,        // Download the template of the specified ID 
-    GT511C3_CMD_SET_TEMPLATE = 0x71,		// Upload the template of the specified ID 
-    GT511C3_CMD_GET_DATABASE_START = 0x72,	// Start database download, obsolete 
-    GT511C3_CMD_GET_DATABASE_END = 0x73,	// End database download, obsolete 
+    GT511C3_CMD_SET_TEMPLATE = 0x71,	    // Upload the template of the specified ID 
+    GT511C3_CMD_GET_DATABASE_START = 0x72,  // Start database download, obsolete 
+    GT511C3_CMD_GET_DATABASE_END = 0x73,    // End database download, obsolete 
     GT511C3_CMD_UPGRADE_FIRMWARE = 0x80,    // Not supported 
-    GT511C3_CMD_UPGRADE_ISOCD_IMAGE = 0x81,	// Not supported 
-    GT511C3_CMD_ACK = 0x30,		            // Acknowledge. 
-    GT511C3_CMD_NACK = 0x31		            // Non-acknowledge 
+    GT511C3_CMD_UPGRADE_ISOCD_IMAGE = 0x81, // Not supported 
+    GT511C3_CMD_ACK = 0x30,		    // Acknowledge. 
+    GT511C3_CMD_NACK = 0x31		    // Non-acknowledge 
 };
 
 
@@ -466,6 +466,7 @@ static TEE_Result gt511c3_recv(uint8_t *rx_data, uint32_t length)
             if (stopwatch_elapsed_millis(&sw) < rx_timeout_msec) {
                 continue;
             }
+
             EMSG("gt511c3_recv rx data timeout! Got %d out of %d", i, length);
             is_com_error = true;
             return TEE_ERROR_NO_DATA;
@@ -487,6 +488,7 @@ static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
 
     status = gt511c3_recv((uint8_t *)rsp, sizeof(gt511c3_response));
     if (status != TEE_SUCCESS) {
+        rsp->parameter = GT511C3_STATUS_TIMEOUT;
         return status;
     }
 
@@ -494,6 +496,7 @@ static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
         (rsp->start_code2 != GT511C3_RSP_START_CODE2)) {
 
         EMSG("gt511c3 - response framing error");
+        rsp->parameter = GT511C3_STATUS_COMM_ERR;
         is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
@@ -503,6 +506,7 @@ static TEE_Result gt511c3_recv_response(gt511c3_response *rsp)
                             FIELD_OFFSET(gt511c3_response, checksum))) {
 
         EMSG("gt511c3 - response checksum error");
+        rsp->parameter = GT511C3_STATUS_COMM_ERR;
         is_com_error = true;
         return TEE_ERROR_COMMUNICATION;
     }
@@ -794,7 +798,14 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
 
     status = gt511c3_send_cmd(&cmd, &params[0].value.b);
     if (status != TEE_SUCCESS) {
+        EMSG(
+            "cmd failed, status 0x%X, result 0x%X", 
+            status, 
+            params[0].value.b);
+
         return status;
+    } else {
+        DMSG("cmd succeeded, result 0x%X",  params[0].value.b);
     }
 
     if (params[1].memref.size != 0) {

@@ -21,6 +21,7 @@
 #include "pta_utils.h"
 
 #define UART_DEBUG 0
+#define GT511C3_DEBUG 0
 
 /*
  * Baud rate after reset
@@ -38,9 +39,9 @@
 #define GT511C3_MAX_FRAME (64 * 1024)
 
 /*
- * Scanner response timeout in mSec
+ * Scanner command response timeout in mSec
  */
-#define GT511C3_RESPONSE_TIMEOUT_MSEC 500L
+#define GT511C3_RESPONSE_TIMEOUT_MSEC 1000L
 
 /*
  * Max RX retry
@@ -240,6 +241,13 @@ typedef struct _gt511c3_data gt511c3_data;
 
 #define FIELD_OFFSET(type, field) ((uint32_t)&(((type *)0)->field))
 #define FIELD_SIZE(type, field) (sizeof(((type *)0)->field))
+
+#if GT511C3_DEBUG
+    #define _DMSG EMSG
+#else
+    #define _DMSG DMSG
+#endif /* GT511C3_DEBUG */
+
 
 /*
  * GT511C3 interface
@@ -758,7 +766,7 @@ static TEE_Result gt511c3_cmd_initialize(uint32_t param_types,
         TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
-    DMSG("gt511c3_cmd_initialize");
+    _DMSG("gt511c3_cmd_initialize");
 
     if (exp_pt != param_types) {
         return TEE_ERROR_BAD_PARAMETERS;
@@ -789,7 +797,7 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
     GT511C3_INIT_COMMAND_FRAME(&cmd, params[0].value.a);
     cmd.parameter = params[0].value.b;
 
-    DMSG(
+    _DMSG(
         "gt511c3_cmd_exec: cmd 0x%x, param %d, in size %d, outsize %d",
         params[0].value.a,
         params[0].value.b,
@@ -805,7 +813,7 @@ static TEE_Result gt511c3_cmd_exec(uint32_t param_types,
 
         return status;
     } else {
-        DMSG("cmd succeeded, result 0x%X",  params[0].value.b);
+        _DMSG("cmd succeeded, result 0x%X",  params[0].value.b);
     }
 
     if (params[1].memref.size != 0) {
@@ -877,7 +885,7 @@ static TEE_Result pta_gt511c3_open_session(uint32_t param_types __unused,
         return TEE_ERROR_ACCESS_DENIED;
     }
     
-    DMSG("gt511c3 open session succeeded!");
+    _DMSG("gt511c3 open session succeeded!");
     return TEE_SUCCESS;
 }
 
@@ -889,7 +897,7 @@ static void pta_gt511c3_close_session(void *sess_ctx __unused)
     if (status != TEE_SUCCESS) {
         EMSG("gt511c3 close failed, status 0x%X!", status);
     } else {
-        DMSG("gt511c3 close session succeeded!");
+        _DMSG("gt511c3 close session succeeded!");
     }
 
     /* 
@@ -912,7 +920,8 @@ static TEE_Result pta_gt511c3_invoke_command(void *sess_ctx __unused, uint32_t c
 				 TEE_Param params[TEE_NUM_PARAMS])
 {
     TEE_Result res;
-    DMSG("gt511c3 invoke command %d\n", cmd_id);
+    
+    _DMSG("gt511c3 invoke command %d\n", cmd_id);
 
     switch (cmd_id) {
     case PTA_GT511C3_INIT:

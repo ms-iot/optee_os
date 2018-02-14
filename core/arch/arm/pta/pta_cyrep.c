@@ -42,6 +42,7 @@
 #include <RiotCrypt.h>
 #include <RiotSha256.h>
 #include <RiotDerEnc.h>
+#include <RiotX509Bldr.h>
 #include <CyrepCommon.h>
 #include <platform_config.h>
 #include <stdio.h>
@@ -80,8 +81,9 @@ static TEE_Result cyrep_get_private_key(
 	uint32_t param_types,
 	TEE_Param params[TEE_NUM_PARAMS])
 {
-	CyrepKeyPair *key_pair_out;
-
+	DERBuilderContext cer_ctx;
+	uint8_t cer_buf[DER_MAX_TBS];
+	size_t out_buf_size;
 	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
 		TEE_PARAM_TYPE_NONE,
 		TEE_PARAM_TYPE_NONE,
@@ -93,13 +95,33 @@ static TEE_Result cyrep_get_private_key(
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 
-	if (params[0].memref.size < sizeof(CyrepKeyPair)) {
+	if (params[0].memref.size < 1) {
 		return TEE_ERROR_SHORT_BUFFER;
 	}
 
-	key_pair_out = params[0].memref.buffer;
+	DERInitContext(&cer_ctx, cer_buf, sizeof(cer_buf));
+	if (X509GetDEREcc(
+		&cer_ctx,
+		ctx->ta_key_pair.PublicKey,
+		ctx->ta_key_pair.PrivateKey) != 0) {
 
-	memcpy(key_pair_out, &ctx->ta_key_pair, sizeof(*key_pair_out));
+		EMSG("Failed to encode key pair");
+		return TEE_ERROR_GENERIC;
+	}
+
+	out_buf_size = params[0].memref.size - 1;
+	if (DERtoPEM(
+		&cer_ctx,
+		ECC_PRIVATEKEY_TYPE,
+		(char *)params[0].memref.buffer,
+		&out_buf_size) != 0) {
+
+		EMSG("Failed to convert DER to PEM");
+		params[0].value.a = out_buf_size + 1;
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+
+	((char *)params[0].memref.buffer)[out_buf_size] = '\0';
 
 	return TEE_SUCCESS;
 }

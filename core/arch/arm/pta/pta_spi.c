@@ -144,7 +144,7 @@ static TEE_Result pta_spi_transfer_data(
 }
 
 /* PTA command handler */
-static TEE_Result pta_spi_invoke_command(
+TEE_Result pta_spi_invoke_command(
     void *sess_ctx __unused,
     uint32_t cmd_id,
     uint32_t param_types,
@@ -171,7 +171,7 @@ static TEE_Result pta_spi_invoke_command(
     return res;
 }
 
-static TEE_Result pta_spi_open_session(
+TEE_Result pta_spi_open_session(
     uint32_t param_types __unused,
     TEE_Param params[TEE_NUM_PARAMS] __unused,
     void **sess_ctx __unused
@@ -187,7 +187,7 @@ static TEE_Result pta_spi_open_session(
     return TEE_SUCCESS;
 }
 
-static void pta_spi_close_session(void *sess_ctx __unused)
+void pta_spi_close_session(void *sess_ctx __unused)
 {
     DMSG("SPI PTA close session succeeded");
 }

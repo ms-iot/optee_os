@@ -2808,6 +2808,23 @@ typedef enum {
 		                    IMX_IOMUXC_EIM_CS0_ALT2_ECSPI2_SCLK),
 } ECSPI2_Mux;
 
+typedef enum {
+	// DCX (PAD_EIM_DA13) GPIO3_IO13
+	IMX_PAD_EIM_DA13_GPIO3_IO13 = _IMX_MAKE_PADCFG(
+		                    IMX_SRE_FAST,
+		                    IMX_DSE_40_OHM,
+		                    IMX_SPEED_MEDIUM,
+		                    IMX_ODE_DISABLE,
+		                    IMX_PKE_ENABLE,
+		                    IMX_PUE_PULL,
+		                    IMX_PUS_100K_OHM_PU,
+		                    IMX_HYS_DISABLED,
+		                    IMX_SION_DISABLED,
+		                    IMX_IOMUXC_EIM_DA13_ALT5_GPIO3_IO13),
+
+} ILI9340_Mux;
+
+
 register_phys_mem(MEM_AREA_IO_SEC, IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
 
 /*
@@ -2879,6 +2896,13 @@ bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
     /* SCLK: PAD_EIM_CS0_B (GPIO2_IO23) Alt2 */
     imx_pad_config(IMX_PAD_EIM_CS0, IMX_PAD_EIM_CS0_ECSPI2_SCLK);
 
+    /*
+     * Temporary doing the pinmuxing of the ILI9340 DCX pin here
+     * TODO;
+     *   Expose iomux pinmuxing so client drivers/ptas can consume.
+     */
+    imx_pad_config(IMX_PAD_EIM_DA13, IMX_PAD_EIM_DA13_GPIO3_IO13);
+ 
     return true;
 #endif /* #if !defined(PLATFORM_FLAVOR_mx6qhmbedge) */
 }

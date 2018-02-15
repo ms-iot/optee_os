@@ -39,4 +39,18 @@ enum PTA_SPI_MODE
     PTA_SPI_MODE_3
 };
 
+TEE_Result pta_spi_open_session(
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS],
+    void **sess_ctx
+    );
+
+void pta_spi_close_session(void *sess_ctx);
+
+TEE_Result pta_spi_invoke_command(
+    void *sess_ctx,
+    uint32_t cmd_id,
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS]
+    );
 #endif /* __PTA_SPI_H */

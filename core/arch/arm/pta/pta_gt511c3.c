@@ -21,7 +21,7 @@
 #include "pta_utils.h"
 
 #define UART_DEBUG 0
-#define GT511C3_DEBUG 0
+#define GT511C3_DEBUG 1
 
 /*
  * Baud rate after reset
@@ -236,11 +236,6 @@ typedef struct _gt511c3_data gt511c3_data;
     (sizeof(gt511c3_data) - sizeof(uint8_t) + (payload_size))
 
 #define GT511C3_DATA_HEADER_SIZE (GT511C3_DATA_FRAME_SIZE(0))
-
-#define UNREFERENCED_PARAMETER(p) (p) = (p)
-
-#define FIELD_OFFSET(type, field) ((uint32_t)&(((type *)0)->field))
-#define FIELD_SIZE(type, field) (sizeof(((type *)0)->field))
 
 #if GT511C3_DEBUG
     #define _DMSG EMSG

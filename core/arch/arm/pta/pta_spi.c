@@ -6,6 +6,22 @@
 #include <drivers/imx_spi.h>
 #include <pta_spi.h>
 
+/* PTA interface */
+TEE_Result pta_spi_open_session(
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS],
+    void **sess_ctx
+    );
+
+TEE_Result pta_spi_invoke_command(
+    void *sess_ctx,
+    uint32_t cmd_id,
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS]
+    );
+
+void pta_spi_close_session(void *sess_ctx);
+
 /* Interface to the SPI driver */
 struct mxc_spi_data spi_driver_data;
 bool spi_driver_data_initialized = false;

@@ -68,6 +68,25 @@ enum ILI9340_DCX_CODES {
 
 
 /*
+ * SPI pta interface
+ */
+
+TEE_Result pta_spi_open_session(
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS],
+    void **sess_ctx
+    );
+
+TEE_Result pta_spi_invoke_command(
+    void *sess_ctx,
+    uint32_t cmd_id,
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS]
+    );
+
+void pta_spi_close_session(void *sess_ctx);
+
+/*
  * ILI9340 interface
  */
 
@@ -86,7 +105,7 @@ uint32_t dcx_gpio = GPIO3_IO13;
  * SPI PTA interface
  */
 
-static TEE_Result ili9340_send_byte(uint32_t value, bool is_data)
+static TEE_Result ili9340_xchg_byte(uint32_t tx, uint32_t* rx, bool is_data)
 {
     TEE_Result status;
     uint32_t discard;
@@ -100,9 +119,9 @@ static TEE_Result ili9340_send_byte(uint32_t value, bool is_data)
         TEE_PARAM_TYPE_NONE);
 
     memset(params, 0, sizeof(params));
-    params[0].memref.buffer = &value;
+    params[0].memref.buffer = &tx;
     params[0].memref.size = sizeof(uint8_t);
-    params[1].memref.buffer = &discard;
+    params[1].memref.buffer = rx == NULL ? &discard : rx;
     params[1].memref.size = sizeof(uint8_t);
     params[2].value.a = PTA_SPI_TRANSFER_FLAG_START|PTA_SPI_TRANSFER_FLAG_END;
 
@@ -163,28 +182,37 @@ static TEE_Result ili9340_send_cmd(uint32_t ili9340_cmd, bool is_data)
     return TEE_SUCCESS;
 }
 
-static TEE_Result ili9340_send_data(
-    uint8_t* data, 
-    uint32_t size, 
-    bool is_command)
+static TEE_Result ili9340_xchg_data(uint8_t* tx, 
+        uint8_t* rx, 
+        uint32_t size, 
+        bool is_command)
 {
     TEE_Result status;
     static uint8_t discard[ILI9340_DISCARD_BUFFER_SIZE];
     TEE_Param params[TEE_NUM_PARAMS];
     uint32_t param_types;
-     
+
+    assert(sizeof(discard) >= size);
+
+    if ((tx == NULL) && (rx == NULL)) {
+        return TEE_ERROR_BAD_PARAMETERS;
+    } else if (tx == NULL) {
+        memset(discard, 0, size);
+        tx = &discard[0];
+    } else if (rx == NULL) {
+        rx = &discard[0];
+    }
+
     param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_MEMREF_INPUT,
         TEE_PARAM_TYPE_MEMREF_OUTPUT,
         TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_NONE);
-
-    assert(sizeof(discard) >= size);
         
     memset(params, 0, sizeof(params));
-    params[0].memref.buffer = data;
+    params[0].memref.buffer = tx;
     params[0].memref.size = size;
-    params[1].memref.buffer = discard;
+    params[1].memref.buffer = rx;
     params[1].memref.size = size;
     params[2].value.a = PTA_SPI_TRANSFER_FLAG_END | 
         (is_command ? 0 : PTA_SPI_TRANSFER_FLAG_START);
@@ -254,7 +282,7 @@ static void ili9340_close(void)
  * Command handlers
  */
 
-static TEE_Result ili9340_cmd_write_single(uint32_t param_types,
+static TEE_Result ili9340_cmd_xchg_single(uint32_t param_types,
                     TEE_Param params[TEE_NUM_PARAMS])
 {
     TEE_Result status;
@@ -262,7 +290,7 @@ static TEE_Result ili9340_cmd_write_single(uint32_t param_types,
 
     uint32_t exp_param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_VALUE_OUTPUT,
         TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
@@ -271,43 +299,62 @@ static TEE_Result ili9340_cmd_write_single(uint32_t param_types,
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    _DMSG(
-        "ili9340_cmd_write_single: data 0x%x, cmd(0)/data(1) %d",
-        params[0].value.a,
-        params[0].value.b);
-
     is_data = params[0].value.b != 0;
 
-    status = ili9340_send_byte((uint8_t)params[0].value.a, is_data);
+    status = ili9340_xchg_byte(params[0].value.a, &params[1].value.a, is_data);
+
+    _DMSG(
+        "ili9340_cmd_xchg_single: data 0x%x, cmd(0)/data(1) %d, rx 0x%X",
+        params[0].value.a,
+        params[0].value.b,
+        params[1].value.a);
 
     if (status != TEE_SUCCESS) {
-        EMSG("ili9340_send_byte failed, status 0x%X", status);
+        EMSG("ili9340_xchg_byte failed, status 0x%X", status);
         return status;
     }
 
     return TEE_SUCCESS;
 }
 
-static TEE_Result ili9340_cmd_write(uint32_t param_types,
+static TEE_Result ili9340_cmd_xchg(uint32_t param_types,
                     TEE_Param params[TEE_NUM_PARAMS])
 {
     TEE_Result status;
-    bool is_command;
-    bool is_data;
+    bool is_command = false;
+    bool is_data = false;
+    uint8_t* tx_data = NULL;
+    uint8_t* rx_data = NULL;
+    uint32_t data_size = 0;
 
     if (TEE_PARAM_TYPE_GET(param_types, 0) != TEE_PARAM_TYPE_VALUE_INPUT) {
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
+    is_command = params[0].value.b != 0;
+    data_size = params[1].memref.size;
+
+    if (data_size != 0) {
+        tx_data = (uint8_t*)params[1].memref.buffer;
+        is_data = true;
+    }
+
+    if (params[2].memref.size != 0) {
+        if ((data_size != 0) && (data_size != params[2].memref.size)) {
+            EMSG("ili9340_cmd_xchg failed, rx/tx buffers size dont match");
+            return TEE_ERROR_BAD_PARAMETERS;
+        }
+        data_size = params[2].memref.size;
+        rx_data = (uint8_t*)params[2].memref.buffer;
+        is_data = true;
+    }
+       
     _DMSG(
-        "ili9340_cmd_write: cmd 0x%x, valid %d, data size %d",
+        "ili9340_cmd_xchg: cmd 0x%x, valid %d, data size %d",
         params[0].value.a,
         params[0].value.b,
-        params[1].memref.size);
-
-    is_command = params[0].value.b != 0;
-    is_data = params[1].memref.size != 0;
-        
+        data_size);
+ 
     if (is_command) {
         status = ili9340_send_cmd(params[0].value.a, is_data);
         if (status != TEE_SUCCESS) {
@@ -317,10 +364,7 @@ static TEE_Result ili9340_cmd_write(uint32_t param_types,
     }
 
     if (is_data) {
-        status = ili9340_send_data(
-                     (uint8_t*)params[1].memref.buffer,
-                     params[1].memref.size,
-                     is_command);
+        status = ili9340_xchg_data(tx_data, rx_data, data_size, is_command);
 
         if (status != TEE_SUCCESS) {
             EMSG("ili9340_send_data failed, status 0x%X", status);
@@ -380,12 +424,12 @@ static TEE_Result pta_ili9340_invoke_command(void *sess_ctx __unused, uint32_t c
         res = TEE_SUCCESS;
         break;
 
-    case PTA_ILI9340_WRITE_SINGLE:
-        res = ili9340_cmd_write_single(param_types, params);
+    case PTA_ILI9340_XCHG_SINGLE:
+        res = ili9340_cmd_xchg_single(param_types, params);
         break;
 
-    case PTA_ILI9340_WRITE:
-        res = ili9340_cmd_write(param_types, params);
+    case PTA_ILI9340_XCHG:
+        res = ili9340_cmd_xchg(param_types, params);
         break;
 
     default:

@@ -40,23 +40,25 @@ struct _GT511C3_DeviceInfo {
 } __packed;
 typedef struct _GT511C3_DeviceInfo GT511C3_DeviceInfo;
 
-/*
- * Description: Device initialization
- * 
- * [in]  params[0].memref: Device configuration (GT511C3_DeviceConfig)
- * [out] params[1].memref: Device information (GT511C3_DeviceInfo)
- */ 
-#define PTA_GT511C3_INIT    0
+enum GT511C3_PTA_COMMANDS {
 
-/*
- * Description: Execute a command
- * 
- * [in]  params[0].value.a: GT511C3 command 
- * [in]  params[0].value.b: Command parameter
- * [out] params[0].value.b: Command status (GT511C3 status code)
- * [in  optional] params[1].memref: Command input
- * [out optional] params[2].memref: Command output
- */ 
-#define PTA_GT511C3_EXEC    1
+    /*
+     * Description: Device initialization
+     * 
+     * [in]  params[0].memref: Device configuration (GT511C3_DeviceConfig)
+     * [out] params[1].memref: Device information (GT511C3_DeviceInfo)
+     */ 
+    PTA_GT511C3_INIT = 0,
 
+    /*
+     * Description: Execute a command
+     * 
+     * [in]  params[0].value.a: GT511C3 command 
+     * [in]  params[0].value.b: Command parameter
+     * [out] params[0].value.b: Command status (GT511C3 status code)
+     * [in  optional] params[1].memref: Command input
+     * [out optional] params[2].memref: Command output
+     */ 
+    PTA_GT511C3_EXEC = 1,
+};
 #endif /* __PTA_GT511C3_H */

@@ -123,7 +123,7 @@ static uint32_t get_csl_value(uint32_t csl_index __maybe_unused)
 
 void plat_cpu_reset_late(void)
 {
-	uintptr_t addr;
+	vaddr_t addr;
 	uint32_t pa __maybe_unused;
 	uint32_t csl_index;
 

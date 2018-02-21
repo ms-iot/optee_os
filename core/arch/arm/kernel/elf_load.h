@@ -46,10 +46,10 @@ struct user_ta_store_ops {
 	 * Close a TA handle. Do nothing if @h == NULL.
 	 */
 	void (*close)(struct user_ta_store_handle *h);
-	
+#ifdef CFG_CYREP
 	TEE_Result (*get_hash)(struct user_ta_store_handle *h,
 				uint8_t *hash, size_t hash_len);
-
+#endif
 	/*
 	 * user_ta_store_ops instances are kept in a list ordered by priority.
 	 * Higher priority instances are tried first when a TA is looked up.

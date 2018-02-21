@@ -48,16 +48,8 @@ typedef uint64_t hashMagic_t;
 #endif
 
 #ifdef CONFIG_CYREP_OPTEE_BUILD
-/* The OPTEE hash provider interface requires the context
- * structure to be dynamically allocated based on a size it provides.
- * That would require changing the RIOT interface, which we don't want to do,
- * so instead we ensure the static context structure is big enough. 
- * Size of this structure must be at least as big as hash_state in
- * tomcrypt_hash.h. We cannot include this header directly, but there are
- * runtime checks to ensure this structure is the proper size.
- */
 typedef struct _RIOT_SHA256_CONTEXT {
-    uint8_t dummy[256];
+    void *ctx;
 } RIOT_SHA256_CONTEXT;
 #else
 typedef struct _RIOT_SHA256_CONTEXT {

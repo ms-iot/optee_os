@@ -44,9 +44,7 @@ CFG_PSCI_ARM32 ?= y
 CFG_TEE_CORE_NB_CORE ?= 2
 endif
 
-
 # Common i.MX6 config
-core_arm32-platform-aflags	+= -mfpu=neon
 
 $(call force,CFG_GENERIC_BOOT,y)
 $(call force,CFG_GIC,y)
@@ -66,31 +64,10 @@ $(call force,CFG_MX6,y)
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 endif
 
-# i.MX6Q specific config
-ifeq ($(CFG_MX6Q),y)
-# CFG_TZC380 is required for systems having the TZASC_ENABLE fuse burnt.
-CFG_TZC380 ?= y
-endif
-
 # i.MX6 Solo/DualLite/Dual/Quad specific config
 ifeq ($(filter y, $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) $(CFG_MX6S) \
       $(CFG_MX6SX)), y)
 
-# One bit for each SPI controller to reserve for TZ Supervisor execution mode.
-# Examples:
-# - CFG_TZ_SPI_CONTROLLERS=0x0  -> no reserved controllers
-# - CFG_TZ_SPI_CONTROLLERS=0x1  -> reserve ECSPI1
-# - CFG_TZ_SPI_CONTROLLERS=0x2  -> reserve ECSPI2
-# - CFG_TZ_SPI_CONTROLLERS=0x3  -> reserve ECSPI1 and ECSPI2
-# - CFG_TZ_SPI_CONTROLLERS=0x4  -> reserve ECSPI3
-# - CFG_TZ_SPI_CONTROLLERS=0x1f -> reserve ECSPI1, 2, 3, 4, and 5
-CFG_TZ_SPI_CONTROLLERS ?= 0x0
-
-endif # ifeq ($(CFG_MX6Q),y)
-
-# i.MX6 Solo/DualLite/Dual/Quad specific config
-ifeq ($(filter y, $(CFG_MX6Q) $(CFG_MX6D) $(CFG_MX6DL) $(CFG_MX6S)), y)
->>>>>>> 923cc36... Cleanup trailing whitespace and eol markers
 include core/arch/arm/cpu/cortex-a9.mk
 
 $(call force,CFG_MX6,y)
@@ -101,6 +78,19 @@ $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 CFG_BOOT_SYNC_CPU ?= y
 CFG_BOOT_SECONDARY_REQUEST ?= y
 CFG_ENABLE_SCTLR_RR ?= y
+
+# CFG_TZC380 is required for systems having the TZASC_ENABLE fuse burnt.
+CFG_TZC380 ?= y
+
+# One bit for each SPI controller to reserve for TZ Supervisor execution mode.
+# Examples:
+# - CFG_TZ_SPI_CONTROLLERS=0x0  -> no reserved controllers
+# - CFG_TZ_SPI_CONTROLLERS=0x1  -> reserve ECSPI1
+# - CFG_TZ_SPI_CONTROLLERS=0x2  -> reserve ECSPI2
+# - CFG_TZ_SPI_CONTROLLERS=0x3  -> reserve ECSPI1 and ECSPI2
+# - CFG_TZ_SPI_CONTROLLERS=0x4  -> reserve ECSPI3
+# - CFG_TZ_SPI_CONTROLLERS=0x1f -> reserve ECSPI1, 2, 3, 4, and 5
+CFG_TZ_SPI_CONTROLLERS ?= 0x0
 endif
 
 ifeq ($(filter y, $(CFG_MX7)), y)
@@ -123,16 +113,25 @@ CFG_TEE_CORE_NB_CORE ?= 1
 endif
 
 ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+
 # In the default configuration: 
 # - UART3 is used for OPTEE console
 # - UART1 is used for Windows kernel debugging
 CFG_CONSOLE_UART ?= UART1_BASE
 
-# IOMUX initialization is not supported by default.
-CFG_IMX_IOMUX ?= n
+ifeq ($(CFG_TA_SPI),y)
+$(call force,CFG_SPI,y)
+endif
 
-# Querying clock frequency is not supported by default.
-CFG_IMX_CLOCK ?= n
+ifeq ($(CFG_SPI),y)
+$(call force,CFG_IMX_SPI,y)
+endif
+
+ifeq ($(CFG_IMX_SPI),y)
+$(call force,CFG_IMX_IOMUX,y)
+$(call force,CFG_IMX_GPIO,y)
+$(call force,CFG_IMX_CLOCK,y)
+endif
 
 endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 

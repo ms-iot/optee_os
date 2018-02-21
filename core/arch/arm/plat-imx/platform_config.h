@@ -53,7 +53,13 @@
 #error "LPAE not supported for now"
 #endif
 
-#define CFG_TEE_CORE_NB_CORE           1
+#define CFG_TEE_CORE_NB_CORE		1
+
+#define DDR_PHYS_START			DRAM0_BASE
+#define DDR_SIZE			DRAM0_SIZE
+
+#define CFG_DDR_START			DDR_PHYS_START
+#define CFG_DDR_SIZE			DDR_SIZE
 
 #ifndef CFG_DDR_TEETZ_RESERVED_START
 #define CFG_DDR_TEETZ_RESERVED_START	0x9E000000
@@ -96,8 +102,8 @@
 
 /* For i.MX6 Quad SABRE Lite and Smart Device board */
 
-#elif (defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
-	defined(CFG_MX6S))
+#elif defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
+	defined(CFG_MX6S)
 
 #include <imx-regs.h>
 
@@ -125,10 +131,12 @@
 #endif /* #if defined(CFG_CONSOLE_UART) */
 
 /* Board specific RAM size */
+#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
+#define DRAM0_SIZE			0x80000000
+#endif
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
 	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6qhmbedge)
+	defined(PLATFORM_FLAVOR_mx6dlsabresd)
 #define DRAM0_SIZE			0x40000000
 #endif
 #if defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
@@ -144,6 +152,12 @@
 
 /* Common RAM and cache controller configuration */
 #define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
+
+#define DDR_PHYS_START			DRAM0_BASE
+#define DDR_SIZE			DRAM0_SIZE
+
+#define CFG_DDR_START			DDR_PHYS_START
+#define CFG_DDR_SIZE			DDR_SIZE
 
 /*
  * PL310 TAG RAM Control Register
@@ -214,12 +228,6 @@
  * Standby mode enabled
  */
 #define PL310_POWER_CTRL_INIT		0x00000003
-
-/*
- * Do not enable L2 during OPTEE initialization. Windows will invoke
- * an SMC to turn on L2.
- */
-#define CFG_SKIP_L2_INIT
 
 /*
  * SCU Invalidate Register

@@ -126,7 +126,6 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 	return PSCI_RET_SUCCESS;
 }
 
-
 int psci_cpu_off(void)
 {
 	uint32_t core_id;

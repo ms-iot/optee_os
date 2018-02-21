@@ -34,7 +34,9 @@
 #include <kernel/dt.h>
 #include <kernel/generic_boot.h>
 #include <kernel/panic.h>
+#ifdef CFG_DT
 #include <libfdt.h>
+#endif
 #include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
 #include <util.h>
@@ -74,6 +76,7 @@ void imx_wdog_restart(void)
 }
 KEEP_PAGER(imx_wdog_restart);
 
+#ifdef CFG_DT
 static TEE_Result imx_wdog_init(void)
 {
 	enum teecore_memtypes mtype;
@@ -159,4 +162,35 @@ static TEE_Result imx_wdog_init(void)
 
 	return TEE_SUCCESS;
 }
+#else
+static TEE_Result imx_wdog_init(void)
+{
+	vaddr_t vbase;
+	paddr_t pbase = WDOG_BASE;
+	size_t sz = CORE_MMU_DEVICE_SIZE;
+
+	/*
+	 * Check to see whether it has been mapped using
+	 * register_phys_mem or not.
+	 */
+	vbase = (vaddr_t)phys_to_virt(pbase, MEM_AREA_IO_SEC);
+	if (!vbase) {
+		if (!core_mmu_add_mapping(MEM_AREA_IO_SEC, pbase, sz)) {
+			EMSG("Failed to map %zu bytes at PA 0x%"PRIxPA,
+			     (size_t)sz, pbase);
+			return TEE_ERROR_GENERIC;
+		}
+	}
+
+	vbase = (vaddr_t)phys_to_virt(pbase, MEM_AREA_IO_SEC);
+	if (!vbase) {
+		EMSG("Failed to get VA for PA 0x%"PRIxPA, pbase);
+		return TEE_ERROR_GENERIC;
+	}
+
+	wdog_base = vbase;
+
+	return TEE_SUCCESS;
+}
+#endif // CFG_DT
 driver_init(imx_wdog_init);

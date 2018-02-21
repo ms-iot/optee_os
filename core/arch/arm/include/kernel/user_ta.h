@@ -37,7 +37,9 @@ struct user_ta_ctx {
 	struct tee_mmu_info *mmu;	/* Saved MMU information (ddr only) */
 	void *ta_time_offs;	/* Time reference used by the TA */
 	struct tee_pager_area_head *areas;
+#ifdef CFG_CYREP
 	uint8_t ta_image_sha256[TEE_SHA256_HASH_SIZE];
+#endif
 #if defined(CFG_SE_API)
 	struct tee_se_service *se_service;
 #endif

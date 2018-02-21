@@ -69,14 +69,6 @@
 #define SCU_BASE			0x00A00000
 #define PL310_BASE			0x00A02000
 #define SRC_BASE			0x020D8000
-#define SRC_SCR				0x000
-#define SRC_GPR1			0x020
-#define SRC_SCR_CPU_ENABLE_ALL		SHIFT_U32(0x7, 22)
-#define SRC_SCR_CORE1_RST_OFFSET	14
-#define SRC_SCR_CORE1_ENABLE_OFFSET	22
-#define SRC_SCR_WARM_RESET_ENABLE       (1u << 0)
-#define SRC_SCR_MASK_WDOG_RST           0x00000780
-#define SRC_SCR_WDOG_NOTMASKED          (0xA << 7)
 #define IRAM_BASE			0x00900000
 
 #define OCOTP_BASE			0x021BC000
@@ -224,7 +216,6 @@
 #endif
 
 #elif defined(CFG_MX7)
-
 #define GIC_BASE		0x31000000
 #define GIC_SIZE		0x8000
 #define GICC_OFFSET		0x2000
@@ -311,11 +302,6 @@
 #define IOMUXC_GPR11_OCRAM_S_TZ_EN_LOCK_MASK		GENMASK_32(26, 26)
 #define IOMUXC_GPR11_OCRAM_S_TZ_ADDR_LOCK_OFFSET	GENMASK_32(29, 27)
 
-/* SRC */
-#define SRC_SCR_WARM_RESET_ENABLE       0
-#define SRC_SCR_MASK_WDOG_RST           0x000F0000
-#define SRC_SCR_WDOG_NOTMASKED          (0xA << 16)
-
 #else
 #error "CFG_MX6/7 not defined"
 #endif
@@ -358,22 +344,6 @@
 #define SNVS_LPCR_TOP			(1u << 6)
 
 #define SNVS_LPSR_PGD			(1u << 3)
-
-/* Watchdog */
-
-#define WDOG1_WCR			0x00000000
-#define WDOG1_WSR			0x00000002
-#define WDOG1_WRSR			0x00000004
-#define WDOG1_WICR			0x00000006
-#define WDOG1_WMCR			0x00000008
-
-#define WDOG_WCR_WDE			(1u << 2)
-#define WDOG_WCR_WDT			(1u << 3)
-#define WDOG_WCR_SRS			(1u << 4)
-#define WDOG_WCR_WDA			(1u << 5)
-
-#define WDOG_WSR_FEED1			0x5555
-#define WDOG_WSR_FEED2			0xAAAA
 
 #define IOMUXC_GPR4_OFFSET	0x10
 #define IOMUXC_GPR5_OFFSET	0x14

@@ -49,7 +49,7 @@
 
 #ifdef CONFIG_CYREP_OPTEE_BUILD
 #include <kernel/panic.h>
-#include <tee/tee_cryp_provider.h>
+#include <crypto/crypto.h>
 
 /*
  * Stub out to libtomcrypt implementation to avoid alignment issues in RIOT
@@ -58,18 +58,13 @@
 void RIOT_SHA256_Init(RIOT_SHA256_CONTEXT *context)
 {
 	TEE_Result res;
-	size_t ctx_size;
 
-	res = crypto_ops.hash.get_ctx_size(TEE_ALG_SHA256, &ctx_size);
+	res = crypto_hash_alloc_ctx(&context->ctx, TEE_ALG_SHA256);
 	if (res != TEE_SUCCESS) {
-		panic("Failed to get context size of TEE_ALG_SHA256 structure\n");
+		panic("Failed to alloc SHA256 context\n");
 	}
 
-	if (sizeof(RIOT_SHA256_CONTEXT) < ctx_size) {
-		panic("RIOT_SHA256_CONTEXT is too small\n");
-	}
-
-	res = crypto_ops.hash.init((uint8_t *)context, TEE_ALG_SHA256);
+	res = crypto_hash_init(context->ctx, TEE_ALG_SHA256);
 	(void)res;
 	assert(res == TEE_SUCCESS);
 }
@@ -78,8 +73,8 @@ void RIOT_SHA256_Update(RIOT_SHA256_CONTEXT *context,
 					const sha2_uint8_t *data, size_t len)
 {
 	TEE_Result res;
-	res = crypto_ops.hash.update(
-			(uint8_t *)context,
+	res = crypto_hash_update(
+			context->ctx,
 			TEE_ALG_SHA256,
 			data,
 			len);
@@ -91,14 +86,17 @@ void RIOT_SHA256_Update(RIOT_SHA256_CONTEXT *context,
 void RIOT_SHA256_Final(RIOT_SHA256_CONTEXT *context, sha2_uint8_t *digest)
 {
 	TEE_Result res;
-	res = crypto_ops.hash.final(
-			(uint8_t *)context,
+	res = crypto_hash_final(
+			context->ctx,
 			TEE_ALG_SHA256,
 			digest,
 			SHA256_DIGEST_LENGTH);
 
 	(void)res;
 	assert(res == TEE_SUCCESS);
+
+	crypto_hash_free_ctx(context->ctx, TEE_ALG_SHA256);
+	context->ctx = NULL;
 }
 
 #else /* CONFIG_CYREP_OPTEE_BUILD */

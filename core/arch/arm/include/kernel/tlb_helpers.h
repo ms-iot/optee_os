@@ -47,16 +47,5 @@ static inline void tlbi_mva_allasid_nosync(vaddr_t va)
 #endif
 }
 #endif /*!ASM*/
-<<<<<<< HEAD
-#define DRAM0_BASE			0x10000000
-
-#if defined(CFG_MX6Q)
-#define AIPS2_ARB_BASE_ADDR         0x02100000
-#define ATZ2_BASE_ADDR              AIPS2_ARB_BASE_ADDR
-#define AIPS2_OFF_BASE_ADDR         (ATZ2_BASE_ADDR + 0x80000)
-#define IP2APB_TZASC1_BASE_ADDR     (AIPS2_OFF_BASE_ADDR + 0x50000)
-#endif
 
 #endif /* TLB_HELPERS_H */
-
-

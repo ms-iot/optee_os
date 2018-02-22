@@ -18,7 +18,9 @@
 #include <pta_spi.h>
 #include <pta_secdisp.h>
 
-#define ILI9340_DEBUG 1
+#include "font5x7std.h"
+
+#define ILI9340_DEBUG 0
 
 /*
  * Configuration
@@ -38,7 +40,7 @@
 #define ILI9340_CFG_SPI_BUS_INDEX 1         /* SPI2 */
 #define ILI9340_CFG_SPI_CHANNEL 0           /* Channel 0 */
 #define ILI9340_CFG_SPI_MODE PTA_SPI_MODE_0 /* MODE0 */
-#define ILI9340_CFG_SPI_SPEED_HZ 12000000   /* SPI speed 12Mhz */
+#define ILI9340_CFG_SPI_SPEED_HZ 12000000   /* SPI speed Hz */
 
 /*
  * Due to hard-wired 4 wire 8-bit interface, DCX is
@@ -210,7 +212,6 @@ static uint16_t cur_textcolor = 0xFFFF;
 static uint16_t cur_textbgcolor = 0xFFFF;
 static uint8_t cur_textsize = 1;
 static uint8_t cur_rotation = 0;
-static uint16_t line_image[ILI9340_TFTHEIGHT];
 /* If set, 'wrap' text at right edge of display */
 static bool is_wrap = true;
 #if 0
@@ -218,6 +219,8 @@ static bool is_wrap = true;
 static bool is_cp437 = false;
 //GFXfont *gfxFont = NULL;
 #endif
+
+static uint16_t line_image[ILI9340_TFTHEIGHT];
 
 /*
  * Color translation table
@@ -738,67 +741,179 @@ static TEE_Result ili9340_clear(
     cur_height = ILI9340_TFTHEIGHT;
     cursor_x = 0;
     cursor_y = 0;
-    cur_textbgcolor = color_xlt[color];
+    cur_textbgcolor = color;
     return TEE_SUCCESS;
 }
 
 static TEE_Result ili9340_set_rotation(
-    struct secdisp_driver *driver, 
+    struct secdisp_driver *driver,
     uint8_t rotation)
 {
-    UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(rotation);
+    uint8_t data;
 
-    return TEE_SUCCESS;
+    UNREFERENCED_PARAMETER(driver);
+
+    switch (rotation) {
+    case SECDISP_0:
+        data = (ILI9340_MADCTL_MX | ILI9340_MADCTL_BGR);
+        cur_width = ILI9340_TFTWIDTH;
+        cur_height = ILI9340_TFTHEIGHT;
+        break;
+
+    case SECDISP_90:
+        data = (ILI9340_MADCTL_MV | ILI9340_MADCTL_BGR);
+        cur_width = ILI9340_TFTHEIGHT;
+        cur_height = ILI9340_TFTWIDTH;
+        break;
+
+    case SECDISP_180:
+        data = (ILI9340_MADCTL_MY | ILI9340_MADCTL_BGR);
+        cur_width = ILI9340_TFTWIDTH;
+        cur_height = ILI9340_TFTHEIGHT;
+        break;
+
+    case SECDISP_270:
+        data = (ILI9340_MADCTL_MV | ILI9340_MADCTL_MY | ILI9340_MADCTL_MX | ILI9340_MADCTL_BGR);
+        cur_width = ILI9340_TFTHEIGHT;
+        cur_height = ILI9340_TFTWIDTH;
+        break;
+
+    default:
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    return ili9340_transaction(ILI9340_MADCTL, &data, NULL, 1);
 }
 
 static TEE_Result ili9340_invert_display(
-    struct secdisp_driver *driver, 
+    struct secdisp_driver *driver,
     bool is_invert)
 {
     UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(is_invert);
 
-    return TEE_SUCCESS;
+    return ili9340_send_cmd(is_invert ? ILI9340_INVON : ILI9340_INVOFF, false);
 }
 
-static TEE_Result ili9340_set_text_pos(
+static TEE_Result ili9340_set_text_attr(
     struct secdisp_driver *driver,
-    int16_t x,
-    int16_t y)
+    uint16_t color,
+    uint16_t bgcolor,
+    uint16_t size)
 {
     UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(x);
-    UNREFERENCED_PARAMETER(y);
+
+    cur_textcolor = color;
+    cur_textbgcolor = bgcolor;
+    cur_textsize = size;
 
     return TEE_SUCCESS;
 }
 
-static TEE_Result ili9340_draw_text(
+static TEE_Result ili9340_draw_char(
     struct secdisp_driver *driver,
     int16_t x,
     int16_t y,
     uint16_t color,
-    uint8_t *text,
-    uint16_t count)
+    uint16_t bgcolor,
+    uint16_t size,
+    uint8_t c)
 {
-    uint16_t ili940_color;
-    uint16_t color_ram_val;
+    if ((x >= cur_width) || (y >= cur_height)) {
+        return TEE_SUCCESS;
+    }
 
-    UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(x);
-    UNREFERENCED_PARAMETER(y);
-    UNREFERENCED_PARAMETER(color);
-    UNREFERENCED_PARAMETER(text);
-    UNREFERENCED_PARAMETER(count);
+    for (int8_t i = 0; i < FONT_WIDTH; i++) {
+        uint8_t line = font[c * FONT_WIDTH + i];
 
-    ili940_color = color_xlt[color];
-    color_ram_val = (ili940_color >> 8) | ((ili940_color & 0xFF) << 8);
-    UNREFERENCED_PARAMETER(color_ram_val);
+        for (int8_t j = 0; j < 8; j++, line >>= 1) {
+            if (line & 1) {
+                if (size == 1)
+                    ili9340_draw_pixel(driver, x + i, y + j, color);
+                else
+                    ili9340_fill_rect(driver, x + i*size, y + j*size, size, size, color);
+            } else if (bgcolor != color) {
+                if (size == 1)
+                    ili9340_draw_pixel(driver, x + i, y + j, bgcolor);
+                else
+                    ili9340_fill_rect(driver, x + i*size, y + j*size, size, size, bgcolor);
+            }
+        }
+    }
+
+    /*
+     * If opaque, draw vertical line for last column
+    if (bgcolor != color) { 
+        if (size == 1) writeFastVLine(x + 5, y, 8, bg);
+        else          writeFillRect(x + 5 * size, y, size, 8 * size, bg);
+    }
+    */
 
     return TEE_SUCCESS;
 }
 
+static TEE_Result ili9340_write_text(
+    struct secdisp_driver *driver,
+    int16_t x,
+    int16_t y,
+    uint8_t *text,
+    uint16_t count)
+{
+    TEE_Result status;
+
+    if (x != -1) {
+        if (x < ILI9340_TFTWIDTH) {
+            cursor_x = x;
+        }
+        else {
+            return TEE_ERROR_BAD_PARAMETERS;
+        }
+    }
+    if (y != -1) {
+        if (y < ILI9340_TFTHEIGHT) {
+            cursor_y = y;
+        }
+        else {
+            return TEE_ERROR_BAD_PARAMETERS;
+        }
+    }
+
+    for (uint16_t i = 0; i < count; ++i) {
+        uint8_t c = text[i];
+
+        switch (c) {
+        case '\r':
+            cursor_x = 0;
+            break;
+
+        case '\n':
+            cursor_x = 0;
+            cursor_y += cur_textsize * FONT_RECT_HEIGHT;
+            break;
+
+        default:
+            if (is_wrap &&
+                ((cursor_x + cur_textsize * FONT_RECT_WIDTH) > cur_width)) {
+
+                cursor_x = 0;
+                cursor_y += cur_textsize * FONT_RECT_HEIGHT;
+            }
+
+            status = ili9340_draw_char(
+                driver,
+                cursor_x, cursor_y, 
+                cur_textcolor, cur_textbgcolor, 
+                cur_textsize, 
+                c);
+
+            if (status != TEE_SUCCESS) {
+                return status;
+            }
+            cursor_x += cur_textsize * FONT_RECT_WIDTH;
+        }
+    }
+
+    return TEE_SUCCESS;
+}
 
 static const SECDISP_INFORMATION disp_info = {
     .height = ILI9340_TFTHEIGHT,
@@ -814,8 +929,8 @@ static const struct secdisp_ops ops = {
     .fill_rect = ili9340_fill_rect,
     .set_rotation = ili9340_set_rotation,
     .invert_display = ili9340_invert_display,
-    .set_text_pos = ili9340_set_text_pos,
-    .draw_text = ili9340_draw_text,
+    .set_text_attr = ili9340_set_text_attr,
+    .write_text = ili9340_write_text,
 };
 
 TEE_Result ili9340_drv_init(struct secdisp_driver* driver)

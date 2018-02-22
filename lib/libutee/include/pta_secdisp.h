@@ -117,21 +117,21 @@ enum SECDISP_PTA_COMMANDS {
     PTA_SECDISP_INVERT_DISPLAY = 7,
 
     /*
-     * Description: Set text position
+     * Description: Set text attributes
      *
-     * [in] params[0].value.a: x (16 bit)
-     * [in] params[0].value.b: y (16 bit)
+     * [in] params[0].value.a: text color (SECDISP_COLORS)
+     * [in] params[0].value.b: text background color (SECDISP_COLORS)
+     * [in] params[1].value.a: text size (normal = 1)
      */
-    PTA_SECDISP_SET_TEXT_POS = 8,
+    PTA_SECDISP_SET_TEXT_ATTR = 8,
 
     /*
      * Description: Draw text
      *
      * [in] params[0].value.a: x (16 bit), or 0xFFFF for keeping current position
      * [in] params[0].value.b: y (16 bit), or 0xFFFF for keeping current position
-     * [in] params[1].value.a: color (SECDISP_COLORS)
-     * [in] params[2].memref: String chars
+     * [in] params[1].memref: String chars
      */
-    PTA_SECDISP_DRAW_TEXT = 9,
+    PTA_SECDISP_WRITE_TEXT = 9,
 };
 #endif /* __PTA_SECDISP_H */

@@ -12,7 +12,7 @@
 
 #include "pta_utils.h"
 
-#define SECDISP_DEBUG 1
+#define SECDISP_DEBUG 0
 
 #if SECDISP_DEBUG
     #define _DMSG EMSG
@@ -254,7 +254,7 @@ static TEE_Result secdisp_cmd_invert_display(
     return status;
 }
 
-static TEE_Result secdisp_cmd_set_text_pos(
+static TEE_Result secdisp_cmd_set_text_attr(
     uint32_t param_types,
     TEE_Param params[TEE_NUM_PARAMS])
 {
@@ -262,7 +262,7 @@ static TEE_Result secdisp_cmd_set_text_pos(
 
     uint32_t exp_param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
@@ -271,14 +271,24 @@ static TEE_Result secdisp_cmd_set_text_pos(
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    status = drv.ops->set_text_pos(&drv,
-        params[0].value.a,  /* x */
-        params[0].value.b); /* y */
+    if (!is_valid_color((uint16_t)params[0].value.a)) {
+        EMSG("Invalid text color %d", params[0].value.a);
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+    if (!is_valid_color((uint16_t)params[0].value.b)) {
+        EMSG("Invalid text background color %d", params[0].value.b);
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    status = drv.ops->set_text_attr(&drv,
+        params[0].value.a,  /* text color */
+        params[0].value.b,  /* text background */
+        params[1].value.a); /* text size */
 
     return status;
 }
 
-static TEE_Result secdisp_cmd_draw_text(
+static TEE_Result secdisp_cmd_write_text(
     uint32_t param_types,
     TEE_Param params[TEE_NUM_PARAMS])
 {
@@ -286,8 +296,8 @@ static TEE_Result secdisp_cmd_draw_text(
 
     uint32_t exp_param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_MEMREF_INPUT,
+        TEE_PARAM_TYPE_NONE,
         TEE_PARAM_TYPE_NONE);
 
     if (exp_param_types != param_types) {
@@ -295,17 +305,11 @@ static TEE_Result secdisp_cmd_draw_text(
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
-    if (!is_valid_color((uint16_t)params[1].value.a)) {
-        EMSG("Invalid color %d", params[1].value.a);
-        return TEE_ERROR_BAD_PARAMETERS;
-    }
-
-    status = drv.ops->draw_text(&drv,
+    status = drv.ops->write_text(&drv,
         params[0].value.a,      /* x */
         params[0].value.b,      /* y */
-        params[1].value.a,      /* color */
-        params[2].memref.buffer,/* text */
-        params[0].memref.size); /* count */
+        params[1].memref.buffer,/* text */
+        params[1].memref.size); /* count */
 
     return status;
 }
@@ -380,12 +384,12 @@ static TEE_Result pta_secdisp_invoke_command(
         res = secdisp_cmd_invert_display(param_types, params);
         break;
 
-    case PTA_SECDISP_SET_TEXT_POS:
-        res = secdisp_cmd_set_text_pos(param_types, params);
+    case PTA_SECDISP_SET_TEXT_ATTR:
+        res = secdisp_cmd_set_text_attr(param_types, params);
         break;
 
-    case PTA_SECDISP_DRAW_TEXT:
-        res = secdisp_cmd_draw_text(param_types, params);
+    case PTA_SECDISP_WRITE_TEXT:
+        res = secdisp_cmd_write_text(param_types, params);
         break;
 
     default:

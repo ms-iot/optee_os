@@ -42,16 +42,16 @@ struct secdisp_ops {
 
     TEE_Result (*set_rotation)(struct secdisp_driver *driver, uint8_t rotation);
     TEE_Result (*invert_display)(struct secdisp_driver *driver, bool is_invert);
-    TEE_Result (*set_text_pos)(
+    TEE_Result(*set_text_attr)(
         struct secdisp_driver *driver,
-        int16_t x,
-        int16_t y);
+        uint16_t color,
+        uint16_t bgcolor,
+        uint16_t size);
 
-    TEE_Result (*draw_text)(
+    TEE_Result(*write_text)(
         struct secdisp_driver *driver,
         int16_t x,
         int16_t y,
-        uint16_t color,
         uint8_t *text,
         uint16_t cont);
 };

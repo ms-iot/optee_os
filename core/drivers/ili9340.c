@@ -840,14 +840,6 @@ static TEE_Result ili9340_draw_char(
         }
     }
 
-    /*
-     * If opaque, draw vertical line for last column
-    if (bgcolor != color) { 
-        if (size == 1) writeFastVLine(x + 5, y, 8, bg);
-        else          writeFillRect(x + 5 * size, y, size, 8 * size, bg);
-    }
-    */
-
     return TEE_SUCCESS;
 }
 

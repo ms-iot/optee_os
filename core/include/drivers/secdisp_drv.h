@@ -14,6 +14,10 @@ struct secdisp_driver;
 struct secdisp_ops {
     void (*deinit)(struct secdisp_driver *driver);
     
+    TEE_Result(*clear)(
+        struct secdisp_driver *driver,
+        uint16_t color);
+
     TEE_Result (*draw_pixel)(
         struct secdisp_driver *driver, 
         int16_t x, 

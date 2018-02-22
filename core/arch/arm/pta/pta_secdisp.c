@@ -20,21 +20,29 @@
     #define _DMSG DMSG
 #endif /* SECDISP_DEBUG */
 
+
 /*
  * Supported drivers interface
  */
 TEE_Result ili9340_drv_init(struct secdisp_driver* driver);
+
+/*
+ * SECDISP PTA globals
+ */
 
  /*
   * Driver interface
   */
 static struct secdisp_driver drv = { -1 };
 
-
 /*
- * SECDISP PTA globals
+ * Auxiliary macros
  */
-  
+static inline bool is_valid_color(uint16_t color)
+{
+    return (((color) <= SECDISP_WHITE) || ((color) == SECDISP_CURRENT));
+}
+
 /*
  * Command handlers
  */
@@ -71,8 +79,36 @@ static TEE_Result secdisp_cmd_init(
     }
 
     if (status == TEE_SUCCESS) {
-        memcpy(params[1].memref.buffer, &drv.disp_info, sizeof(SECDISP_INFORMATION));
+        memcpy(params[1].memref.buffer, drv.disp_info, sizeof(SECDISP_INFORMATION));
     }
+
+    return status;
+}
+
+static TEE_Result secdisp_cmd_clear(
+    uint32_t param_types,
+    TEE_Param params[TEE_NUM_PARAMS])
+{
+    TEE_Result status;
+
+    uint32_t exp_param_types = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_VALUE_INPUT,
+        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_NONE);
+
+    if (exp_param_types != param_types) {
+        EMSG("Incorrect parameter types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    if (!is_valid_color((uint16_t)params[0].value.a)) {
+        EMSG("Invalid color %d", params[0].value.a);
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    status = drv.ops->clear(&drv,
+        params[0].value.a); /* color */
 
     return status;
 }
@@ -91,6 +127,11 @@ static TEE_Result secdisp_cmd_draw_pixel(
 
     if (exp_param_types != param_types) {
         EMSG("Incorrect parameter types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    if (!is_valid_color((uint16_t)params[1].value.a)) {
+        EMSG("Invalid color %d", params[1].value.a);
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -120,6 +161,11 @@ static TEE_Result secdisp_cmd_draw_line(
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
+    if (!is_valid_color((uint16_t)params[2].value.a)) {
+        EMSG("Invalid color %d", params[2].value.a);
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
     status = drv.ops->draw_line(&drv,
         params[0].value.a, /* x */
         params[0].value.b, /* y */
@@ -138,12 +184,17 @@ static TEE_Result secdisp_cmd_fill_rect(
 
     uint32_t exp_param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_VALUE_OUTPUT,
-        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_VALUE_INPUT,
+        TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_NONE);
 
     if (exp_param_types != param_types) {
         EMSG("Incorrect parameter types");
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
+    if (!is_valid_color((uint16_t)params[2].value.a)) {
+        EMSG("Invalid color %d", params[2].value.a);
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
@@ -244,6 +295,11 @@ static TEE_Result secdisp_cmd_draw_text(
         return TEE_ERROR_BAD_PARAMETERS;
     }
 
+    if (!is_valid_color((uint16_t)params[1].value.a)) {
+        EMSG("Invalid color %d", params[1].value.a);
+        return TEE_ERROR_BAD_PARAMETERS;
+    }
+
     status = drv.ops->draw_text(&drv,
         params[0].value.a,      /* x */
         params[0].value.b,      /* y */
@@ -295,6 +351,10 @@ static TEE_Result pta_secdisp_invoke_command(
     switch (cmd_id) {
     case PTA_SECDISP_INIT:
         res = secdisp_cmd_init(param_types, params);
+        break;
+
+    case PTA_SECDISP_CLEAR:
+        res = secdisp_cmd_clear(param_types, params);
         break;
 
     case PTA_SECDISP_DRAW_PIXEL:

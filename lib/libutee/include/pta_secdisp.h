@@ -56,13 +56,20 @@ enum SECDISP_PTA_COMMANDS {
     PTA_SECDISP_INIT  = 0,
 
     /*
+    * Description: Draw a single pixel
+    *
+    * [in] params[0].value.a: color (SECDISP_COLORS)
+    */
+    PTA_SECDISP_CLEAR = 1,
+
+    /*
      * Description: Draw a single pixel
      * 
      * [in] params[0].value.a: x (16 bit)
      * [in] params[0].value.b: y (16 bit)
      * [in] params[1].value.a: color (SECDISP_COLORS)
      */
-    PTA_SECDISP_DRAW_PIXEL = 1,
+    PTA_SECDISP_DRAW_PIXEL = 2,
 
     /*
      * Description: Draw a vertical line
@@ -72,7 +79,7 @@ enum SECDISP_PTA_COMMANDS {
      * [in] params[1].value.a: height (16 bit)
      * [in] params[2].value.a: color (SECDISP_COLORS)
      */
-    PTA_SECDISP_DRAW_VLINE = 2,
+    PTA_SECDISP_DRAW_VLINE = 3,
 
     /*
      * Description: Draw a horizontal line
@@ -82,7 +89,7 @@ enum SECDISP_PTA_COMMANDS {
      * [in] params[1].value.a: width (16 bit)
      * [in] params[2].value.a: color (SECDISP_COLORS)
      */
-    PTA_SECDISP_DRAW_HLINE = 3,
+    PTA_SECDISP_DRAW_HLINE = 4,
 
     /*
      * Description: Draw a rectangle
@@ -93,21 +100,21 @@ enum SECDISP_PTA_COMMANDS {
      * [in] params[1].value.b: height (16 bit)
      * [in] params[2].value.a: color (SECDISP_COLORS)
      */
-    PTA_SECDISP_FILL_RECT = 4,
+    PTA_SECDISP_FILL_RECT = 5,
 
     /*
      * Description: Set display rotation 
      *
      * [in] params[0].value.a: Rotation (SECDISP_ROTATION)
      */
-    PTA_SECDISP_SET_ROTATION = 5,
+    PTA_SECDISP_SET_ROTATION = 6,
 
     /*
      * Description: Invert display
      *
      * [in] params[0].value.a: Invert (1), otherwise 0
      */
-    PTA_SECDISP_INVERT_DISPLAY = 6,
+    PTA_SECDISP_INVERT_DISPLAY = 7,
 
     /*
      * Description: Set text position
@@ -115,7 +122,7 @@ enum SECDISP_PTA_COMMANDS {
      * [in] params[0].value.a: x (16 bit)
      * [in] params[0].value.b: y (16 bit)
      */
-    PTA_SECDISP_SET_TEXT_POS = 7,
+    PTA_SECDISP_SET_TEXT_POS = 8,
 
     /*
      * Description: Draw text
@@ -125,6 +132,6 @@ enum SECDISP_PTA_COMMANDS {
      * [in] params[1].value.a: color (SECDISP_COLORS)
      * [in] params[2].memref: String chars
      */
-    PTA_SECDISP_DRAW_TEXT = 8,
+    PTA_SECDISP_DRAW_TEXT = 9,
 };
 #endif /* __PTA_SECDISP_H */

@@ -38,7 +38,7 @@
 #define ILI9340_CFG_SPI_BUS_INDEX 1         /* SPI2 */
 #define ILI9340_CFG_SPI_CHANNEL 0           /* Channel 0 */
 #define ILI9340_CFG_SPI_MODE PTA_SPI_MODE_0 /* MODE0 */
-#define ILI9340_CFG_SPI_SPEED_HZ 1000000    /* SPI speed 4Mhz */
+#define ILI9340_CFG_SPI_SPEED_HZ 12000000   /* SPI speed 12Mhz */
 
 /*
  * Due to hard-wired 4 wire 8-bit interface, DCX is
@@ -373,7 +373,7 @@ static TEE_Result ili9340_xchg_data(
     return TEE_SUCCESS;
 }
 
-static TEE_Result ili9340_send_full_cmd(
+static TEE_Result ili9340_transaction(
     uint32_t cmd,
     uint8_t* tx,
     uint8_t* rx,
@@ -419,7 +419,7 @@ static TEE_Result ili9340_send_commands(struct ILI9340_COMMAND* cmd_batch, uint3
 
     cmd = cmd_batch;
     for (i = 0; i < count; ++i, ++cmd) {
-        status = ili9340_send_full_cmd(cmd->cmd, cmd->data, NULL, cmd->data_count);
+        status = ili9340_transaction(cmd->cmd, cmd->data, NULL, cmd->data_count);
         if (status != TEE_SUCCESS) {
             return status;
         }
@@ -467,19 +467,19 @@ static TEE_Result ili9340_init(struct secdisp_driver* driver)
     if (status == TEE_SUCCESS) {
         uint8_t x;
 
-        ili9340_send_full_cmd(ILI9340_RDMODE, NULL, &x, sizeof(uint8_t));
+        ili9340_transaction(ILI9340_RDMODE, NULL, &x, sizeof(uint8_t));
         _DMSG("<<< Display Power Mode: 0x%x", x);
 
-        ili9340_send_full_cmd(ILI9340_RDMADCTL, NULL, &x, sizeof(uint8_t));
+        ili9340_transaction(ILI9340_RDMADCTL, NULL, &x, sizeof(uint8_t));
         _DMSG("<<< MADCTL Mode: 0x%x", x);
 
-        ili9340_send_full_cmd(ILI9340_RDPIXFMT, NULL, &x, sizeof(uint8_t));
+        ili9340_transaction(ILI9340_RDPIXFMT, NULL, &x, sizeof(uint8_t));
         _DMSG("<<< Pixel Format: 0x%x", x);
 
-        ili9340_send_full_cmd(ILI9340_RDIMGFMT, NULL, &x, sizeof(uint8_t));
+        ili9340_transaction(ILI9340_RDIMGFMT, NULL, &x, sizeof(uint8_t));
         _DMSG("<<< Image Format: 0x%x", x);
 
-        ili9340_send_full_cmd(ILI9340_RDSELFDIAG, NULL, &x, sizeof(uint8_t));
+        ili9340_transaction(ILI9340_RDSELFDIAG, NULL, &x, sizeof(uint8_t));
         _DMSG("<<< Self Diagnostic: 0x%x", x);
     }
 #endif
@@ -591,7 +591,7 @@ static TEE_Result ili9340_draw_pixel(
     {
         uint8_t color_data[2] = { ili940_color >> 8, ili940_color & 0xFF };
 
-        status = ili9340_send_full_cmd(
+        status = ili9340_transaction(
             ILI9340_NO_COMMAND, 
             color_data, 
             NULL, 
@@ -615,18 +615,17 @@ static TEE_Result ili9340_draw_line(
 {
     TEE_Result status;
     uint16_t ili940_color;
-    uint16_t ram_val;
+    uint16_t color_ram_val;
     uint16_t i;
 
     UNREFERENCED_PARAMETER(driver);
 
-    if ((x >= cur_width) || (y >= cur_height)) {
-        return TEE_ERROR_EXCESS_DATA;
-    }
-
     /* 
      * Rudimentary clipping 
      */
+    if ((x >= cur_width) || (y >= cur_height)) {
+        return TEE_ERROR_EXCESS_DATA;
+    }
     if (is_vertical) {
         if ((y + length - 1) >= cur_height) {
             length = cur_height - y;
@@ -645,14 +644,16 @@ static TEE_Result ili9340_draw_line(
     }
 
     ili940_color = color_xlt[color];
-    ram_val = (ili940_color >> 8) | ((ili940_color & 0xFF) << 8);
-    for (i = 0; i < length; ++i) line_image[i] = ram_val;
+    color_ram_val = (ili940_color >> 8) | ((ili940_color & 0xFF) << 8);
+    for (i = 0; i < length; ++i) {
+        line_image[i] = color_ram_val;
+    }
 
-    status = ili9340_send_full_cmd(
+    status = ili9340_transaction(
         ILI9340_NO_COMMAND, 
         (uint8_t*)line_image, 
         NULL, 
-        length *sizeof(uint16_t));
+        length * sizeof(uint16_t));
 
     return status;
 }
@@ -665,18 +666,79 @@ static TEE_Result ili9340_fill_rect(
     int16_t h,
     uint16_t color)
 {
+    TEE_Result status;
+    int16_t i;
     uint16_t ili940_color;
+    uint16_t color_ram_val;
 
     UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(x);
-    UNREFERENCED_PARAMETER(y);
-    UNREFERENCED_PARAMETER(w);
-    UNREFERENCED_PARAMETER(h);
-    UNREFERENCED_PARAMETER(color);
+
+    /* 
+     * rudimentary clipping 
+     */
+    if ((x >= cur_width) || (y >= cur_height)) {
+        return TEE_ERROR_EXCESS_DATA;
+    }
+    if ((x + w - 1) >= cur_width) {
+        w = cur_width - x;
+    }
+    if ((y + h - 1) >= cur_height) {
+        h = cur_height - y;
+    }
+
+    status = ili9340_set_addr_window(x, y, x + w - 1, y + h - 1);
+    if (status != TEE_SUCCESS) {
+        EMSG("ili9340_set_addr_window failed, status %d!", driver->status);
+        return status;
+    }
 
     ili940_color = color_xlt[color];
-    UNREFERENCED_PARAMETER(ili940_color);
+    color_ram_val = (ili940_color >> 8) | ((ili940_color & 0xFF) << 8);
 
+    for (i = 0; i < w; ++i) {
+        line_image[i] = color_ram_val;
+    }
+
+    for (y = h; y > 0; y--) {
+        status = ili9340_transaction(
+            ILI9340_NO_COMMAND,
+            (uint8_t*)line_image,
+            NULL,
+            w * sizeof(uint16_t));
+
+        if (status != TEE_SUCCESS) {
+            EMSG("ili9340_transaction failed, status %d!", driver->status);
+            return status;
+        }
+    }
+
+    return TEE_SUCCESS;
+}
+
+static TEE_Result ili9340_clear(
+    struct secdisp_driver *driver,
+    uint16_t color)
+{
+    TEE_Result status;
+
+    status =  ili9340_fill_rect(
+            driver, 
+            0, /* x */
+            0, /* y */
+            ILI9340_TFTWIDTH,  /* w */
+            ILI9340_TFTHEIGHT, /* h */
+            color);
+
+    if (status != TEE_SUCCESS) {
+        EMSG("ili9340_fill_rect failed, status %d!", driver->status);
+        return status;
+    }
+
+    cur_width = ILI9340_TFTWIDTH;
+    cur_height = ILI9340_TFTHEIGHT;
+    cursor_x = 0;
+    cursor_y = 0;
+    cur_textbgcolor = color_xlt[color];
     return TEE_SUCCESS;
 }
 
@@ -721,6 +783,7 @@ static TEE_Result ili9340_draw_text(
     uint16_t count)
 {
     uint16_t ili940_color;
+    uint16_t color_ram_val;
 
     UNREFERENCED_PARAMETER(driver);
     UNREFERENCED_PARAMETER(x);
@@ -730,7 +793,8 @@ static TEE_Result ili9340_draw_text(
     UNREFERENCED_PARAMETER(count);
 
     ili940_color = color_xlt[color];
-    UNREFERENCED_PARAMETER(ili940_color);
+    color_ram_val = (ili940_color >> 8) | ((ili940_color & 0xFF) << 8);
+    UNREFERENCED_PARAMETER(color_ram_val);
 
     return TEE_SUCCESS;
 }
@@ -744,6 +808,7 @@ static const SECDISP_INFORMATION disp_info = {
 
 static const struct secdisp_ops ops = {
     .deinit = ili9340_close,
+    .clear = ili9340_clear,
     .draw_pixel = ili9340_draw_pixel,
     .draw_line = ili9340_draw_line,
     .fill_rect = ili9340_fill_rect,

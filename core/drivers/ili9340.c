@@ -490,11 +490,14 @@ static TEE_Result ili9340_init(struct secdisp_driver* driver)
     return status;
 }
 
+static void* pta_spi_sess_ctx = NULL;
+
 static void ili9340_close(struct secdisp_driver* driver)
 {
     UNREFERENCED_PARAMETER(driver);
 
-    pta_spi_close_session(NULL);
+    pta_spi_close_session(pta_spi_sess_ctx);
+    pta_spi_sess_ctx = NULL;
 }
 
 static TEE_Result ili9340_open(struct secdisp_driver* driver)
@@ -504,19 +507,30 @@ static TEE_Result ili9340_open(struct secdisp_driver* driver)
 
     memset(params, 0, sizeof(params));
     param_types = TEE_PARAM_TYPES(
+        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_NONE,
+        TEE_PARAM_TYPE_NONE);
+
+    driver->status = pta_spi_open_session(param_types, params, &pta_spi_sess_ctx);
+    if (driver->status != TEE_SUCCESS) {
+        EMSG("pta_spi_open_session failed, status %d!", driver->status);
+        return driver->status;
+    }
+
+    param_types = TEE_PARAM_TYPES(
         TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_VALUE_INPUT,
         TEE_PARAM_TYPE_VALUE_INPUT);
     
-    memset(params, 0, sizeof(params));
     params[0].value.a = ILI9340_CFG_SPI_BUS_INDEX;
     params[1].value.a = ILI9340_CFG_SPI_CHANNEL;
     params[2].value.a = ILI9340_CFG_SPI_MODE;
     params[3].value.a = ILI9340_CFG_SPI_SPEED_HZ;
     
     driver->status = pta_spi_invoke_command(
-        NULL,
+        pta_spi_sess_ctx,
         PTA_SPI_COMMAND_INITIALIZE,
         param_types,
         params);

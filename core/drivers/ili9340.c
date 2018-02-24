@@ -770,9 +770,9 @@ static TEE_Result ili9340_set_rotation(
     switch (rotation) {
     case SECDISP_0:
         data = (ILI9340_MADCTL_MX | ILI9340_MADCTL_BGR);
-        cur_width = ILI9340_TFTWIDTH;
-        cur_height = ILI9340_TFTHEIGHT;
-        break;
+cur_width = ILI9340_TFTWIDTH;
+cur_height = ILI9340_TFTHEIGHT;
+break;
 
     case SECDISP_90:
         data = (ILI9340_MADCTL_MV | ILI9340_MADCTL_BGR);
@@ -845,7 +845,8 @@ static TEE_Result ili9340_draw_char(
                     ili9340_draw_pixel(driver, x + i, y + j, color);
                 else
                     ili9340_fill_rect(driver, x + i*size, y + j*size, size, size, color);
-            } else if (bgcolor != color) {
+            }
+            else if (bgcolor != color) {
                 if (size == 1)
                     ili9340_draw_pixel(driver, x + i, y + j, bgcolor);
                 else
@@ -855,6 +856,95 @@ static TEE_Result ili9340_draw_char(
     }
 
     return TEE_SUCCESS;
+}
+
+inline bool is_alpha(uint8_t c)
+{
+    return ((c >= 'A') && (c <= 'Z')) || ((c >= 'a') && (c <= 'z'));
+}
+
+inline bool is_number(uint8_t c)
+{
+    return ((c >= '0') && (c <= '9'));
+}
+
+static void ili9340_clear_line(
+    struct secdisp_driver *driver,
+    uint8_t pos)
+{
+    int16_t start_x;
+    int16_t end_x;
+
+    UNREFERENCED_PARAMETER(driver);
+
+    switch (pos) {
+    case '0': /* current cursor position to end of line */
+        start_x = cursor_x;
+        end_x = cur_width;
+        break;
+    case '1': /* beginning to current cursor position  */
+        start_x = 0;
+        end_x = cursor_x;
+        break;
+    case '2': /* whole line  */
+        start_x = 0;
+        end_x = cur_width;
+        break;
+    default:
+        return;
+    }
+
+    while (start_x < end_x) {
+
+        (void)ili9340_draw_char(
+            driver,
+            start_x, cursor_y,
+            cur_textcolor, cur_textbgcolor,
+            cur_textsize,
+            ' ');
+
+        start_x += cur_textsize * FONT_RECT_WIDTH;
+    }
+}
+
+static uint16_t ili9340_pars_esc_codes(
+    struct secdisp_driver *driver,
+    uint8_t *text,
+    uint16_t count)
+{
+    if ((count < 4) || (text[1] != '[')) {
+        return 1;
+    }
+
+    if (is_alpha(text[3])) {
+        /*
+         * ^[<n>K or ^[<n>m
+         */
+        switch (text[3]) {
+        case 'K':
+            ili9340_clear_line(driver, text[2]);
+            return 4;
+        case 'm':
+            /* Not implemented */
+            return 4;
+        default:
+            return 1;
+        }
+
+    } else if (is_number(text[3])) {
+        /*
+        * ^[<n1><n2>m
+        */
+        if (count < 5) {
+            return 1;
+        }
+        if (text[4] == 'm') {
+            /* Not implemented */
+            return 5;
+        }
+    }
+
+    return 1;
 }
 
 static TEE_Result ili9340_write_text(
@@ -869,21 +959,19 @@ static TEE_Result ili9340_write_text(
     if (x != -1) {
         if (x < ILI9340_TFTWIDTH) {
             cursor_x = x;
-        }
-        else {
+        } else {
             return TEE_ERROR_BAD_PARAMETERS;
         }
     }
     if (y != -1) {
         if (y < ILI9340_TFTHEIGHT) {
             cursor_y = y;
-        }
-        else {
+        } else {
             return TEE_ERROR_BAD_PARAMETERS;
         }
     }
 
-    for (uint16_t i = 0; i < count; ++i) {
+    for (uint16_t i = 0; i < count;) {
         uint8_t c = text[i];
 
         switch (c) {
@@ -896,10 +984,15 @@ static TEE_Result ili9340_write_text(
             cursor_y += cur_textsize * FONT_RECT_HEIGHT;
             break;
 
-        default:
-            if (is_wrap &&
-                ((cursor_x + cur_textsize * FONT_RECT_WIDTH) > cur_width)) {
+        case '\x1B': /* ESC codes */
+            i += ili9340_pars_esc_codes(driver, &text[i], count - i);
+            continue;
 
+        default:
+            if ((cursor_x + cur_textsize * FONT_RECT_WIDTH) > cur_width) {
+                if (!is_wrap) {
+                    continue;
+                }
                 cursor_x = 0;
                 cursor_y += cur_textsize * FONT_RECT_HEIGHT;
             }
@@ -915,7 +1008,9 @@ static TEE_Result ili9340_write_text(
                 return status;
             }
             cursor_x += cur_textsize * FONT_RECT_WIDTH;
-        }
+        } /* switch */
+
+        ++i;
     }
 
     return TEE_SUCCESS;

@@ -916,6 +916,23 @@ static uint16_t ili9340_pars_esc_codes(
         return 1;
     }
 
+    if (is_alpha(text[2])) {
+        /*
+        * ^[K or ^[H
+        */
+        switch (text[2]) {
+        case 'H':
+            cursor_x = 0;
+            cursor_y = 0;
+            return 3;
+        case 'K':
+            ili9340_clear_line(driver, '0');
+            return 3;
+        default:
+            return 1;
+        }
+    }
+
     if (is_alpha(text[3])) {
         /*
          * ^[<n>K or ^[<n>m

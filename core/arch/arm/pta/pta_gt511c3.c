@@ -41,7 +41,7 @@
 /*
  * Scanner command response timeout in mSec
  */
-#define GT511C3_RESPONSE_TIMEOUT_MSEC 1000L
+#define GT511C3_RESPONSE_TIMEOUT_MSEC 2000L
 
 /*
  * Max RX retry
@@ -575,6 +575,7 @@ static TEE_Result gt511c3_send_cmd(
     if (is_com_error) {
         EMSG("flushing UART after failure");
         serial->ops->flush(serial);
+        is_com_error = false;
     }
 
     cmd->checksum = gt511c3_checksum(
@@ -676,8 +677,24 @@ static TEE_Result gt511c3_open(GT511C3_DeviceConfig *device_config,
 
     status = gt511c3_send_cmd(&cmd, NULL);
     if (status != TEE_SUCCESS) {
-        EMSG("gt511c3_send_cmd failed, status 0x%X", status);
-        return status;
+        GT511C3_DeviceConfig alt_device_config;
+
+        memcpy(&alt_device_config, device_config, sizeof(*device_config));
+        alt_device_config.baud_rate = GT511C3_MAX_BAUDRATE;
+
+        status = gt511c3_init(&alt_device_config, false);
+        if (status != TEE_SUCCESS) {
+            EMSG("gt511c3_init failed, status 0x%X \n", status);
+            return status;
+        }
+
+        EMSG("initial gt511c3_send_cmd failed, first chance retrying...");
+
+        status = gt511c3_send_cmd(&cmd, NULL);
+        if (status != TEE_SUCCESS) {
+            EMSG("initial gt511c3_send_cmd failed, aborting");
+            return status;
+        }
     }
 
     if (device_info != NULL) {

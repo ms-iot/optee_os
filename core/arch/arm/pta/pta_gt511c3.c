@@ -233,7 +233,7 @@ typedef struct _gt511c3_data gt511c3_data;
 #define GT511C3_CS_SIZE (sizeof(int16_t))
 
 #define GT511C3_DATA_FRAME_SIZE(payload_size) \
-    (sizeof(gt511c3_data) - sizeof(uint8_t) + (payload_size))
+    (FIELD_OFFSET(gt511c3_data, data) + (payload_size))
 
 #define GT511C3_DATA_HEADER_SIZE (GT511C3_DATA_FRAME_SIZE(0))
 
@@ -615,6 +615,7 @@ static TEE_Result gt511c3_send_data(
 
     cs = gt511c3_checksum((uint8_t*)&data_frame, 
             GT511C3_DATA_FRAME_SIZE(0));
+
     cs += gt511c3_checksum(payload, payload_size);
 
     tx_data = (uint8_t*)&data_frame;

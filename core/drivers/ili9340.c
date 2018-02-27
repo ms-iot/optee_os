@@ -742,8 +742,8 @@ static TEE_Result ili9340_clear(
             driver, 
             0, /* x */
             0, /* y */
-            ILI9340_TFTWIDTH,  /* w */
-            ILI9340_TFTHEIGHT, /* h */
+            cur_width,  /* w */
+            cur_height, /* h */
             color);
 
     if (status != TEE_SUCCESS) {
@@ -751,8 +751,6 @@ static TEE_Result ili9340_clear(
         return status;
     }
 
-    cur_width = ILI9340_TFTWIDTH;
-    cur_height = ILI9340_TFTHEIGHT;
     cursor_x = 0;
     cursor_y = 0;
     cur_textbgcolor = color;
@@ -770,9 +768,9 @@ static TEE_Result ili9340_set_rotation(
     switch (rotation) {
     case SECDISP_0:
         data = (ILI9340_MADCTL_MX | ILI9340_MADCTL_BGR);
-cur_width = ILI9340_TFTWIDTH;
-cur_height = ILI9340_TFTHEIGHT;
-break;
+        cur_width = ILI9340_TFTWIDTH;
+        cur_height = ILI9340_TFTHEIGHT;
+        break;
 
     case SECDISP_90:
         data = (ILI9340_MADCTL_MV | ILI9340_MADCTL_BGR);

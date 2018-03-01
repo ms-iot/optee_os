@@ -21,7 +21,7 @@
 #include "pta_utils.h"
 
 #define UART_DEBUG 0
-#define GT511C3_DEBUG 1
+#define GT511C3_DEBUG 0
 
 /*
  * Baud rate after reset

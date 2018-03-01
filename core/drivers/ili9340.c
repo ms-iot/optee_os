@@ -245,47 +245,6 @@ uint32_t dcx_gpio = GPIO3_IO13;
 /*
  * SPI PTA interface
  */
-#if 0
-static TEE_Result ili9340_xchg_byte(uint32_t tx, uint32_t* rx, bool is_data)
-{
-    TEE_Result status;
-    uint32_t discard;
-    TEE_Param params[TEE_NUM_PARAMS];
-    uint32_t param_types;
-
-    param_types = TEE_PARAM_TYPES(
-        TEE_PARAM_TYPE_MEMREF_INPUT,
-        TEE_PARAM_TYPE_MEMREF_OUTPUT,
-        TEE_PARAM_TYPE_VALUE_INPUT,
-        TEE_PARAM_TYPE_NONE);
-
-    memset(params, 0, sizeof(params));
-    params[0].memref.buffer = &tx;
-    params[0].memref.size = sizeof(uint8_t);
-    params[1].memref.buffer = rx == NULL ? &discard : rx;
-    params[1].memref.size = sizeof(uint8_t);
-    params[2].value.a = PTA_SPI_TRANSFER_FLAG_START|PTA_SPI_TRANSFER_FLAG_END;
-
-    if (is_data) {
-        gpio.set_value(dcx_gpio, DCX_DATA);
-    } else {
-        gpio.set_value(dcx_gpio, DCX_COMMAND);
-    }
-
-    status = pta_spi_invoke_command(
-        NULL,
-        PTA_SPI_COMMAND_TRANSFER_DATA,
-        param_types,
-        params);
-
-    if (status != TEE_SUCCESS) {
-        EMSG("SPI send command failed, status %d!", status);
-        return status;
-    }
-
-    return TEE_SUCCESS;
-}
-#endif
 
 static TEE_Result ili9340_send_cmd(uint32_t cmd, bool is_data)
 {

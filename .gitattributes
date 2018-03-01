@@ -1,0 +1,5 @@
+# Set unix-style line endings so that people who check out on Windows
+# and build on Linux Subsystem for Windows do not get errors
+* text eol=lf
+*.png binary
+*.odg binary

@@ -76,28 +76,23 @@ static void uuid_to_string(const TEE_UUID *uuid, char s[64])
  * Trusted application command handlers
  */
 
-static TEE_Result cyrep_get_private_key(
+/*
+ * Call with NULL buffer to get the required size of the buffer.
+ */
+static TEE_Result cyrep_get_private_key_helper(
 	const struct cyrep_pta_sess_ctx *ctx,
-	uint32_t param_types,
-	TEE_Param params[TEE_NUM_PARAMS])
+	char *buf,
+	size_t *buf_size
+	)
 {
 	DERBuilderContext cer_ctx;
 	uint8_t cer_buf[DER_MAX_TBS];
 	size_t out_buf_size;
-	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
-		TEE_PARAM_TYPE_NONE,
-		TEE_PARAM_TYPE_NONE,
-		TEE_PARAM_TYPE_NONE);
+	char dummy_buf[1];
 
-	DMSG("PTA_CYREP_GET_PRIVATE_KEY\n");
-
-	if (exp_pt != param_types) {
-		return TEE_ERROR_BAD_PARAMETERS;
-	}
-
-	if (params[0].memref.size < 1) {
-		return TEE_ERROR_SHORT_BUFFER;
-	}
+	if (buf)
+		if (*buf_size < 1)
+			return TEE_ERROR_SHORT_BUFFER;
 
 	DERInitContext(&cer_ctx, cer_buf, sizeof(cer_buf));
 	if (X509GetDEREcc(
@@ -109,45 +104,83 @@ static TEE_Result cyrep_get_private_key(
 		return TEE_ERROR_GENERIC;
 	}
 
-	out_buf_size = params[0].memref.size - 1;
+	if (buf)
+		out_buf_size = *buf_size - 1;
+	else
+		out_buf_size = 0;
+
 	if (DERtoPEM(
 		&cer_ctx,
 		ECC_PRIVATEKEY_TYPE,
-		(char *)params[0].memref.buffer,
+		buf ? buf : dummy_buf,
 		&out_buf_size) != 0) {
 
 		EMSG("Failed to convert DER to PEM");
-		params[0].value.a = out_buf_size + 1;
-		return TEE_ERROR_SHORT_BUFFER;
+		if (buf)
+			return TEE_ERROR_SHORT_BUFFER;
+
+		*buf_size = out_buf_size + 1;
+		return TEE_SUCCESS;
 	}
 
-	((char *)params[0].memref.buffer)[out_buf_size] = '\0';
+	buf[out_buf_size] = '\0';
 
 	return TEE_SUCCESS;
 }
 
-static TEE_Result cyrep_get_cert_chain(
+static TEE_Result cyrep_get_private_key(
 	const struct cyrep_pta_sess_ctx *ctx,
 	uint32_t param_types,
 	TEE_Param params[TEE_NUM_PARAMS])
 {
-	CyrepCertChain *orig_cert_chain;
-	size_t req_len;
-	size_t charsCopied;
-	size_t index;
 	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
 		TEE_PARAM_TYPE_NONE,
 		TEE_PARAM_TYPE_NONE,
 		TEE_PARAM_TYPE_NONE);
 
-	DMSG("PTA_CYREP_GET_CERT_CHAIN\n");
+	DMSG("PTA_CYREP_GET_PRIVATE_KEY");
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return cyrep_get_private_key_helper(ctx,
+					    (char *)params[0].memref.buffer,
+					    &params[0].memref.size);
+}
+
+static TEE_Result cyrep_get_private_key_size(
+	const struct cyrep_pta_sess_ctx *ctx,
+	uint32_t param_types,
+	TEE_Param params[TEE_NUM_PARAMS])
+{
+	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_OUTPUT,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE);
+
+	DMSG("PTA_CYREP_GET_PRIVATE_KEY_SIZE");
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return cyrep_get_private_key_helper(ctx,
+					    NULL,
+					    &params[0].value.a);
+}
+
+static TEE_Result cyrep_get_cert_chain_helper(
+	const struct cyrep_pta_sess_ctx *ctx,
+	char *buf,
+	size_t *buf_size)
+{
+	CyrepCertChain *orig_cert_chain;
+	size_t req_len;
+	size_t charsCopied;
+	size_t index;
 
 	orig_cert_chain = (CyrepCertChain *)phys_to_virt(
 		CYREP_CERT_CHAIN_ADDR,
 		MEM_AREA_IO_SEC);
-
-	if (exp_pt != param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
 
 	index = Cyrep_FindCertBySubjectName(orig_cert_chain, "OPTEE");
 	if (index == CYREP_CERT_INDEX_INVALID)
@@ -157,26 +190,69 @@ static TEE_Result cyrep_get_cert_chain(
 		  strnlen(ctx->cert_chain.CertBuffer,
 		  ctx->cert_chain.CertBufferSize) + 1;
 
-	if (params[0].memref.size < req_len) {
-		params[0].value.a = (uint32_t)req_len;
-		return TEE_ERROR_SHORT_BUFFER;
+	if (buf) {
+		if (*buf_size < req_len)
+			return TEE_ERROR_SHORT_BUFFER;
+	} else {
+		*buf_size = (uint32_t)req_len;
+		return TEE_SUCCESS;
 	}
 
 	charsCopied = strlcpy(
-		params[0].memref.buffer,
+		buf,
 		ctx->cert_chain.CertBuffer,
-		params[0].memref.size);
+		*buf_size);
 
 	if (!Cyrep_GetCertAndIssuers(
 		orig_cert_chain,
 		index,
-		(char *)params[0].memref.buffer + charsCopied,
-		params[0].memref.size - charsCopied)) {
+		buf + charsCopied,
+		*buf_size - charsCopied)) {
 
 		return TEE_ERROR_GENERIC;
 	}
 
 	return TEE_SUCCESS;
+}
+
+static TEE_Result cyrep_get_cert_chain(
+	const struct cyrep_pta_sess_ctx *ctx,
+	uint32_t param_types,
+	TEE_Param params[TEE_NUM_PARAMS])
+{
+	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE);
+
+	DMSG("PTA_CYREP_GET_CERT_CHAIN");
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return cyrep_get_cert_chain_helper(ctx,
+					   (char *)params[0].memref.buffer,
+					   &params[0].memref.size);
+}
+
+static TEE_Result cyrep_get_cert_chain_size(
+	const struct cyrep_pta_sess_ctx *ctx,
+	uint32_t param_types,
+	TEE_Param params[TEE_NUM_PARAMS])
+{
+	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_OUTPUT,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE,
+		TEE_PARAM_TYPE_NONE);
+
+	DMSG("PTA_CYREP_GET_CERT_CHAIN_SIZE");
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return cyrep_get_cert_chain_helper(ctx,
+					   NULL,
+					   &params[0].value.a);
 }
 
 static TEE_Result get_second_ta_session(struct tee_ta_session **sess)
@@ -217,7 +293,7 @@ static TEE_Result cyrep_open_session(
 		MEM_AREA_IO_SEC);
 
 	if (!Cyrep_ValidateCertChainVersion(orig_cert_chain)) {
-		EMSG("Cyrep: bad cert chain version\n");
+		EMSG("Cyrep: bad cert chain version");
 		return TEE_ERROR_BAD_FORMAT;
 	}
 
@@ -236,7 +312,7 @@ static TEE_Result cyrep_open_session(
 
 	ctx = malloc(sizeof(struct cyrep_pta_sess_ctx));
 	if (ctx == NULL) {
-		EMSG("Failed to allocate cyrep PTA context structure\n");
+		EMSG("Failed to allocate cyrep PTA context structure");
 		res = TEE_ERROR_OUT_OF_MEMORY;
 		goto end;
 	}
@@ -249,7 +325,7 @@ static TEE_Result cyrep_open_session(
 			&ctx->cert_chain,
 			cert_chain_size)) {
 
-		EMSG("Failed to initialize per-TA cert chain\n");
+		EMSG("Failed to initialize per-TA cert chain");
 		res = TEE_ERROR_GENERIC;
 		goto end;
 	}
@@ -267,7 +343,7 @@ static TEE_Result cyrep_open_session(
 			&ctx->cert_chain,
 			&ctx->ta_key_pair)) {
 
-		EMSG("Failed to append TA certificate to cert chain\n");
+		EMSG("Failed to append TA certificate to cert chain");
 		res = TEE_ERROR_SECURITY;
 		goto end;
 	}
@@ -289,7 +365,7 @@ static void cyrep_close_session(void *sess_ctx)
 	if (sess_ctx != NULL) {
 		free(sess_ctx);
 	}
-	DMSG("Cyrep PTA close session succeeded!\n");
+	DMSG("Cyrep PTA close session succeeded!");
 }
 
 static TEE_Result cyrep_invoke_command(void *sess_ctx, uint32_t cmd_id,
@@ -303,11 +379,17 @@ static TEE_Result cyrep_invoke_command(void *sess_ctx, uint32_t cmd_id,
 	case PTA_CYREP_GET_PRIVATE_KEY:
 		res = cyrep_get_private_key(ctx, param_types, params);
 		break;
+	case PTA_CYREP_GET_PRIVATE_KEY_SIZE:
+		res = cyrep_get_private_key_size(ctx, param_types, params);
+		break;
 	case PTA_CYREP_GET_CERT_CHAIN:
 		res = cyrep_get_cert_chain(ctx, param_types, params);
 		break;
+	case PTA_CYREP_GET_CERT_CHAIN_SIZE:
+		res = cyrep_get_cert_chain_size(ctx, param_types, params);
+		break;
 	default:
-		EMSG("Command not implemented %d\n", cmd_id);
+		EMSG("Command not implemented %d", cmd_id);
 		res = TEE_ERROR_NOT_IMPLEMENTED;
 		break;
 	}

@@ -194,7 +194,7 @@ service_init(init_tzc400);
 #endif /*CFG_TZC400*/
 
 #if defined(PLATFORM_FLAVOR_qemu_virt)
-int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id __unused)
+int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id)
 {
 	size_t pos = get_core_pos_mpidr(core_id);
 	uint32_t *sec_entry_addrs = phys_to_virt(SECRAM_BASE, MEM_AREA_IO_SEC);
@@ -215,8 +215,7 @@ int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id __unused)
 	core_is_released[pos] = true;
 
 	/* set NS entry addresses of core */
-	ns_entry_addrs[pos] = entry;
-	dsb_ishst();
+	generic_boot_set_core_ns_entry(pos, entry, context_id);
 
 	sec_entry_addrs[pos] = CFG_TEE_LOAD_ADDR;
 	dsb_ishst();

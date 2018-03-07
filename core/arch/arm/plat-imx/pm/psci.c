@@ -54,18 +54,18 @@
 
 int psci_features(uint32_t psci_fid)
 {
-    switch (psci_fid) {
-#ifdef CFG_BOOT_SECONDARY_RQUEST
-    case PSCI_CPU_ON:
+	switch (psci_fid) {
+#ifdef CFG_BOOT_SECONDARY_REQUEST
+	case PSCI_CPU_ON:
 		return 0;
 #endif
-    case PSCI_SYSTEM_OFF:
-    case PSCI_SYSTEM_RESET:
+	case PSCI_SYSTEM_OFF:
+	case PSCI_SYSTEM_RESET:
 		return 0;
 
-    default:
+	default:
 		return PSCI_RET_NOT_SUPPORTED;
-    }
+	}
 }
 
 #ifdef CFG_BOOT_SECONDARY_REQUEST
@@ -88,14 +88,7 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		return PSCI_RET_INVALID_PARAMETERS;
 
 	/* set secondary cores' NS entry addresses */
-	ns_entry_contexts[core_idx].entry_point = entry;
-	ns_entry_contexts[core_idx].r0 = context_id;
-
-	/* flush cache to PoU so other CPUs see the values */
-	cache_op_inner(
-		DCACHE_AREA_CLEAN,
-		&ns_entry_contexts[core_idx],
-		sizeof(struct ns_entry_context));
+	generic_boot_set_core_ns_entry(core_idx, entry, context_id);
 
 	val = virt_to_phys((void *)TEE_TEXT_VA_START);
 	if (soc_is_imx7ds()) {

@@ -560,10 +560,12 @@ UNWIND(	.cantunwind)
 	cpu_is_ready
 
 #if defined (CFG_BOOT_SECONDARY_REQUEST)
-	/* generic_boot_core_hpen return value (r0) is ns entry context structure */
+	/*
+	 * generic_boot_core_hpen return value (r0) is address of
+	 * ns entry context structure
+	 */
 	bl	generic_boot_core_hpen
-	ldr	r6, [r0, #4]	/* load nonsecure r0 value to r6 */
-	ldr	r0, [r0, #0]	/* load entry point address to r0 */
+	ldm	r0, {r0, r6}
 #else
 	mov	r0, r5		/* ns-entry address */
 	mov	r6, #0
@@ -571,7 +573,7 @@ UNWIND(	.cantunwind)
 	bl	generic_boot_init_secondary
 
 	mov	r0, #TEESMC_OPTEED_RETURN_ENTRY_DONE
-	mov	r1, r6		/* r1-r4 get shifted to r0-r3 on nsec return */
+	mov	r1, r6
 	mov	r2, #0
 	mov	r3, #0
 	mov	r4, #0

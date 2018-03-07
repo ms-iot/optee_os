@@ -46,7 +46,7 @@
 
 
 static void main_fiq(void);
-static struct gic_data gic_data;
+struct gic_data gic_data;
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,

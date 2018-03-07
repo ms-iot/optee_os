@@ -17,6 +17,10 @@
 #define SUSPEND_OCRAM_OFFSET		0x0
 #define LOWPOWER_IDLE_OCRAM_OFFSET	0x1000
 
+#define MX7_STATEID_CORE_CLOCK_GATE	0x00000004
+#define MX7_STATEID_CLUSTER_CLOCK_GATE	0x00000040
+#define MX7_LEVELID_CLUSTER		0x01000000
+
 #ifndef ASM
 #include <sm/sm.h>
 
@@ -92,6 +96,11 @@ int imx7d_lowpower_idle(uint32_t power_state, uintptr_t entry,
 void imx7d_low_power_idle(struct imx7_pm_info *info);
 int imx7d_cpuidle_init(void);
 void v7_cpu_resume(void);
+
+extern struct imx7_pm_info *pm_info;
+extern struct gic_data gic_data;
+extern uint32_t active_cores;
+extern uint32_t resume;
 #endif
 
 #endif

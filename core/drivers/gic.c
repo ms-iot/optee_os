@@ -31,6 +31,7 @@
 #define GICD_ICENABLER(n)	(0x180 + (n) * 4)
 #define GICD_ISPENDR(n)		(0x200 + (n) * 4)
 #define GICD_ICPENDR(n)		(0x280 + (n) * 4)
+#define GICD_ISACTIVER(n)	(0x300 + (n) * 4)
 #define GICD_IPRIORITYR(n)	(0x400 + (n) * 4)
 #define GICD_ITARGETSR(n)	(0x800 + (n) * 4)
 #define GICD_SGIR		(0xF00)
@@ -368,6 +369,25 @@ static uint32_t __maybe_unused gic_it_get_target(struct gic_data *gd, size_t it)
 	return target;
 }
 
+static bool __maybe_unused gic_it_is_pending(struct gic_data *gd, size_t it)
+{
+	size_t idx = it / NUM_INTS_PER_REG;
+	uint32_t mask = 1 << (it % NUM_INTS_PER_REG);
+
+	return !!(read32(gd->gicd_base + GICD_ISPENDR(idx)) & mask);
+}
+
+void gic_get_enabled_irqs(struct gic_data *gd, uint32_t *irqs)
+{
+	unsigned int i;
+
+	for (i = 0; i < (gd->max_it + NUM_INTS_PER_REG - 1) / NUM_INTS_PER_REG;
+		i++) {
+
+		irqs[i] = read32(gd->gicd_base + GICD_ISENABLER(i));
+	}
+}
+
 void gic_dump_state(struct gic_data *gd)
 {
 	int i;
@@ -381,8 +401,11 @@ void gic_dump_state(struct gic_data *gd)
 
 	for (i = 0; i < (int)gd->max_it; i++) {
 		if (gic_it_is_enabled(gd, i)) {
-			DMSG("irq%d: enabled, group:%d, target:%x", i,
-			     gic_it_get_group(gd, i), gic_it_get_target(gd, i));
+			DMSG("irq%d: enabled, group:%d, target:%x, pending:%d",
+			     i,
+			     gic_it_get_group(gd, i),
+			     gic_it_get_target(gd, i),
+			     gic_it_is_pending(gd, i));
 		}
 	}
 }

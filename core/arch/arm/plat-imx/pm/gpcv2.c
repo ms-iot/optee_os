@@ -59,3 +59,53 @@ void imx_gpcv2_set_core1_pup_by_software(void)
 
 	imx_gpcv2_set_core_pgc(false, GPC_PGC_C1);
 }
+
+void imx_gpcv2_mask_all_irqs(void)
+{
+	vaddr_t base = gpc_base();
+
+	write32(~0x0, base + GPC_IMR1_CORE0_A7);
+	write32(~0x0, base + GPC_IMR2_CORE0_A7);
+	write32(~0x0, base + GPC_IMR3_CORE0_A7);
+	write32(~0x0, base + GPC_IMR4_CORE0_A7);
+
+	write32(~0x0, base + GPC_IMR1_CORE1_A7);
+	write32(~0x0, base + GPC_IMR2_CORE1_A7);
+	write32(~0x0, base + GPC_IMR3_CORE1_A7);
+	write32(~0x0, base + GPC_IMR4_CORE1_A7);
+}
+
+static void imx_gpcv2_mask_irq_helper(uint32_t irq, bool mask)
+{
+	uint32_t val;
+	vaddr_t base = gpc_base();
+	uint32_t idx = (irq - 32) / 32;
+	uint32_t irqmask = 1 << (irq % 32);
+
+	val = read32(base + GPC_IMR1_CORE0_A7 + idx * 4);
+	if (mask)
+		val |= irqmask;
+	else
+		val &= ~irqmask;
+
+	write32(val, base + GPC_IMR1_CORE0_A7 + idx * 4);
+}
+
+void imx_gpcv2_mask_irq(uint32_t irq)
+{
+	imx_gpcv2_mask_irq_helper(irq, true);
+}
+
+void imx_gpcv2_unmask_irq(uint32_t irq)
+{
+	imx_gpcv2_mask_irq_helper(irq, false);
+}
+
+bool imx_gpcv2_irq_pending(uint32_t irq)
+{
+	vaddr_t base = gpc_base();
+	uint32_t idx = (irq - 32) / 32;
+	uint32_t mask = 1 << (irq % 32);
+
+	return (read32(base + GPC_ISR1_A7 + idx * 4) & mask) != 0;
+}

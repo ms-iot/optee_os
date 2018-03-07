@@ -33,4 +33,8 @@ uint32_t imx_soc_type(void);
 void imx_gpcv2_set_core1_pdn_by_software(void);
 void imx_gpcv2_set_core1_pup_by_software(void);
 void imx_gpcv2_set_core_pgc(bool enable, uint32_t offset);
+void imx_gpcv2_mask_all_irqs(void);
+void imx_gpcv2_mask_irq(uint32_t irq);
+void imx_gpcv2_unmask_irq(uint32_t irq);
+bool imx_gpcv2_irq_pending(uint32_t irq);
 #endif

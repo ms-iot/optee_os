@@ -51,11 +51,14 @@
 
 /*
  * Everything is in TZDRAM.
- * +------------------+
- * |        | TEE_RAM |
- * + TZDRAM +---------+
- * |        | TA_RAM  |
- * +--------+---------+
+ *  +---------------------------------------+  <- TZDRAM_BASE
+ *  | TEE private secure |  TEE_RAM         |   ^
+ *  |   external memory  +------------------+   | TZDRAM_SIZE
+ *  |                    |  TA_RAM          |   v
+ *  +---------------------------------------+  <- CFG_SHMEM_START
+ *  |     Non secure     |  SHM             |   ^
+ *  |   shared memory    |                  |   | CFG_SHMEM_SIZE
+ *  +---------------------------------------+   v
  */
 #define CFG_TEE_RAM_PH_SIZE     CFG_TEE_RAM_VA_SIZE
 #define CFG_TEE_RAM_START	TZDRAM_BASE

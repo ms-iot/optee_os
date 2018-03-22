@@ -65,9 +65,9 @@
 #define CFG_DDR_TEETZ_RESERVED_START	0x9E000000
 #endif
 
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x02000000
+#define CFG_DDR_TEETZ_RESERVED_SIZE	0x03000000
 
-#define CFG_PUB_RAM_SIZE	(2 * 1024 * 1024)
+#define CFG_PUB_RAM_SIZE	(8 * 1024 * 1024)
 
 #define TZDRAM_BASE		(CFG_DDR_TEETZ_RESERVED_START)
 #define TZDRAM_SIZE		(CFG_DDR_TEETZ_RESERVED_SIZE - \
@@ -286,9 +286,10 @@
 /* Location of trusted dram */
 
 #define CFG_DDR_TEETZ_RESERVED_START	0x10A00000
-#define CFG_DDR_TEETZ_RESERVED_SIZE		0x02000000
 
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
+#define CFG_DDR_TEETZ_RESERVED_SIZE	0x03000000
+
+#define CFG_PUB_RAM_SIZE		(8 * 1024 * 1024)
 
 
 /* Area reserved for nonpageable part of image */
@@ -317,15 +318,15 @@
  *  |   shared memory    |                  |   |
  *  +---------------------------------------+   v
  *
- *  TEE_RAM : default 1MByte
- *  PUB_RAM : default 2MByte
+ *  TEE_RAM : 2MByte
+ *  PUB_RAM : 8MByte
  *  TA_RAM  : all what is left
  */
 
 #define CFG_DDR_TEETZ_RESERVED_START    0x10A00000
-#define CFG_DDR_TEETZ_RESERVED_SIZE     0x02000000
+#define CFG_DDR_TEETZ_RESERVED_SIZE	0x03000000
 
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
+#define CFG_PUB_RAM_SIZE		(8 * 1024 * 1024)
 #define CFG_TEE_RAM_PH_SIZE		(2 * 1024 * 1024)
 
 #define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START)

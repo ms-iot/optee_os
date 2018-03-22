@@ -174,6 +174,7 @@ struct tzc_encoding {
 };
 
 static struct tzc_encoding tzc_encodings[] = {
+    {64 * 1024 * 1024,  TZC_ATTR_REGION_SIZE(TZC_REGION_SIZE_64M)},
     {32 * 1024 * 1024,  TZC_ATTR_REGION_SIZE(TZC_REGION_SIZE_32M)},
     {16 * 1024 * 1024,  TZC_ATTR_REGION_SIZE(TZC_REGION_SIZE_16M)},
     {8 * 1024 * 1024,   TZC_ATTR_REGION_SIZE(TZC_REGION_SIZE_8M)},

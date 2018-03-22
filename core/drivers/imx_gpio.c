@@ -75,7 +75,7 @@ static void mxc_gpio_set_value(unsigned int gpio_pin, enum gpio_level value)
     unsigned int pinIndex = mxc_gpio_get_pin_index(gpio_pin);
     struct gpio_regs *regs = mxc_gpio_get_reg_base(gpio_pin);
 
-    DMSG("Base address = %p, pinIndex = %u, value = %u", 
+    FMSG("Base address = %p, pinIndex = %u, value = %u", 
         (void *)regs, pinIndex, (unsigned int)value);
 
     regValue = readl(&regs->gpio_dr);

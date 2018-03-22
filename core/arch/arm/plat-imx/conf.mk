@@ -3,7 +3,7 @@ PLATFORM_FLAVOR ?= mx6ulevk
 # Get SoC associated with the PLATFORM_FLAVOR
 mx6ul-flavorlist = mx6ulevk
 mx6ull-flavorlist = mx6ullevk
-mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
+mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge mx6qsamx6
 mx6sx-flavorlist = mx6sxsabreauto
 mx6d-flavorlist = mx6dhmbedge
 mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
@@ -134,6 +134,29 @@ $(call force,CFG_IMX_CLOCK,y)
 endif
 
 endif # ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
+
+ifeq ($(PLATFORM_FLAVOR), mx6qsamx6)
+
+# In the default configuration:
+# - UART3 is used for OPTEE console
+# - UART1 is used for Windows kernel debugging
+CFG_CONSOLE_UART ?= UART2_BASE
+
+ifeq ($(CFG_TA_SPI),y)
+$(call force,CFG_SPI,y)
+endif
+
+ifeq ($(CFG_SPI),y)
+$(call force,CFG_IMX_SPI,y)
+endif
+
+ifeq ($(CFG_IMX_SPI),y)
+$(call force,CFG_IMX_IOMUX,y)
+$(call force,CFG_IMX_GPIO,y)
+$(call force,CFG_IMX_CLOCK,y)
+endif
+
+endif # ifeq ($(PLATFORM_FLAVOR), mx6qsamx6)
 
 ifeq ($(filter y, $(CFG_PSCI_ARM32)), y)
 CFG_HWSUPP_MEM_PERM_WXN = n

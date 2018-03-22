@@ -2808,13 +2808,67 @@ typedef enum {
 		                    IMX_IOMUXC_EIM_CS0_ALT2_ECSPI2_SCLK),
 } ECSPI2_Mux;
 
+/* ECSPI4 MUX initialization */
+typedef enum {
+	// CS3 (PAD_EIM_D25) GPIO3_IO25
+	IMX_PAD_EIM_D25_GPIO3_IO25 = _IMX_MAKE_PADCFG(
+		                    IMX_SRE_FAST,
+		                    IMX_DSE_40_OHM,
+		                    IMX_SPEED_MEDIUM,
+		                    IMX_ODE_DISABLE,
+		                    IMX_PKE_ENABLE,
+		                    IMX_PUE_PULL,
+		                    IMX_PUS_100K_OHM_PU,
+		                    IMX_HYS_DISABLED,
+		                    IMX_SION_DISABLED,
+		                    IMX_IOMUXC_EIM_D25_ALT5_GPIO3_IO25),
+
+  // MISO: PAD_EIM_D22 (GPIO3_IO22) Alt1
+	IMX_PAD_EIM_D22_ECSPI4_MISO = _IMX_MAKE_PADCFG(
+		                    IMX_SRE_FAST,
+		                    IMX_DSE_40_OHM,
+		                    IMX_SPEED_MEDIUM,
+		                    IMX_ODE_DISABLE,
+		                    IMX_PKE_ENABLE,
+		                    IMX_PUE_PULL,
+		                    IMX_PUS_100K_OHM_PU,
+		                    IMX_HYS_DISABLED,
+		                    IMX_SION_DISABLED,
+		                    IMX_IOMUXC_EIM_D22_ALT1_ECSPI4_MISO),
+
+	// MOSI: PAD_EIM_D28 (GPIO3_IO28) Alt2
+	IMX_PAD_EIM_D28_ECSPI4_MOSI = _IMX_MAKE_PADCFG(
+		                    IMX_SRE_FAST,
+		                    IMX_DSE_40_OHM,
+		                    IMX_SPEED_MEDIUM,
+		                    IMX_ODE_DISABLE,
+		                    IMX_PKE_ENABLE,
+		                    IMX_PUE_PULL,
+		                    IMX_PUS_100K_OHM_PU,
+		                    IMX_HYS_DISABLED,
+		                    IMX_SION_DISABLED,
+		                    IMX_IOMUXC_EIM_D28_ALT2_ECSPI4_MOSI),
+
+	// SCLK: PAD_EIM_D21 (GPIO3_IO21) Alt1
+	IMX_PAD_EIM_D21_ECSPI4_SCLK = _IMX_MAKE_PADCFG(
+		                    IMX_SRE_FAST,
+		                    IMX_DSE_40_OHM,
+		                    IMX_SPEED_MEDIUM,
+		                    IMX_ODE_DISABLE,
+		                    IMX_PKE_ENABLE,
+		                    IMX_PUE_PULL,
+		                    IMX_PUS_100K_OHM_PU,
+		                    IMX_HYS_DISABLED,
+		                    IMX_SION_DISABLED,
+		                    IMX_IOMUXC_EIM_D21_ALT1_ECSPI4_SCLK)
+
+} ECSPI4_Mux;
+
+
+
 register_phys_mem(MEM_AREA_IO_SEC, IOMUXC_BASE, CORE_MMU_DEVICE_SIZE);
 
-/*
- * This routine is not platform+flavor specific, but it currently has a single
- * caller, that is platform-flavor specific.
- */
-#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
+/* Update iomux registers with new pad configs */
 static void imx_pad_config(IMX_PAD Pad, IMX_PADCFG PadConfig)
 {
     /* Configure Mux Control */
@@ -2829,21 +2883,12 @@ static void imx_pad_config(IMX_PAD Pad, IMX_PADCFG PadConfig)
     /* Configure Pad Control */
     write32(_IMX_PADCFG_PAD_CTL(PadConfig), iomuxc_base + _IMX_PAD_CTL_OFFSET(Pad));
 }
-#endif /* #if defined(PLATFORM_FLAVOR_mx6qhmbedge) */
 
 /* Configure iomux pads for a given SPI bus */
 bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
 {
     /* SPI iomux pad configuration is platform+flavor specific */
-#if !defined(PLATFORM_FLAVOR_mx6qhmbedge)
-    #error SPI iomux pad configuration is not implemented for this platform
-    
-    #define IOMUX_UNUSED(param) (void)(param)
-    IOMUX_UNUSED(spiBus);
-    IOMUX_UNUSED(bank);
-    IOMUX_UNUSED(pin);
-    return false;
-#else
+#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
     uint32_t initialValue, newValue;
     uint32_t misoSelectInputVA;
 
@@ -2880,7 +2925,37 @@ bool imx_iomux_configure_spi(uint8_t spiBus, int32_t *bank, int32_t *pin)
     imx_pad_config(IMX_PAD_EIM_CS0, IMX_PAD_EIM_CS0_ECSPI2_SCLK);
 
     return true;
-#endif /* #if !defined(PLATFORM_FLAVOR_mx6qhmbedge) */
+#elif defined(PLATFORM_FLAVOR_mx6qsamx6)
+    /* Just ECSPI4 is currently supported */
+    if (spiBus != 3) {
+        EMSG("Unsupported spiBus = %u", spiBus);
+        return false;
+    }
+
+    /* CS3 (PAD_EIM_D25) GPIO3_IO25 -> bank 2, pin 25 */
+    imx_pad_config(IMX_PAD_EIM_D25, IMX_PAD_EIM_D25_GPIO3_IO25);
+    *bank = 2;
+    *pin = 25;
+
+    /* MISO: PAD_EIM_D22 (GPIO3_IO22) Alt1 */
+    /* Don't need to select an input path, ECPISPI4_MISO can only be EIM_D22*/
+    imx_pad_config(IMX_PAD_EIM_D22, IMX_PAD_EIM_D22_ECSPI4_MISO);
+
+    /* MOSI: PAD_EIM_D28 (GPIO3_IO28) Alt2 */
+    imx_pad_config(IMX_PAD_EIM_D28, IMX_PAD_EIM_D28_ECSPI4_MOSI);
+
+    /* SCLK: PAD_EIM_D21 (GPIO3_IO21) Alt1 */
+    imx_pad_config(IMX_PAD_EIM_D21, IMX_PAD_EIM_D21_ECSPI4_SCLK);
+
+    return true;
+#else
+    #error SPI iomux pad configuration is not implemented for this platform
+    #define IOMUX_UNUSED(param) (void)(param)
+    IOMUX_UNUSED(spiBus);
+    IOMUX_UNUSED(bank);
+    IOMUX_UNUSED(pin);
+    return false;
+#endif /* #if (!defined(PLATFORM_FLAVOR_mx6qhmbedge) && !defined(PLATFORM_FLAVOR_mx6qsamx6)) */
 }
 
 /* Initialize the iomux driver */

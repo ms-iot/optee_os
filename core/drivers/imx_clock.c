@@ -175,16 +175,22 @@ bool enable_cspi_clk(unsigned int spiBus)
     struct mxc_ccm_reg *ccm = (struct mxc_ccm_reg *)
 	phys_to_virt(CCM_BASE, MEM_AREA_IO_SEC);
 
-    /* Just ECSPI2 is currently supported */
-    if (spiBus != 1) {
+    val = read32((vaddr_t)&ccm->CCGR1);
+	switch (spiBus) {
+	case 1:
+		FMSG("Enabling ECSPI2 clock");
+    	val |=  IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED;
+		break;
+	case 3:
+		FMSG("Enabling ECSPI4 clock");
+		val |=  IMX_CCM_CCGR1_ECSPI4_CLK_ENABLED;
+		break;
+	default:
         EMSG("Unsupported spiBus = %u", spiBus);
         return false;
-    }
+	}
 
-    FMSG("Enabling ECSPI2 clock");
-    val = read32((vaddr_t)&ccm->CCGR1);
-    val |=  IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED;
     write32(val, (vaddr_t)&ccm->CCGR1);
 
-    return true;
+	return true;
 }

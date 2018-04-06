@@ -75,6 +75,10 @@
 #define SUSPEND_OCRAM_OFFSET		0x0
 #define LOWPOWER_IDLE_OCRAM_OFFSET	0x1000
 
+#define MX7_STATEID_CORE_CLOCK_GATE	0x00000004
+#define MX7_STATEID_CLUSTER_CLOCK_GATE	0x00000040
+#define MX7_LEVELID_CLUSTER		0x01000000
+
 #ifndef ASM
 #include <sm/sm.h>
 
@@ -138,6 +142,11 @@ int imx7_suspend_init(void);
 int pm_imx7_iram_tbl_init(void);
 int imx7_cpu_suspend(uint32_t power_state, uintptr_t entry,
 		     uint32_t context_id, struct sm_nsec_ctx *nsec);
+
+extern struct imx7_pm_info *pm_info;
+extern struct gic_data gic_data;
+extern uint32_t active_cores;
+extern uint32_t resume;
 #endif
 
 #endif

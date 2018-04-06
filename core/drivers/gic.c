@@ -428,7 +428,7 @@ void gic_dump_state(struct gic_data *gd)
 			     i,
 			     gic_it_get_group(gd, i),
 			     gic_it_get_target(gd, i),
-			     git_it_is_pending(gd, i));
+			     gic_it_is_pending(gd, i));
 		}
 	}
 }

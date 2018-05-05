@@ -91,7 +91,7 @@
 #endif
 
 #if defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
-	defined(CFG_MX6S)
+	defined(CFG_MX6S) || defined(CFG_MX6SX)
 #define ATZ1_BASE_ADDR			AIPS1_BASE
 #define ATZ2_BASE_ADDR			AIPS2_BASE
 

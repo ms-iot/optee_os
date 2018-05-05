@@ -4,7 +4,7 @@ PLATFORM_FLAVOR ?= mx6ulevk
 mx6ul-flavorlist = mx6ulevk
 mx6ull-flavorlist = mx6ullevk
 mx6q-flavorlist = mx6qsabrelite mx6qsabresd mx6qhmbedge
-mx6sx-flavorlist = mx6sxsabreauto
+mx6sx-flavorlist = mx6sxsabreauto mx6sxudooneofull
 mx6d-flavorlist = mx6dhmbedge
 mx6dl-flavorlist = mx6dlsabresd mx6dlhmbedge
 mx6s-flavorlist = mx6shmbedge
@@ -110,6 +110,13 @@ CFG_PSCI_ARM32 ?= y
 CFG_BOOT_SYNC_CPU = n
 CFG_BOOT_SECONDARY_REQUEST = n
 CFG_TEE_CORE_NB_CORE ?= 1
+endif
+
+ifeq ($(PLATFORM_FLAVOR), mx6sxudooneofull)
+CFG_DDR_SIZE ?= 0x40000000
+CFG_PSCI_ARM32 ?= y
+CFG_TEE_CORE_NB_CORE ?= 1
+CFG_CONSOLE_UART ?= UART1_BASE
 endif
 
 ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)

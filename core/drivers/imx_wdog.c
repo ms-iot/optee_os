@@ -169,6 +169,11 @@ static TEE_Result imx_wdog_init(void)
 	paddr_t pbase = WDOG_BASE;
 	size_t sz = CORE_MMU_DEVICE_SIZE;
 
+#if defined(PLATFORM_FLAVOR_mx7dsabresd) || \
+    defined(PLATFORM_FLAVOR_mx7dclsom)
+	ext_reset = true;
+#endif
+
 	/*
 	 * Check to see whether it has been mapped using
 	 * register_phys_mem or not.

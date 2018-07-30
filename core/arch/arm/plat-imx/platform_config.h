@@ -112,7 +112,8 @@
 #else
 
 /* Board specific console UART */
-#if defined(PLATFORM_FLAVOR_mx6qsabrelite)
+#if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
+    defined(PLATFORM_FLAVOR_mx6qvab820)
 #define CONSOLE_UART_BASE		UART2_BASE
 #endif
 
@@ -136,7 +137,8 @@
 #endif
 #if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
 	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6dlsabresd)
+	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
+	defined(PLATFORM_FLAVOR_mx6qvab820)
 #define DRAM0_SIZE			0x40000000
 #endif
 #if defined(PLATFORM_FLAVOR_mx6dhmbedge) || \

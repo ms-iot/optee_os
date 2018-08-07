@@ -641,6 +641,7 @@ standby_out:
 	/* return to suspend finish */
 	bx	lr
 
+.global resume
 resume:
 	write_iciallu
 	write_bpiall

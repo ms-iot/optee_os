@@ -3,3 +3,5 @@ cscope.*
 out
 .cproject
 .project
+.vscode
+.clang-format

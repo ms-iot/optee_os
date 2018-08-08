@@ -23,3 +23,7 @@ srcs-y += imx6ul.c
 endif
 
 srcs-$(CFG_MX7) += imx7.c a7_plat_init.S
+
+ifeq ($(CFG_RPMSG),y)
+srcs-$(CFG_MX7) += mu-imx.c
+endif

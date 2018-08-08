@@ -107,6 +107,12 @@ libdir = core/lib/libcyrep
 include mk/lib.mk
 endif
 
+ifeq ($(CFG_RPMSG),y)
+libname = rpmsglite
+libdir = core/lib/librpmsglite
+include mk/lib.mk
+endif
+
 #
 # Do main source
 #

@@ -99,6 +99,20 @@ include core/arch/arm/cpu/cortex-a7.mk
 $(call force,CFG_SECURE_TIME_SOURCE_REE,y)
 CFG_BOOT_SECONDARY_REQUEST ?= y
 CFG_INIT_CNTVOFF ?= y
+
+ifeq ($(CFG_RPMSG),y)
+# MCU firmware text section base address and size in memory.
+CFG_MCU_FW_TEXT_BASE ?= 0x82200000
+CFG_MCU_FW_TEXT_SIZE ?= 0x10000
+# MCU firmware data section base address and size in memory.
+CFG_MCU_FW_DATA_BASE ?= 0x82210000
+CFG_MCU_FW_DATA_SIZE ?= 0x10000
+# RPMsg shared memory region between the application processor and the MCU.
+CFG_RPMSG_SHMEM_BASE ?= 0x82220000
+CFG_RPMSG_SHMEM_SIZE ?= 0x20000
+$(call force,CFG_IMX_RPMSG,y)
+endif
+
 endif
 
 ifneq (,$(filter $(PLATFORM_FLAVOR),mx6sxsabreauto))
@@ -121,7 +135,7 @@ endif
 
 ifeq ($(PLATFORM_FLAVOR), mx6qhmbedge)
 
-# In the default configuration: 
+# In the default configuration:
 # - UART3 is used for OPTEE console
 # - UART1 is used for Windows kernel debugging
 CFG_CONSOLE_UART ?= UART1_BASE
@@ -150,4 +164,3 @@ endif
 CFG_MMAP_REGIONS ?= 24
 
 ta-targets = ta_arm32
-

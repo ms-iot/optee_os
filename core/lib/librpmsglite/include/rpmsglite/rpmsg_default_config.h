@@ -3,6 +3,7 @@
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016 NXP
+ * Copyright (c) Microsoft Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without

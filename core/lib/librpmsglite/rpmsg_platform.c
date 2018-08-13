@@ -80,30 +80,18 @@ void platform_notify(int vq_id)
 {
 	uint32_t msg;
 
-	/* Use the upper 16-bit of the message are the virtual queue ID. The lower
-	 * 16-bit are unused.
+	/* Use the upper 16-bit of the message are the virtual queue ID. The
+	 * lower 16-bit are unused.
 	 */
 	msg = (RL_GET_Q_ID(vq_id)) << 16;
 	env_lock_mutex(lock);
 	if (!rpmsg_ipc_send_msg(msg)) {
-		EMSG("rpmsg ipc failed to send msg over channel %d", RPMSG_IPI_CHANNEL);
+		EMSG("rpmsg ipc failed to send msg over channel %d",
+		     RPMSG_IPI_CHANNEL);
 	}
 	env_unlock_mutex(lock);
 }
 
-
-/**
- * platform_interrupt_enable
- *
- * Enable peripheral-related interrupt with passed priority and type.
- *
- * @param vq_id Vector ID that need to be converted to IRQ number
- * @param trigger_type IRQ active level
- * @param trigger_type IRQ priority
- *
- * @return vq_id. Return value is never checked..
- *
- */
 int platform_interrupt_enable(unsigned int vq_id)
 {
 	assert(0 < disable_counter);
@@ -115,16 +103,6 @@ int platform_interrupt_enable(unsigned int vq_id)
 	return vq_id;
 }
 
-/**
- * platform_interrupt_disable
- *
- * Disable peripheral-related interrupt.
- *
- * @param vq_id Vector ID that need to be converted to IRQ number
- *
- * @return vq_id. Return value is never checked.
- *
- */
 int platform_interrupt_disable(unsigned int vq_id)
 {
 	assert(0 <= disable_counter);
@@ -142,11 +120,6 @@ static void platform_rx_ipi_handler(uint32_t ch)
 	env_isr((int)ch);
 }
 
-/**
- * platform_init
- *
- * platform/environment init
- */
 int platform_init(void)
 {
 	struct rpmsg_ipc_params params;
@@ -162,11 +135,6 @@ int platform_init(void)
 	return 0;
 }
 
-/**
- * platform_deinit
- *
- * platform/environment deinit process
- */
 int platform_deinit(void)
 {
 	/* Delete lock used in multi-instanced RPMsg */

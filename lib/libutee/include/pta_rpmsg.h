@@ -23,26 +23,41 @@
 #define PTA_RPMSG_UUID { 0x616eeba1, 0xfaaa, 0x46a7, { \
 		   0x9f, 0xaf, 0xd8, 0xb8, 0x4f, 0xda, 0x1a, 0x6b } }
 
+#define PTA_RPMSG_UUID_STR "{616eeba1-faaa-46a7-9faf-d8b84fda1a6b}"
+
 enum PTA_RPMSG_CMD {
 	//
-	// Performs a write followed by read IO on the remote. It is up to the
-	// remote and the PTA caller to interpret the content of both the input and
-	// output buffers. Their meaning and format is not of an interest to OPTEE
-	// or the PTA.
+	// Sends a buffer to remote.
+	// If the send queue is full, the CMD will block until a space is available.
 	//
-	// [in] value[0].a: A unique value that identifies the CMD and/or sender.
-	// [in] memref[0]: An input buffer that gets passed to and read by the remote.
-	// [out] memref[0]: An output buffer that gets written by the remote and
-	//                  returned back to the caller.
+	// [in] value[0].a: A unique value (cookie) that identifies the sender.
+	// [in] memref[0]: An input buffer that gets sent to the remote.
 	//
-	PTA_RPMSG_CMD_REMOTE_IO,
+	// Returns:
+	// TEE_ERROR_EXCESS_DATA: If the sent buffer is larger than the rpmsg max
+	// payload size defined as RL_BUFFER_PAYLOAD_SIZE which is 496 bytes.
+	// TEE_ERROR_COMMUNICATION: If a protocol error occurred during the send
+	// operation.
+	// TEE_ERROR_BAD_PARAMETERS: If the param types are unexpected.
+	//
+	PTA_RPMSG_CMD_SEND,
 
 	//
-	// Boots the remote core using a pre-loaded firmware binary.
+	// Receive a buffer from remote.
 	//
-	// [in] value[0].a: The remote core ID which is system specific.
+	// [in] value[0].a: A unique value (cookie) that identifies the receiver.
+	// [inout] memref[0]: An output buffer to which the data received from remote
+	// is written to.
 	//
-	PTA_RPMSG_CMD_BOOT_REMOTE
+	// Returns:
+	// TEE_ERROR_NO_DATA: If the there is no outstanding data received from the
+	// remote.
+	// TEE_ERROR_SHORT_BUFFER: If the provided buffer is too small to hold the
+	// received data. The received data will be consumed and gone from the
+	// master queue in this situation.
+	// TEE_ERROR_BAD_PARAMETERS: If the param types are unexpected.
+	//
+	PTA_RPMSG_CMD_RECEIVE,
 };
 
 #endif /* __PTA_RPMSG_H */

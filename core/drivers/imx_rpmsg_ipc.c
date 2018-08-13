@@ -13,6 +13,7 @@
  *
  **/
 #include <kernel/interrupt.h>
+#include <kernel/tee_time.h>
 #include <drivers/rpmsg_ipc.h>
 #include <mm/core_memprot.h>
 #include <keep.h>
@@ -30,11 +31,14 @@ register_phys_mem(MEM_AREA_IO_SEC, M4_BOOTROM_BASE, M4_BOOTROM_SIZE);
 #define RPMSG_IPI_MU_CHANNEL 1
 
 /* MU CR.F0 is used by the M4 to indicate to A7 that it is up & running and that
- * M4 has moved itself to domain0 and that all the M4 app required resource has
+ * M4 has moved itself to domain1 and that all the M4 app required resource has
  * been assigned to the M4 domain by the M4 app.
  * It is safe after this event for the A7 to lock the M4 reset configurations.
  */
 #define M4_MU_READY_FLAG_IDX 0
+
+/* Number of milliseconds to wait for each ready polling step */
+#define REMOTE_WAIT_STEP_MS 10
 
 struct rpmsg_ipc_ctx {
 	bool initialized;
@@ -53,6 +57,7 @@ static struct mu_regs *get_mu(void)
 	return mu;
 }
 
+/* The mu ipi isr */
 static enum itr_return __maybe_unused ipi_isr(struct itr_handler *handler)
 {
 	uint32_t msg;
@@ -158,18 +163,18 @@ bool rpmsg_ipc_boot_remote(void)
 	}
 
 	/*
-	 * this is required because the M4 is not starting from the TCM, but from
-	 * the DRAM instead. The M4 expects its starting SP and PC to be at present
-	 * as 2 32-bit words at m4_bootrom_base.
-	 * The binary format of the M4 fw will have these 2 pieces of information
-	 * at the begining of the M4 firmware image.
+	 * this is required because the M4 is not starting from the TCM, but
+	 * from the DRAM instead. The M4 expects its starting SP and PC to be at
+	 * present as 2 32-bit words at m4_bootrom_base. The binary format of
+	 * the M4 fw will have these 2 pieces of information at the begining of
+	 * the M4 firmware image.
 	 */
 	m4_sp = read32((vaddr_t)m4_text_base);
 	m4_pc = read32((vaddr_t)m4_text_base + 4);
 	write32(m4_sp, (vaddr_t)m4_bootrom_base);
 	write32(m4_pc, (vaddr_t)m4_bootrom_base + 4);
 
-	IMSG("booting the M4 core with sp(pa:0x%p):0x%x pc(pa:0x%p):0x%x",
+	DMSG("booting the M4 core with sp(pa:0x%p):0x%x pc(pa:0x%p):0x%x",
 	     (void *)M4_BOOTROM_BASE, m4_sp, (void *)(M4_BOOTROM_BASE + 4),
 	     m4_pc);
 
@@ -185,19 +190,19 @@ bool rpmsg_ipc_boot_remote(void)
 bool rpmsg_ipc_wait_remote_ready(uint32_t timeout_ms)
 {
 	struct mu_regs *mu;
-
-	/* only infinite timeout is supported */
-	if (timeout_ms != 0) {
-		return false;
-	}
+	uint32_t elapsed_time_ms;
 
 	mu = get_mu();
+	elapsed_time_ms = 0;
 
-	/* consider timing out based on some counter, ms resolution should be
-	 * enough
-	 */
+	while (!mu_get_flag(mu, M4_MU_READY_FLAG_IDX)
+	       && (elapsed_time_ms < timeout_ms)) {
+		tee_time_wait(REMOTE_WAIT_STEP_MS);
+		elapsed_time_ms += REMOTE_WAIT_STEP_MS;
+	}
 
-	while (!mu_get_flag(mu, M4_MU_READY_FLAG_IDX)) {
+	if (!mu_get_flag(mu, M4_MU_READY_FLAG_IDX)) {
+		return false;
 	}
 
 	/* acknowledge the ready flag */

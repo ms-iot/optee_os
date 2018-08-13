@@ -26,21 +26,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
-/**************************************************************************
- * FILE NAME
- *
- *       llist.c
- *
- * COMPONENT
- *
- *         OpenAMP stack.
- *
- * DESCRIPTION
- *
- *       Source file for basic linked list service.
- *
- **************************************************************************/
 #include <rpmsglite/llist.h>
 
 #define LIST_NULL ((void *)0)

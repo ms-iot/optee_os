@@ -3,7 +3,7 @@
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
  * Copyright 2016 NXP
- * Copyright (c) Microsoft
+ * Copyright (c) Microsoft Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,20 +30,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
-/**************************************************************************
- * FILE NAME
- *
- *       bm_env.c
- *
- *
- * DESCRIPTION
- *
- *       This file is Bare Metal Implementation of env layer for OpenAMP.
- *
- *
- **************************************************************************/
-
 #include <rpmsglite/rpmsg_lite.h>
 #include <rpmsglite/rpmsg_env.h>
 #include <rpmsglite/rpmsg_platform.h>
@@ -66,159 +52,14 @@ static int env_init_counter = 0;
 #define IPI_ISR_COUNT 4
 
 /*
- * Structure to keep track of registered ISRs
+ * Structure to keep track of registered ISRs and their private data to be
+ * passed to handlers.
  */
 struct isr_info {
 	void *data;
 };
 
 static struct isr_info ipi_isr_table[IPI_ISR_COUNT];
-
-struct concurrent_bounded_queue {
-	size_t capacity;
-	size_t count;
-	size_t elem_size;
-	size_t next_in;
-	size_t next_out;
-	void *buffer;
-	struct mutex lock;
-	struct condvar cv;
-};
-
-static void queue_dump(struct concurrent_bounded_queue *q)
-{
-	DMSG("q - capacity=%u; count=%u; elem_size=%u; next_in=%u; next_out=%u",
-	     q->capacity, q->count, q->elem_size, q->next_in, q->next_out);
-}
-
-static bool queue_init(struct concurrent_bounded_queue *q, size_t capacity,
-		       size_t elem_size)
-{
-	assert(q);
-	memset(q, 0x00, sizeof(*q));
-
-	q->capacity = capacity;
-	q->count = 0;
-	q->elem_size = elem_size;
-	q->buffer = calloc(capacity, elem_size);
-	if (!q->buffer) {
-		return false;
-	}
-
-	q->next_in = 0;
-	q->next_out = 0;
-	mutex_init(&q->lock);
-	condvar_init(&q->cv);
-
-	return true;
-}
-
-static void queue_deinit(struct concurrent_bounded_queue *q)
-{
-	assert(q);
-	assert(q->buffer);
-	free(q->buffer);
-	mutex_destroy(&q->lock);
-	condvar_destroy(&q->cv);
-	memset(q, 0x00, sizeof(*q));
-}
-
-static size_t queue_get_size(struct concurrent_bounded_queue *q)
-{
-	size_t size;
-
-	assert(q);
-	mutex_read_lock(&q->lock);
-	size = q->count;
-	mutex_read_unlock(&q->lock);
-
-	return size;
-}
-
-static void queue_enqueue_helper(struct concurrent_bounded_queue *q,
-				 const void *src)
-{
-	void *dst;
-
-	dst = (char *)q->buffer + (q->next_in * q->elem_size);
-	memcpy(dst, src, q->elem_size);
-	q->next_in = (q->next_in + 1) % q->capacity;
-	q->count++;
-}
-
-static bool queue_try_enqueue(struct concurrent_bounded_queue *q,
-			      const void *src)
-{
-	assert(q);
-	assert(src);
-
-	mutex_lock(&q->lock);
-	if (q->count == q->capacity) {
-		mutex_unlock(&q->lock);
-		return false;
-	}
-
-	queue_enqueue_helper(q, src);
-	mutex_unlock(&q->lock);
-	condvar_signal(&q->cv);
-
-	return true;
-}
-
-static void queue_enqueue(struct concurrent_bounded_queue *q, const void *src)
-{
-	assert(q);
-	assert(src);
-
-	mutex_lock(&q->lock);
-	while (q->count == q->capacity) {
-		condvar_wait(&q->cv, &q->lock);
-	}
-
-	queue_enqueue_helper(q, src);
-	mutex_unlock(&q->lock);
-	condvar_signal(&q->cv);
-}
-
-static void queue_deqeue_helper(struct concurrent_bounded_queue *q, void *dst)
-{
-	void *src;
-
-	src = (char *)q->buffer + (q->next_out * q->elem_size);
-	memcpy(dst, src, q->elem_size);
-	q->next_out = (q->next_out + 1) % q->capacity;
-	q->count--;
-}
-
-static void queue_dequeue(struct concurrent_bounded_queue *q, void *dst)
-{
-	assert(q);
-	assert(dst);
-
-	mutex_lock(&q->lock);
-	while (q->count == 0) {
-		condvar_wait(&q->cv, &q->lock);
-	}
-
-	queue_deqeue_helper(q, dst);
-	mutex_unlock(&q->lock);
-}
-
-static bool queue_try_dequeue(struct concurrent_bounded_queue *q, void *dst)
-{
-	assert(q);
-	assert(dst);
-
-	mutex_lock(&q->lock);
-	if (q->count == 0) {
-		mutex_unlock(&q->lock);
-		return false;
-	}
-
-	queue_deqeue_helper(q, dst);
-	mutex_unlock(&q->lock);
-	return true;
-}
 
 int env_init(void)
 {
@@ -372,8 +213,8 @@ void env_sleep_msec(int num_msec)
 void env_register_isr(int vector_id, void *data)
 {
 	assert(vector_id < IPI_ISR_COUNT);
+	FMSG("register ipi irq%d handler", vector_id);
 	if (vector_id < IPI_ISR_COUNT) {
-		DMSG("register ipi irq%d handler", vector_id);
 		ipi_isr_table[vector_id].data = data;
 	}
 }
@@ -381,8 +222,8 @@ void env_register_isr(int vector_id, void *data)
 void env_unregister_isr(int vector_id)
 {
 	assert(vector_id < IPI_ISR_COUNT);
+	FMSG("unregister ipi irq%d handler", vector_id);
 	if (vector_id < IPI_ISR_COUNT) {
-		DMSG("unregister ipi irq%d handler", vector_id);
 		ipi_isr_table[vector_id].data = NULL;
 	}
 }
@@ -390,102 +231,15 @@ void env_unregister_isr(int vector_id)
 void env_enable_interrupt(unsigned int vector_id)
 {
 	assert(vector_id < IPI_ISR_COUNT);
-	DMSG("enable ipi irq%d", vector_id);
+	FMSG("enable ipi irq%d", vector_id);
 	platform_interrupt_enable(vector_id);
 }
 
 void env_disable_interrupt(unsigned int vector_id)
 {
 	assert(vector_id < IPI_ISR_COUNT);
-	DMSG("disable ipi irq%d", vector_id);
+	FMSG("disable ipi irq%d", vector_id);
 	platform_interrupt_disable(vector_id);
-}
-
-int env_create_queue(void **queue, int length, int element_size)
-{
-	struct concurrent_bounded_queue *q;
-
-	assert(queue);
-	assert(length > 0);
-	assert(element_size > 0);
-
-	DMSG("create queue element size %d len %d", element_size, length);
-
-	q = malloc(sizeof(*q));
-	if (!q) {
-		return -1;
-	}
-
-	if (!queue_init(q, length, (size_t)element_size)) {
-		return -1;
-	}
-
-	*queue = q;
-
-	return 0;
-}
-
-void env_delete_queue(void *queue)
-{
-	assert(queue);
-	queue_deinit(queue);
-	free(queue);
-}
-
-int env_put_queue(void *queue, void *msg, int timeout_ms)
-{
-	struct concurrent_bounded_queue *q;
-	assert(queue);
-	assert(msg);
-
-	DMSG("env_put_queue - queue=%p; msg=%p, timeout_ms=%d", queue, msg,
-	     timeout_ms);
-	queue_dump(queue);
-
-	/*
-	 * only no-timeout (non-blocking) or infinite timeout (blocking) are
-	 * supported for enqueue
-	 */
-	assert((timeout_ms == 0) || (timeout_ms == (int)RL_BLOCK));
-
-	q = (struct concurrent_bounded_queue *)queue;
-	if (timeout_ms == 0) {
-		return queue_try_enqueue(q, msg) ? 1 : 0;
-	}
-
-	queue_enqueue(q, msg);
-	return 1;
-}
-
-int env_get_queue(void *queue, void *msg, int timeout_ms)
-{
-	struct concurrent_bounded_queue *q;
-	assert(queue);
-	assert(msg);
-
-	DMSG("env_get_queue - queue=%p; msg=%p, timeout_ms=%d", queue, msg,
-	     timeout_ms);
-	queue_dump(queue);
-
-	/*
-	 * only no-timeout (non-blocking) or infinite timeout (blocking) are
-	 * supported for dequeue
-	 */
-	assert((timeout_ms == 0) || (timeout_ms == (int)RL_BLOCK));
-
-	q = (struct concurrent_bounded_queue *)queue;
-	if (timeout_ms == 0) {
-		return queue_try_dequeue(q, msg) ? 1 : 0;
-	}
-
-	queue_dequeue(q, msg);
-	return 1;
-}
-
-int env_get_current_queue_size(void *queue)
-{
-	assert(queue);
-	return queue_get_size((struct concurrent_bounded_queue *)queue);
 }
 
 void env_isr(int vector)

@@ -60,4 +60,39 @@ enum PTA_RPMSG_CMD {
 	PTA_RPMSG_CMD_RECEIVE,
 };
 
+#define PTA_RPMSG_MAX_BUFFER_SIZE 512
+#define PTA_RPMSG_TIMEOUT_BLOCK ((uint32_t)-1)
+
+#pragma pack(push, 1)
+struct pta_rpmsg_send_input {
+	uint32_t dst_addr;
+	uint32_t timeout_ms;
+	size_t in_buffer_size;
+	uint8_t in_buffer[1];
+};
+#pragma pack(pop)
+
+#define PTA_RPMSG_SEND_INPUT_HEADER_SIZE \
+	offsetof(struct pta_rpmsg_send_input, in_buffer)
+
+#pragma pack(push, 1)
+struct pta_rpmsg_receive_input {
+	uint32_t timeout_ms;
+};
+#pragma pack(pop)
+
+#define PTA_RPMSG_RECEIVE_INPUT_HEADER_SIZE \
+	sizeof(struct pta_rpmsg_receive_input)
+
+#pragma pack(push, 1)
+struct pta_rpmsg_receive_output {
+	uint32_t src_addr;
+	uint32_t out_buffer_size;
+	uint8_t out_buffer[1];
+};
+#pragma pack(pop)
+
+#define PTA_RPMSG_RECEIVE_OUTPUT_HEADER_SIZE \
+	offsetof(struct pta_rpmsg_receive_output, out_buffer)
+
 #endif /* __PTA_RPMSG_H */

@@ -258,6 +258,8 @@ static TEE_Result rpmsg_remote_send(void *psess, uint32_t ptypes,
 		TEE_PARAM_TYPE_VALUE_INPUT, TEE_PARAM_TYPE_MEMREF_INPUT,
 		TEE_PARAM_TYPE_NONE, TEE_PARAM_TYPE_NONE);
 	int ret;
+	struct pta_rpmsg_send_input *input;
+	size_t input_size;
 
 	assert(psess);
 	ctx = (struct session_context *)psess;
@@ -268,15 +270,21 @@ static TEE_Result rpmsg_remote_send(void *psess, uint32_t ptypes,
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 
-	in_buffer = (uint8_t *)params[1].memref.buffer;
-	in_buffer_size = params[1].memref.size;
+	input = (struct pta_rpmsg_send_input *)params[1].memref.buffer;
+	input_size = params[1].memref.size;
+	if (input_size < PTA_RPMSG_SEND_INPUT_HEADER_SIZE) {
+		return TEE_ERROR_BAD_FORMAT;
+	}
 
-	DMSG("sending msg with size:%u from ept:%u", in_buffer_size,
-	     (uint32_t)ctx->ept->addr);
+	in_buffer = input->in_buffer;
+	in_buffer_size = input->in_buffer_size;
 
+	DMSG("sending msg with size:%u from %u to %u", in_buffer_size,
+	     (uint32_t)ctx->ept->addr, input->dst_addr);
 
-	ret = rpmsg_lite_send(&rpmsg_ctx.inst, ctx->ept, REMOTE_EPT_ADDR,
-			      (char *)in_buffer, in_buffer_size, RL_BLOCK);
+	ret = rpmsg_lite_send(&rpmsg_ctx.inst, ctx->ept, input->dst_addr,
+			      (char *)in_buffer, in_buffer_size,
+			      input->timeout_ms);
 
 	if (ret == RL_ERR_BUFF_SIZE) {
 		EMSG("sent data exceed the max payload size %u",
@@ -300,10 +308,15 @@ static TEE_Result rpmsg_remote_receive(void *psess, uint32_t ptypes,
 	uint8_t *out_buffer;
 	uint32_t out_buffer_size;
 	uint32_t exp_pt = TEE_PARAM_TYPES(
-		TEE_PARAM_TYPE_VALUE_INPUT, TEE_PARAM_TYPE_MEMREF_INOUT,
-		TEE_PARAM_TYPE_NONE, TEE_PARAM_TYPE_NONE);
+		TEE_PARAM_TYPE_VALUE_INPUT, TEE_PARAM_TYPE_MEMREF_INPUT,
+		TEE_PARAM_TYPE_MEMREF_INOUT, TEE_PARAM_TYPE_NONE);
 	struct queue_rx_data rx_data;
 	int timeout;
+	struct pta_rpmsg_receive_input *input;
+	struct pta_rpmsg_receive_output *output;
+	size_t input_size;
+	size_t output_size;
+	int timeout_counter;
 
 	assert(psess);
 	ctx = (struct session_context *)psess;
@@ -314,19 +327,39 @@ static TEE_Result rpmsg_remote_receive(void *psess, uint32_t ptypes,
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
 
-	out_buffer = (uint8_t *)params[1].memref.buffer;
-	out_buffer_size = params[1].memref.size;
-
-	DMSG("receiving msg with max size:%u", out_buffer_size);
-
-	/* poll on the end-point queue for payloads until timeout */
-	timeout = RECEIVE_POLLING_RETRY_COUNT;
-	while ((timeout >= 0) && !queue_pop(&ctx->rxq, &rx_data)) {
-		tee_time_wait(RECEIVE_POLLING_WAIT_TIME_MS);
-		timeout--;
+	input = (struct pta_rpmsg_receive_input *)params[1].memref.buffer;
+	input_size = params[1].memref.size;
+	if (input_size < PTA_RPMSG_RECEIVE_INPUT_HEADER_SIZE) {
+		return TEE_ERROR_BAD_FORMAT;
 	}
 
-	if (timeout < 0) {
+	output = (struct pta_rpmsg_receive_output *)params[2].memref.buffer;
+	output_size = params[2].memref.size;
+	if (output_size < PTA_RPMSG_RECEIVE_OUTPUT_HEADER_SIZE) {
+		return TEE_ERROR_BAD_FORMAT;
+	}
+
+	out_buffer = output->out_buffer;
+	out_buffer_size = output_size - PTA_RPMSG_RECEIVE_OUTPUT_HEADER_SIZE;
+	DMSG("receiving msg with max size:%u timeout:0x%x", out_buffer_size,
+	     input->timeout_ms);
+
+	timeout_counter = 0;
+	/* poll on the end-point queue for payloads until timeout */
+	timeout = (int)input->timeout_ms;
+	while (!queue_pop(&ctx->rxq, &rx_data)
+	       && ((input->timeout_ms == PTA_RPMSG_TIMEOUT_BLOCK) || (timeout > 0))) {
+		tee_time_wait(RECEIVE_POLLING_WAIT_TIME_MS);
+		timeout_counter++;
+		if (input->timeout_ms != PTA_RPMSG_TIMEOUT_BLOCK) {
+			timeout -= RECEIVE_POLLING_WAIT_TIME_MS;
+		}
+		if (timeout % 10 == 0) {
+			DMSG_RAW(".");
+		}
+	}
+
+	if ((input->timeout_ms != PTA_RPMSG_TIMEOUT_BLOCK) && (timeout < 0)) {
 		EMSG("timeout waiting for a msg in the queue");
 		return TEE_ERROR_NO_DATA;
 	}
@@ -339,6 +372,8 @@ static TEE_Result rpmsg_remote_receive(void *psess, uint32_t ptypes,
 	}
 
 	memcpy(out_buffer, rx_data.data, rx_data.len);
+	output->src_addr = rx_data.src;
+	output->out_buffer_size = rx_data.len;
 
 	/* rx buffer is not needed anymore, return it back to the virtqueue */
 	rpmsg_lite_release_rx_buffer(&rpmsg_ctx.inst, rx_data.data);

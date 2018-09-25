@@ -466,6 +466,9 @@ static TEE_Result rpmsg_open_session(uint32_t param_types __unused,
 	struct session_context *ctx;
 	struct rpmsg_lite_endpoint *ept;
 	TEE_Result res;
+#ifdef CFG_WITH_STATS
+	struct malloc_stats stats;
+#endif
 
 	DMSG("rpmsg PTA open session");
 	ctx = NULL;
@@ -516,6 +519,11 @@ static TEE_Result rpmsg_open_session(uint32_t param_types __unused,
 
 	ctx->ept = ept;
 	IMSG("endpoint is ready on addr:%u", (uint32_t)ept->addr);
+
+#ifdef CFG_WITH_STATS
+	malloc_get_stats(&stats);
+	IMGS("heap status: %u/%u", stats.allocated, statis.size);
+#endif
 
 	*sess_ctx = ctx;
 	res = TEE_SUCCESS;

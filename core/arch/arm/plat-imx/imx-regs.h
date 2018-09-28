@@ -1,10 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
- * All rights reserved.
- * Copyright (c) 2017, Microsoft.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,7 +72,6 @@
 
 #define GIC_BASE			0x00A00000
 #define GICD_OFFSET			0x1000
-#define GPIO_BASE			0x0209C000
 
 #if defined(CFG_MX6UL) || defined(CFG_MX6ULL)
 #define GICC_OFFSET			0x2000
@@ -83,56 +79,20 @@
 #define CAAM_BASE			0x02140000
 #else
 #define GICC_OFFSET			0x100
-#if defined(CFG_CYREP)
-#define CAAM_BASE			0x00100000
-#else
 #define CAAM_BASE			0x02100000
-#endif
-#endif
-
-#if defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
-	defined(CFG_MX6S) || defined(CFG_MX6SX)
-#define ATZ1_BASE_ADDR			AIPS1_BASE
-#define ATZ2_BASE_ADDR			AIPS2_BASE
-
-#define AIPS1_OFF_BASE_ADDR		(ATZ1_BASE_ADDR + 0x80000)
-#define AIPS2_OFF_BASE_ADDR		(ATZ2_BASE_ADDR + 0x80000)
-
-#define IP2APB_TZASC1_BASE_ADDR		(AIPS2_OFF_BASE_ADDR + 0x50000)
 #endif
 
 #define GIC_CPU_BASE			(GIC_BASE + GICC_OFFSET)
 #define GIC_DIST_BASE			(GIC_BASE + GICD_OFFSET)
 
 /* Central Security Unit register values */
-
-/*
- * Grant R+W access:
- * - Just to TZ Supervisor execution mode, and
- * - Just to a single device
- */
-#define CSU_TZ_SUPERVISOR		0x22
-
-/*
- * Grant R+W access:
- * - To all execution modes, and
- * - To a single device
- */
-#define CSU_ALL_MODES			0xFF
-
-/*
- * Grant R+W access:
- * - To all execution modes, and
- * - To both devices sharing a single CSU_CSL register
- */
-#define CSU_ACCESS_ALL			((CSU_ALL_MODES << 16) | (CSU_ALL_MODES << 0))
-
 #define CSU_BASE			0x021C0000
 #define CSU_CSL_START			0x0
 #define CSU_CSL_END			0xA0
 #define CSU_CSL5			0x14
 #define CSU_CSL15			0x3C
 #define CSU_CSL16			0x40
+#define	CSU_ACCESS_ALL			0x00FF00FF
 #define CSU_SETTING_LOCK		0x01000100
 
 /* Used in suspend/resume and low power idle */
@@ -172,44 +132,6 @@
 #define IOMUXC_GPR10_OCRAM_TZ_ADDR_LOCK_OFFSET_6UL	(27)
 #define IOMUXC_GPR10_OCRAM_TZ_ADDR_LOCK_MASK_6UL	GENMASK_32(31, 27)
 
-/* CCM */
-
-/* Clock enabled except in STOP mode */
-#define IMX_CGR_CLK_ENABLED 0x3
-#define IMX_CCM_CCGR1_ECSPI2_CLK_SHIFT 2
-/* ECSPI2 clock enabled */
-#define IMX_CCM_CCGR1_ECSPI2_CLK_ENABLED  \
-    (IMX_CGR_CLK_ENABLED << IMX_CCM_CCGR1_ECSPI2_CLK_SHIFT) 
-
-/* GPIO */
-#define IMX_GPIO_PORTS              7
-#define IMX_GPIO_PORT_GRANULARITY   0x4000
-#define IMX_GPIO_REGISTER_BITS      32
-
-/* ECSPI */
-#define MXC_ECSPI1_BASE_ADDR        (ATZ1_BASE_ADDR + 0x08000)
-#define MXC_ECSPI_BUS_COUNT         5
-#define MXC_ECSPI_BUS_GRANULARITY   0x4000
-
-#define MXC_CSPICON_POL		4
-#define MXC_CSPICON_PHA		0
-#define MXC_CSPICON_SSPOL	12
-
-#define MXC_CSPICTRL_EN		        (1 << 0)
-#define MXC_CSPICTRL_MODE	        (1 << 1)
-#define MXC_CSPICTRL_XCH	        (1 << 2)
-#define MXC_CSPICTRL_MODE_MASK      (0xf << 4)
-#define MXC_CSPICTRL_CHIPSELECT(x)	(((x) & 0x3) << 12)
-#define MXC_CSPICTRL_BITCOUNT(x)	(((x) & 0xfff) << 20)
-#define MXC_CSPICTRL_PREDIV(x)	    (((x) & 0xF) << 12)
-#define MXC_CSPICTRL_POSTDIV(x)	    (((x) & 0xF) << 8)
-#define MXC_CSPICTRL_SELCHAN(x)	    (((x) & 0x3) << 18)
-#define MXC_CSPICTRL_MAXBITS	    0xfff
-#define MXC_CSPICTRL_TC		        (1 << 7)
-#define MXC_CSPICTRL_RXOVF	        (1 << 6)
-#define MXC_CSPIPERIOD_32KHZ	    (1 << 15)
-#define MXC_MAX_SPI_BYTES	        32
-
 #if defined(CFG_MX6UL) || defined(CFG_MX6ULL) || defined(CFG_MX6SX)
 #define DRAM0_BASE			0x80000000
 #else
@@ -222,11 +144,7 @@
 #define GICC_OFFSET		0x2000
 #define GICD_OFFSET		0x1000
 
-#if defined(CFG_CYREP)
-#define CAAM_BASE		0x00100000
-#else
 #define CAAM_BASE		0x30900000
-#endif
 #define UART1_BASE		0x30860000
 #define UART2_BASE		0x30890000
 #define UART3_BASE		0x30880000
@@ -237,9 +155,6 @@
 #define AIPS2_SIZE		0x400000
 #define AIPS3_BASE		0x30800000
 #define AIPS3_SIZE		0x400000
-
-#define GPIO_BASE		0x30200000
-#define GPIO_SIZE		0x70000
 
 #define WDOG_BASE		0x30280000
 #define LPSR_BASE		0x30270000
@@ -258,33 +173,13 @@
 #define IRAM_BASE		0x00900000
 #define IRAM_S_BASE		0x00180000
 
-/*
- * Grant R+W access:
- * - Just to TZ Supervisor execution mode, and
- * - Just to a single device
- */
-#define CSU_TZ_SUPERVISOR		0x22
-
-/*
- * Grant R+W access:
- * - To all execution modes, and
- * - To a single device
- */
-#define CSU_ALL_MODES			0xFF
-
-/*
- * Grant R+W access:
- * - To all execution modes, and
- * - To both devices sharing a single CSU_CSL register
- */
-#define CSU_ACCESS_ALL			((CSU_ALL_MODES << 16) | (CSU_ALL_MODES << 0))
-
 #define CSU_CSL_START		0x303E0000
 #define CSU_CSL_END		0x303E0100
 #define CSU_CSL_59		(0x303E0000 + 59 * 4)
 #define CSU_CSL_28		(0x303E0000 + 28 * 4)
 #define CSU_CSL_15		(0x303E0000 + 15 * 4)
 #define CSU_CSL_12		(0x303E0000 + 12 * 4)
+#define	CSU_ACCESS_ALL		0x00FF00FF
 #define CSU_SETTING_LOCK	0x01000100
 
 #define TRUSTZONE_OCRAM_START	0x180000
@@ -302,7 +197,6 @@
 #define IOMUXC_GPR11_OCRAM_S_TZ_EN_LOCK_OFFSET		26
 #define IOMUXC_GPR11_OCRAM_S_TZ_EN_LOCK_MASK		GENMASK_32(26, 26)
 #define IOMUXC_GPR11_OCRAM_S_TZ_ADDR_LOCK_OFFSET	GENMASK_32(29, 27)
-
 #else
 #error "CFG_MX6/7 not defined"
 #endif
@@ -370,6 +264,11 @@
 #define SRC_A7RCR1			0x008
 #define SRC_A7RCR0_A7_CORE_RESET0_OFFSET	0
 #define SRC_A7RCR1_A7_CORE1_ENABLE_OFFSET	1
+
+#define SNVS_LPCR_OFF			0x38
+#define SNVS_LPCR_TOP_MASK		BIT(6)
+#define SNVS_LPCR_DP_EN_MASK		BIT(5)
+#define SNVS_LPCR_SRTC_ENV_MASK		1
 
 #define WCR_OFF				0
 

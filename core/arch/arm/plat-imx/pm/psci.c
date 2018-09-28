@@ -1,32 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * All rights reserved.
  *
  * Peng Fan <peng.fan@nxp.com>
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <console.h>
 #include <drivers/imx_uart.h>
 #include <drivers/imx_wdog.h>
@@ -47,26 +25,22 @@
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
 #include <atomic.h>
-#include "imx_pl310.h"
-
-#ifdef CFG_PL310
-#define CORE_IDX_L2CACHE                   0x00100000
-#endif
 
 uint32_t active_cores = 1;
 
 int psci_features(uint32_t psci_fid)
 {
 	switch (psci_fid) {
+	case PSCI_PSCI_FEATURES:
+	case PSCI_VERSION:
+	case PSCI_CPU_OFF:
 #ifdef CFG_BOOT_SECONDARY_REQUEST
 	case PSCI_CPU_ON:
-		return 0;
 #endif
-	case PSCI_PSCI_FEATURES:
+	case PSCI_AFFINITY_INFO:
 	case PSCI_SYSTEM_OFF:
 	case PSCI_SYSTEM_RESET:
-	case PSCI_VERSION:
-		return 0;
+		return PSCI_RET_SUCCESS;
 
 	case PSCI_CPU_SUSPEND:
 		return PSCI_OS_INITIATED | PSCI_EXTENDED_STATE_ID;
@@ -86,14 +60,8 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		uint32_t context_id)
 {
 	uint32_t val;
-	vaddr_t va;
+	vaddr_t va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 
-#ifdef CFG_PL310
-	if (core_idx == CORE_IDX_L2CACHE)
-		return l2cache_op(entry);
-#endif
-
-	va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
 	if (!va)
 		EMSG("No SRC mapping\n");
 
@@ -205,6 +173,27 @@ int psci_affinity_info(uint32_t affinity,
 }
 #endif
 
+void __noreturn psci_system_off(void)
+{
+	vaddr_t snvs_base = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
+
+	write32(SNVS_LPCR_TOP_MASK |
+		SNVS_LPCR_DP_EN_MASK |
+		SNVS_LPCR_SRTC_ENV_MASK, snvs_base + SNVS_LPCR_OFF);
+	dsb();
+
+	while (1)
+		;
+}
+
+__weak int imx7d_lowpower_idle(uint32_t power_state __unused,
+			uintptr_t entry __unused,
+			uint32_t context_id __unused,
+			struct sm_nsec_ctx *nsec __unused)
+{
+	return 0;
+}
+
 __weak int imx7_cpu_suspend(uint32_t power_state __unused,
 			    uintptr_t entry __unused,
 			    uint32_t context_id __unused,
@@ -231,23 +220,3 @@ void psci_system_reset(void)
 {
 	imx_wdog_restart();
 }
-
-void __attribute__((noreturn)) psci_system_off(void)
-{
-	vaddr_t snvs = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
-	uint32_t val;
-
-	/* Reset power glitch detector */
-	write32(SNVS_LPPGDR_INIT, snvs + SNVS_LPPGDR);
-	write32(SNVS_LPSR_PGD, snvs + SNVS_LPSR);
-
-	/* Set dumb power manager mode to 1 and turn off power */
-	val = read32(snvs + SNVS_LPCR);
-	val |= SNVS_LPCR_DP_EN;
-	val |= SNVS_LPCR_TOP;
-	write32(val, snvs + SNVS_LPCR);
-
-	/* Wait for the end */
-	for (;;) wfi();
-}
-

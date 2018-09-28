@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
+ * Copyright 2018 NXP
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
@@ -43,6 +44,8 @@
 #include <sm/optee_smc.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
+#include <kernel/tee_common_otp.h>
+#include <mm/core_mmu.h>
 
 static void main_fiq(void);
 
@@ -86,16 +89,12 @@ static void main_fiq(void)
 #ifdef CFG_ARM32_core
 void plat_cpu_reset_late(void)
 {
-	static uint32_t cntfrq;
 	vaddr_t addr;
 
 	if (!get_core_pos()) {
-		/* read cnt freq */
-		cntfrq = read_cntfrq();
-
 #if defined(CFG_BOOT_SECONDARY_REQUEST)
 		/* set secondary entry address */
-		write32(__compiler_bswap32(CFG_TEE_LOAD_ADDR),
+		write32(__compiler_bswap32(TEE_LOAD_ADDR),
 				DCFG_BASE + DCFG_SCRATCHRW1);
 
 		/* release secondary cores */
@@ -126,9 +125,6 @@ void plat_cpu_reset_late(void)
 			write32(read32(addr) |
 				__compiler_bswap32(CSU_SETTING_LOCK),
 				addr);
-	} else {
-		/* program the cntfrq, the cntfrq is banked for each core */
-		write_cntfrq(cntfrq);
 	}
 }
 #endif
@@ -161,3 +157,37 @@ void main_secondary_init_gic(void)
 {
 	gic_cpu_init(&gic_data);
 }
+
+#ifdef CFG_HW_UNQ_KEY_REQUEST
+
+#include <types_ext.h>
+int get_hw_unique_key(uint64_t smc_func_id, uint64_t in_key, uint64_t size);
+
+/*
+ * Issued when requesting to Secure Storage Key for secure storage.
+ *
+ * SiP Service Calls
+ *
+ * Register usage:
+ * r0/x0	SMC Function ID, OPTEE_SMC_FUNCID_SIP_LS_HW_UNQ_KEY
+ */
+#define OPTEE_SMC_FUNCID_SIP_LS_HW_UNQ_KEY			0xFF14
+#define OPTEE_SMC_FAST_CALL_SIP_LS_HW_UNQ_KEY \
+	OPTEE_SMC_CALL_VAL(OPTEE_SMC_32, OPTEE_SMC_FAST_CALL, \
+			   OPTEE_SMC_OWNER_SIP, \
+			   OPTEE_SMC_FUNCID_SIP_LS_HW_UNQ_KEY)
+
+void tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
+{
+	int ret = 0;
+	uint8_t hw_unq_key[sizeof(hwkey->data)] __aligned(64);
+
+	ret = get_hw_unique_key(OPTEE_SMC_FAST_CALL_SIP_LS_HW_UNQ_KEY,
+			virt_to_phys(hw_unq_key), sizeof(hwkey->data));
+
+	if (ret < 0)
+		EMSG("\nH/W Unique key is not fetched from the platform.");
+	else
+		memcpy(&hwkey->data[0], hw_unq_key, sizeof(hwkey->data));
+}
+#endif

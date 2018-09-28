@@ -37,7 +37,6 @@
 #include <util.h>
 
 #define TZC400_REG_SIZE		0x1000
-#define TZC380_REG_SIZE		0x1000
 
 #define BUILD_CONFIG_OFF	0x000
 #define ACTION_OFF		0x004
@@ -198,7 +197,7 @@ enum tzc_action {
 #define TZC_ATTR_REGION_DISABLE	0x0
 
 void tzc_init(vaddr_t base);
-void tzc_configure_region(uint8_t region, vaddr_t region_base, size_t size);
+void tzc_configure_region(uint8_t region, vaddr_t region_base, uint32_t attr);
 void tzc_region_enable(uint8_t region);
 void tzc_security_inversion_en(vaddr_t base);
 void tzc_set_action(enum tzc_action action);

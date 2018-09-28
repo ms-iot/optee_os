@@ -29,6 +29,7 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
+#include <mm/generic_ram_layout.h>
 #include <util.h>
 
 /* Make stacks aligned to data cache line length */
@@ -41,13 +42,6 @@
 #else
 #error "32 bit mode not supported yet"
 #endif /*ARM64*/
-
-/* SDP enable but no pool defined: reserve 4MB for SDP tests */
-#if defined(CFG_SECURE_DATA_PATH) && !defined(CFG_TEE_SDP_MEM_BASE)
-#define CFG_TEE_SDP_MEM_TEST_SIZE	0x00400000
-#else
-#define CFG_TEE_SDP_MEM_TEST_SIZE	0
-#endif
 
 #if defined(PLATFORM_FLAVOR_armada7k8k)
 /*
@@ -71,15 +65,6 @@
 #define MARVELL_CONSOLE_BAUDRATE                            115200
 
 #define CONSOLE_UART_BASE	PLAT_MARVELL_BOOT_UART_BASE
-
-/* Location of trusted dram */
-#define TZDRAM_BASE		0x04400000
-#define TZDRAM_SIZE		0x00C00000
-
-#define CFG_TEE_CORE_NB_CORE	4
-
-#define CFG_SHMEM_START		(TZDRAM_BASE + TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE		0x00400000
 
 #define GICC_OFFSET		0x10000
 #define GICD_OFFSET		0x0
@@ -118,50 +103,8 @@
 #define MARVELL_CONSOLE_BAUDRATE		115200
 #define CONSOLE_UART_BASE	PLAT_MARVELL_BOOT_UART_BASE
 
-/* Location of trusted dram */
-#define TZDRAM_BASE		0x04400000
-#define TZDRAM_SIZE		0x00C00000
-
-#define CFG_TEE_CORE_NB_CORE	2
-
-#define CFG_SHMEM_START		(TZDRAM_BASE + TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE		0x00400000
-
 #else
 #error "Unknown platform flavor"
-#endif
-
-#define CFG_TEE_RAM_VA_SIZE	SIZE_4M
-
-#ifndef CFG_TEE_LOAD_ADDR
-#define CFG_TEE_LOAD_ADDR	CFG_TEE_RAM_START
-#endif
-
-/*
- * everything is in TZDRAM.
- * +------------------+
- * |        | TEE_RAM |
- * | TZDRAM +---------+
- * |        | TA_RAM  |
- * |        +---------+
- * |        | SDP RAM | (test pool, optional)
- * +--------+---------+
- */
-#define CFG_TEE_RAM_PH_SIZE	CFG_TEE_RAM_VA_SIZE
-#define CFG_TEE_RAM_START	TZDRAM_BASE
-#define CFG_TA_RAM_START	ROUNDUP(TZDRAM_BASE + CFG_TEE_RAM_VA_SIZE, \
-					CORE_MMU_DEVICE_SIZE)
-
-#define CFG_TA_RAM_SIZE		ROUNDDOWN(TZDRAM_SIZE - \
-					  (CFG_TA_RAM_START - TZDRAM_BASE) - \
-					  CFG_TEE_SDP_MEM_TEST_SIZE, \
-					  CORE_MMU_DEVICE_SIZE)
-
-/* Secure data path test memory pool: located at end of TA RAM */
-#if CFG_TEE_SDP_MEM_TEST_SIZE
-#define CFG_TEE_SDP_MEM_SIZE		CFG_TEE_SDP_MEM_TEST_SIZE
-#define CFG_TEE_SDP_MEM_BASE		(TZDRAM_BASE + TZDRAM_SIZE - \
-						CFG_TEE_SDP_MEM_SIZE)
 #endif
 
 #ifdef GIC_BASE

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
  *
@@ -72,9 +71,8 @@ UNWIND(	.fnstart)
 	/*
 	 * Mandated HW config loaded
 	 *
-	 * SCTLR = 0x00004800
+	 * SCTLR = 0x00004000
 	 * - Round-Robin replac. for icache, btac, i/duTLB (bit14: RoundRobin)
-	 * - SW,bit[11]: SWP Instruction enable.
 	 *
 	 * ACTRL = 0x00000041
 	 * - core always in full SMP (FW bit0=1, SMP bit6=1)
@@ -90,7 +88,7 @@ UNWIND(	.fnstart)
 	 * PCR
 	 * - no change latency, enable clk gating
 	 */
-	mov_imm r0, 0x00004800
+	mov_imm r0, 0x00004000
 	write_sctlr r0
 
 	mov_imm r0, 0x00000041

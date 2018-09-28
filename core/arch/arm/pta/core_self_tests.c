@@ -1,29 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <assert.h>
 #include <malloc.h>
@@ -45,7 +22,13 @@ static int self_test_add_overflow(void)
 {
 	uint32_t r_u32;
 	int32_t r_s32;
+	uintmax_t r_um;
+	intmax_t r_sm;
 
+	if (ADD_OVERFLOW(8U, 0U, &r_s32))
+		return -1;
+	if (r_s32 != 8)
+		return -1;
 	if (ADD_OVERFLOW(32U, 30U, &r_u32))
 		return -1;
 	if (r_u32 != 62)
@@ -59,10 +42,19 @@ static int self_test_add_overflow(void)
 	if (r_u32 != UINT32_MAX)
 		return -1;
 
-	if (ADD_OVERFLOW(30, -31, &r_s32))
+	if (ADD_OVERFLOW((uint32_t)30, (int32_t)-31, &r_s32))
 		return -1;
 	if (r_s32 != -1)
 		return -1;
+	if (ADD_OVERFLOW((int32_t)30, (int32_t)-31, &r_s32))
+		return -1;
+	if (r_s32 != -1)
+		return -1;
+	if (ADD_OVERFLOW((int32_t)-31, (uint32_t)30, &r_s32))
+		return -1;
+	if (r_s32 != -1)
+		return -1;
+
 	if (ADD_OVERFLOW(INT32_MIN + 1, -1, &r_s32))
 		return -1;
 	if (r_s32 != INT32_MIN)
@@ -72,6 +64,12 @@ static int self_test_add_overflow(void)
 	if (!ADD_OVERFLOW(INT32_MIN + 1, -2, &r_s32))
 		return -1;
 	if (!ADD_OVERFLOW(INT32_MAX, INT32_MAX, &r_s32))
+		return -1;
+	if (ADD_OVERFLOW(INT32_MAX, INT32_MAX, &r_u32))
+		return -1;
+	if (!ADD_OVERFLOW(INTMAX_MAX, INTMAX_MAX, &r_sm))
+		return -1;
+	if (ADD_OVERFLOW(INTMAX_MAX, INTMAX_MAX, &r_um))
 		return -1;
 	if (!ADD_OVERFLOW(INT32_MAX / 2 + 1, INT32_MAX / 2 + 1, &r_s32))
 		return -1;
@@ -87,7 +85,12 @@ static int self_test_sub_overflow(void)
 {
 	uint32_t r_u32;
 	int32_t r_s32;
+	intmax_t r_sm;
 
+	if (SUB_OVERFLOW(8U, 1U, &r_s32))
+		return -1;
+	if (r_s32 != 7)
+		return -1;
 	if (SUB_OVERFLOW(32U, 30U, &r_u32))
 		return -1;
 	if (r_u32 != 2)
@@ -104,6 +107,28 @@ static int self_test_sub_overflow(void)
 	if (r_s32 != INT32_MIN)
 		return -1;
 	if (!SUB_OVERFLOW(-2, INT32_MAX, &r_s32))
+		return -1;
+
+	if (SUB_OVERFLOW((uint32_t)30, (int32_t)-31, &r_s32))
+		return -1;
+	if (r_s32 != 61)
+		return -1;
+	if (SUB_OVERFLOW((int32_t)30, (int32_t)-31, &r_s32))
+		return -1;
+	if (r_s32 != 61)
+		return -1;
+	if (SUB_OVERFLOW((int32_t)-31, (uint32_t)30, &r_s32))
+		return -1;
+	if (r_s32 != -61)
+		return -1;
+	if (SUB_OVERFLOW((int32_t)-31, (int32_t)-30, &r_s32))
+		return -1;
+	if (r_s32 != -1)
+		return -1;
+
+	if (SUB_OVERFLOW((int32_t)31, -(INTMAX_MIN + 1), &r_sm))
+		return -1;
+	if (r_sm != (INTMAX_MIN + 32))
 		return -1;
 
 	return 0;
@@ -306,24 +331,28 @@ static int self_test_malloc(void)
 	LOG("");
 
 	/* test realloc */
-	p1 = realloc(p1, 3 * 1024);
-	LOG("- p1 = realloc(p1, 3*1024)");
+	p3 = realloc(p1, 3 * 1024);
+	if (p3)
+		p1 = NULL;
+	LOG("- p3 = realloc(p1, 3*1024)");
 	LOG("- free p2");
 	free(p2);
 	p2 = malloc(1024);
 	LOG("- p2 = malloc(1024)");
 	LOG("  p1=%p  p2=%p  p3=%p  p4=%p",
 	    (void *)p1, (void *)p2, (void *)p3, (void *)p4);
-	r = (p1 && p2);
+	r = (p2 && p3);
 	if (!r)
 		ret = -1;
 	LOG("  => test %s", r ? "ok" : "FAILED");
 	LOG("");
-	LOG("- free p1, p2");
+	LOG("- free p1, p2, p3");
 	free(p1);
 	free(p2);
+	free(p3);
 	p1 = NULL;
 	p2 = NULL;
+	p3 = NULL;
 
 	/* test calloc */
 	p3 = calloc(4, 1024);

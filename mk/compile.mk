@@ -3,6 +3,7 @@
 # The output from mk/sub.mk
 # base-prefix
 # conf-file [optional] if set, all objects will depend on $(conf-file)
+# additional-compile-deps [optional] additional dependencies
 #
 # Output
 #
@@ -20,7 +21,7 @@ comp-cflags$(sm) = -std=gnu99
 comp-aflags$(sm) =
 comp-cppflags$(sm) =
 
-ifndef NOWERROR
+ifeq ($(CFG_WERROR),y)
 comp-cflags$(sm)	+= -Werror
 endif
 comp-cflags$(sm)  	+= -fdiagnostics-show-option
@@ -53,9 +54,9 @@ comp-cflags$(sm)	+= $(comp-cflags-warns-$(WARNS))
 CHECK ?= sparse
 
 .PHONY: FORCE
-.PHONY: FORCE-GENSRC
+.PHONY: FORCE-GENSRC$(sm)
 FORCE:
-FORCE-GENSRC:
+FORCE-GENSRC$(sm):
 
 
 define process_srcs
@@ -121,10 +122,10 @@ check-cmd-$2 ?= true
 -include $$(comp-dep-$2)
 
 
-$2: $1 FORCE-GENSRC
+$2: $1 FORCE-GENSRC$(sm)
 # Check if any prerequisites are newer than the target and
 # check if command line has changed
-	$$(if $$(strip $$(filter-out FORCE-GENSRC, $$?) \
+	$$(if $$(strip $$(filter-out FORCE-GENSRC$(sm), $$?) \
 	    $$(filter-out $$(comp-cmd-$2), $$(old-cmd-$2)) \
 	    $$(filter-out $$(old-cmd-$2), $$(comp-cmd-$2))), \
 		@set -e ;\
@@ -149,14 +150,19 @@ $(foreach f, $(srcs), $(eval $(call \
 # Handle generated source files, that is, files that are compiled from out-dir
 $(foreach f, $(gen-srcs), $(eval $(call process_srcs,$(f),$$(basename $f).o)))
 
-$(objs): $(conf-file)
+# Handle specified source files, that is, files that have a specified path
+# but where the object file should go into a specified out directory
+$(foreach f, $(spec-srcs), $(eval $(call \
+	process_srcs,$(f),$(spec-out-dir)/$$(notdir $$(basename $f)).o)))
+
+$(objs): $(conf-file) $(additional-compile-deps)
 
 define _gen-asm-defines-file
 # c-filename in $1
 # h-filename in $2
 # s-filename in $3
 
-FORCE-GENSRC: $(2)
+FORCE-GENSRC$(sm): $(2)
 
 comp-dep-$3	:= $$(dir $3)$$(notdir $3).d
 comp-cmd-file-$3:= $$(dir $3)$$(notdir $3).cmd
@@ -223,8 +229,6 @@ define gen-asm-defines-file
 $(call _gen-asm-defines-file,$1,$2,$(dir $2).$(notdir $(2:.h=.s)))
 endef
 
-ifneq ($(asm-defines-file),)
-h-file-$(asm-defines-file) := $(out-dir)/$(sm)/include/generated/$(basename $(notdir $(asm-defines-file))).h
-$(eval $(call gen-asm-defines-file,$(asm-defines-file),$(h-file-$(asm-defines-file))))
-asm-defines-file :=
-endif
+$(foreach f,$(asm-defines-files),$(eval $(call gen-asm-defines-file,$(f),$(out-dir)/$(sm)/include/generated/$(basename $(notdir $(f))).h)))
+
+additional-compile-deps :=

@@ -2,6 +2,7 @@ PLATFORM_FLAVOR ?= hikey
 
 include core/arch/arm/cpu/cortex-armv8-0.mk
 
+$(call force,CFG_TEE_CORE_NB_CORE,8)
 $(call force,CFG_GENERIC_BOOT,y)
 $(call force,CFG_PL011,y)
 $(call force,CFG_PM_STUBS,y)
@@ -47,8 +48,17 @@ CFG_TEE_SDP_MEM_SIZE ?= 0x00400000
 
 ifeq ($(PLATFORM_FLAVOR),hikey)
 CFG_CONSOLE_UART ?= 3
+CFG_DRAM_SIZE_GB ?= 2
 endif
 
 ifeq ($(PLATFORM_FLAVOR),hikey960)
 CFG_CONSOLE_UART ?= 6
+CFG_DRAM_SIZE_GB ?= 3
 endif
+
+CFG_TZDRAM_START ?= 0x3F000000
+CFG_TZDRAM_SIZE ?= 0x01000000
+CFG_SHMEM_START ?= 0x3EE00000
+CFG_SHMEM_SIZE ?= 0x00200000
+
+CFG_IN_TREE_EARLY_TAS += avb/023f8f1a-292a-432b-8fc4-de8471358067

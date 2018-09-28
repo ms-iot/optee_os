@@ -5,11 +5,12 @@
 
 #include <arm.h>
 #include <arm64_macros.S>
-#include <asm-defines.h>
 #include <asm.S>
+#include <generated/asm-defines.h>
 #include <keep.h>
 #include <kernel/thread_defs.h>
 #include <mm/core_mmu.h>
+#include <smccc.h>
 #include <sm/optee_smc.h>
 #include <sm/teesmc_opteed.h>
 #include <sm/teesmc_opteed_macros.h>
@@ -253,31 +254,13 @@ FUNC thread_rpc , :
 END_FUNC thread_rpc
 KEEP_PAGER thread_rpc
 
-FUNC thread_init_vbar , :
-#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
-	/*
-	 * For unrecognized CPUs we fall back to the vector used for
-	 * unaffected CPUs.
-	 */
-	mrs	x1, midr_el1
-	ubfx	x2, x1, #MIDR_IMPLEMENTER_SHIFT, #MIDR_IMPLEMENTER_WIDTH
-	cmp	x2, #MIDR_IMPLEMENTER_ARM
-	b.ne	1f
+FUNC thread_smc , :
+	smc	#0
+	ret
+END_FUNC thread_smc
 
-	adr	x0, workaround_vect_table
-	ubfx	x2, x1, #MIDR_PRIMARY_PART_NUM_SHIFT, \
-			#MIDR_PRIMARY_PART_NUM_WIDTH
-	cmp	x2, #CORTEX_A57_PART_NUM
-	b.eq	2f
-	cmp	x2, #CORTEX_A72_PART_NUM
-	b.eq	2f
-	cmp	x2, #CORTEX_A73_PART_NUM
-	b.eq	2f
-	cmp	x2, #CORTEX_A75_PART_NUM
-	b.eq	2f
-#endif
-1:	adr	x0, thread_vect_table
-2:	msr	vbar_el1, x0
+FUNC thread_init_vbar , :
+	msr	vbar_el1, x0
 	ret
 END_FUNC thread_init_vbar
 KEEP_PAGER thread_init_vbar
@@ -391,6 +374,16 @@ END_FUNC thread_unwind_user_mode
 		msr	vbar_el1, x1
 		isb
 
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
+		/*
+		 * Update the SP with thread_user_kdata_sp_offset as
+		 * described in init_user_kcode().
+		 */
+		adr	x0, thread_user_kdata_sp_offset
+		ldr	x0, [x0]
+		add	sp, sp, x0
+#endif
+
 		/* Restore x0, x1 */
 		mrs	x0, tpidr_el1
 		mrs	x1, tpidrro_el0
@@ -406,9 +399,9 @@ END_FUNC thread_unwind_user_mode
 	.endm
 
 #define INV_INSN	0
-	.section .text.thread_vect_table
+	.section .text.thread_excp_vect
 	.align	11, INV_INSN
-FUNC thread_vect_table , :
+FUNC thread_excp_vect , :
 	/* -----------------------------------------------------
 	 * EL1 with SP0 : 0x0 - 0x180
 	 * -----------------------------------------------------
@@ -532,12 +525,15 @@ el0_serror_a32:
 
 #if defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC)
 	.macro invalidate_branch_predictor
-	ic	iallu
-	isb
+		store_xregs sp, THREAD_CORE_LOCAL_X0, 0, 3
+		mov_imm	x0, SMCCC_ARCH_WORKAROUND_1
+		smc	#0
+		load_xregs sp, THREAD_CORE_LOCAL_X0, 0, 3
 	.endm
 
 	.align	11, INV_INSN
-workaround_vect_table:
+	.global thread_excp_vect_workaround
+thread_excp_vect_workaround:
 	/* -----------------------------------------------------
 	 * EL1 with SP0 : 0x0 - 0x180
 	 * -----------------------------------------------------
@@ -656,6 +652,13 @@ eret_to_el0:
 	msr	vbar_el1, x1
 	isb
 
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
+	/* Store the SP offset in tpidr_el1 to be used below to update SP */
+	adr	x1, thread_user_kdata_sp_offset
+	ldr	x1, [x1]
+	msr	tpidr_el1, x1
+#endif
+
 	/* Jump into the reduced mapping and continue execution */
 	ldr	x1, =1f
 	sub	x1, x1, x0
@@ -663,7 +666,7 @@ eret_to_el0:
 1:
 
 	load_xregs sp, THREAD_CORE_LOCAL_X0, 0, 1
-	msr	tpidr_el1, x0
+	msr	tpidrro_el0, x0
 
 	/* Update the mapping to exclude the full kernel mapping */
 	mrs	x0, ttbr0_el1
@@ -672,7 +675,16 @@ eret_to_el0:
 	msr	ttbr0_el1, x0
 	isb
 
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
+	/*
+	 * Update the SP with thread_user_kdata_sp_offset as described in
+	 * init_user_kcode().
+	 */
 	mrs	x0, tpidr_el1
+	sub	sp, sp, x0
+#endif
+
+	mrs	x0, tpidrro_el0
 #else
 	mrs	x0, ttbr0_el1
 	orr	x0, x0, #BIT(TTBR_ASID_SHIFT) /* switch to user mode ASID */
@@ -683,7 +695,9 @@ eret_to_el0:
 
 	eret
 
-END_FUNC thread_vect_table
+	.global thread_excp_vect_end
+thread_excp_vect_end:
+END_FUNC thread_excp_vect
 
 LOCAL_FUNC el0_svc , :
 	/* get pointer to current thread context in x0 */

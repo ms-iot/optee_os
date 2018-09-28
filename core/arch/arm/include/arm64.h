@@ -101,6 +101,7 @@
 #define TCR_ORGN1_SHIFT		26
 #define TCR_SH1_SHIFT		28
 #define TCR_EL1_IPS_SHIFT	32
+#define TCR_EL1_IPS_MASK	UINT64_C(0x7)
 #define TCR_TG1_4KB		SHIFT_U32(2, 30)
 #define TCR_RES1		BIT32(31)
 
@@ -305,6 +306,8 @@ DEFINE_REG_READ_FUNC_(cntpct, uint64_t, cntpct_el0)
 DEFINE_REG_READ_FUNC_(cntkctl, uint32_t, cntkctl_el1)
 DEFINE_REG_WRITE_FUNC_(cntkctl, uint32_t, cntkctl_el1)
 
+DEFINE_REG_READ_FUNC_(pmccntr, uint64_t, pmccntr_el0)
+
 DEFINE_U64_REG_READWRITE_FUNCS(ttbr0_el1)
 DEFINE_U64_REG_READWRITE_FUNCS(ttbr1_el1)
 DEFINE_U64_REG_READWRITE_FUNCS(tcr_el1)
@@ -312,6 +315,9 @@ DEFINE_U64_REG_READWRITE_FUNCS(tcr_el1)
 DEFINE_U64_REG_READ_FUNC(esr_el1)
 DEFINE_U64_REG_READ_FUNC(far_el1)
 DEFINE_U64_REG_READ_FUNC(mpidr_el1)
+DEFINE_U64_REG_READ_FUNC(midr_el1)
+/* Alias for reading this register to avoid ifdefs in code */
+#define read_midr() read_midr_el1()
 DEFINE_U64_REG_READ_FUNC(par_el1)
 
 DEFINE_U64_REG_WRITE_FUNC(mair_el1)

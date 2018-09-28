@@ -66,6 +66,35 @@ Applications, which may be added to macros used by the build system. Please see
 It is recommended to use a existing platform configuration file as a starting
 point. For instance, [core/arch/arm/plat-hikey/conf.mk].
 
+The platform `conf.mk` file should at least define the default platform flavor
+for the platform, the core configurations (architecture and number of cores),
+the main configuration directives (generic boot, arm trusted firmware support,
+generic time source, console driver, etc...) and some platform default
+configuration settings.
+
+```makefile
+PLATFORM_FLAVOR ?= hikey
+
+include core/arch/arm/cpu/cortex-armv8-0.mk
+
+$(call force,CFG_TEE_CORE_NB_CORE,8)
+$(call force,CFG_GENERIC_BOOT,y)
+$(call force,CFG_PL011,y)
+$(call force,CFG_PM_STUBS,y)
+$(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
+$(call force,CFG_WITH_ARM_TRUSTED_FW,y)
+$(call force,CFG_WITH_LPAE,y)
+
+ta-targets = ta_arm32
+ta-targets += ta_arm64
+
+CFG_NUM_THREADS ?= 8
+CFG_CRYPTO_WITH_CE ?= y
+CFG_WITH_STACK_CANARIES ?= y
+CFG_CONSOLE_UART ?= 3
+CFG_DRAM_SIZE_GB ?= 2
+```
+
 ##### main.c
 This platform specific file will contain power management handlers and code
 related to the UART. We will talk more about the information related to the
@@ -143,33 +172,28 @@ could look like this:
 #define CONSOLE_BAUDRATE	115200
 #define CONSOLE_UART_CLK_IN_HZ	19200000
 
-#define DRAM0_BASE		0x00000000
-#define DRAM0_SIZE		0x40000000
-
-/* Below ARM-TF */
-#define CFG_SHMEM_START		0x08000000
-#define CFG_SHMEM_SIZE		(4 * 1024 * 1024)
-
-/* If your device has SRAM */
+/* Optional: when used with CFG_WITH_PAGER, defines the device SRAM */
 #define TZSRAM_BASE		0x3F000000
 #define TZSRAM_SIZE		(200 * 1024)
 
-/* Otherwise or in addition, use DDR */
+/* Mandatory main secure RAM usually DDR */
 #define TZDRAM_BASE		0x60000000
 #define TZDRAM_SIZE		(32 * 1024 * 1024)
 
-#define CFG_TEE_CORE_NB_CORE	4
+/* Mandatory TEE RAM location and core load address */
+#define TEE_RAM_START		TZDRAM_BASE
+#define TEE_RAM_PH_SIZE		TEE_RAM_VA_SIZE
+#define TEE_RAM_VA_SIZE		(4 * 1024 * 1024)
+#define TEE_LOAD_ADDR		(TZDRAM_BASE + 0x20000)
 
-#define CFG_TEE_RAM_VA_SIZE	(4 * 1024 * 1024)
+/* Mandatory TA RAM (external less secure RAM) */
+#define TA_RAM_START		(TZDRAM_BASE + TEE_RAM_VA_SIZE)
+#define TA_RAM_SIZE		(TZDRAM_SIZE - TEE_RAM_VA_SIZE)
 
-#define CFG_TEE_LOAD_ADDR	(TZDRAM_BASE + 0x20000)
+/* Mandatory: for static SHM, need a hardcoded physical address */
+#define TEE_SHMEM_START		0x08000000
+#define TEE_SHMEM_SIZE		(4 * 1024 * 1024)
 
-#define CFG_TEE_RAM_PH_SIZE	CFG_TEE_RAM_VA_SIZE
-#define CFG_TEE_RAM_START	TZDRAM_BASE
-
-#define CFG_TA_RAM_START	ROUNDUP((TZDRAM_BASE + CFG_TEE_RAM_VA_SIZE), \
-					CORE_MMU_DEVICE_SIZE)
-#define CFG_TA_RAM_SIZE        (16 * 1024 * 1024)
 #endif /* PLATFORM_CONFIG_H */
 ```
 This is minimal amount of information in the `platform_config.h` file. I.e, the
@@ -266,7 +290,7 @@ manufacturers all tend to do this in their own unique way and they are not very
 keen on sharing their low level boot details and security implementation with
 the rest of the world. This is especially true on ARMv7-A. For ARMv8-A it looks
 bit better, since ARM in ARM Trusted Firmware have implemented and defined how a
-abstract the chain of trust (see [auth-framework.md]). We have successfully
+abstract the chain of trust (see [auth-framework.rst]). We have successfully
 verified OP-TEE by using the authentication framework from ARM Trusted Firmware
 (see [optee_with_auth_framework.md] for the details).
 
@@ -285,6 +309,11 @@ blocks tends to be quite different depending on what kind of crypto block
 you have, we have not written how that should be done. It might be that we
 do that in the future when get hold of a device where we can use the crypto
 block.
+
+By default OP-TEE is configured with a software PRNG. The entropy is added
+to software PRNG at various places, but unfortunately it is still quite
+easy to predict the data added as entropy. As a consequence, unless the RNG
+is based on hardware the generated random will be quite weak.
 
 ## 7. Power Management / PSCI
 In section 2 when we talked about the file `main.c`, we added a couple of
@@ -337,7 +366,7 @@ plans on extending this to make it a bit more flexible. Exactly when that will
 happen has not been decided yet.
 
 [3. Platforms Supported]: ../README.md#3-platforms-supported
-[auth-framework.md]: https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/auth-framework.md
+[auth-framework.rst]: https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/auth-framework.rst
 [crypto.md]: crypto.md
 [HSM]: https://en.wikipedia.org/wiki/Hardware_security_module
 [manifest]: https://github.com/OP-TEE/build#6-manifests

@@ -1,34 +1,12 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdio.h>
 #include <tee_api.h>
 #include <tee_arith_internal.h>
 #include <mpalib.h>
+#include <mempool.h>
 
 /*
  * The mem pool.
@@ -39,17 +17,10 @@
 
 #define MPA_INTERNAL_MEM_POOL_SIZE 12
 
-/*
- * THIS IS THE MAXIMUM NUMBER OF BITS THAT THE LIBRARY SUPPORTS.
- * It defines the size of the scratch memory pool for the underlying
- * mpa library.
- */
-#define TEE_MAX_NUMBER_OF_SUPPORTED_BITS 2048
-
 static uint32_t mempool_u32[mpa_scratch_mem_size_in_U32(
 					    MPA_INTERNAL_MEM_POOL_SIZE,
-					    TEE_MAX_NUMBER_OF_SUPPORTED_BITS)];
-static mpa_scratch_mem mempool = (void *)mempool_u32;
+					    CFG_TA_BIGNUM_MAX_BITS)];
+static mpa_scratch_mem mempool;
 
 /*************************************************************
  * PANIC
@@ -77,9 +48,18 @@ static void __attribute__ ((noreturn)) TEE_BigInt_Panic(const char *msg)
  */
 void _TEE_MathAPI_Init(void)
 {
-	mpa_init_scratch_mem(mempool, sizeof(mempool_u32),
-			     TEE_MAX_NUMBER_OF_SUPPORTED_BITS);
-	mpa_set_random_generator(get_rng_array);
+	static mpa_scratch_mem_base mem;
+
+	mem.pool = mempool_alloc_pool(mempool_u32, sizeof(mempool_u32), NULL);
+	if (!mem.pool)
+		TEE_Panic(0);
+	/*
+	 * The default size (bits) of a big number that will be required is
+	 * equal to the max size of the computation (for example 4096
+	 * bits), multiplied by 2 to allow overflow in computation
+	 */
+	mem.bn_bits = CFG_TA_BIGNUM_MAX_BITS * 2;
+	mempool = &mem;
 }
 
 /*

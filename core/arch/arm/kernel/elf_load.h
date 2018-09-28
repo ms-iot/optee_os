@@ -10,6 +10,7 @@
 #include <tee_api_types.h>
 
 struct elf_load_state;
+struct user_ta_elf_head;
 
 struct user_ta_store_handle;
 struct user_ta_store_ops {
@@ -46,10 +47,6 @@ struct user_ta_store_ops {
 	 * Close a TA handle. Do nothing if @h == NULL.
 	 */
 	void (*close)(struct user_ta_store_handle *h);
-#ifdef CFG_CYREP
-	TEE_Result (*get_hash)(struct user_ta_store_handle *h,
-				uint8_t *hash, size_t hash_len);
-#endif
 	/*
 	 * user_ta_store_ops instances are kept in a list ordered by priority.
 	 * Higher priority instances are tried first when a TA is looked up.
@@ -60,7 +57,10 @@ struct user_ta_store_ops {
 };
 
 TEE_Result elf_load_init(const struct user_ta_store_ops *ta_store,
-			 struct user_ta_store_handle *ta_handle,
+			 struct user_ta_store_handle *ta_handle, bool is_main,
+			 struct user_ta_elf_head *elfs,
+			 TEE_Result (*resolve_sym)(struct user_ta_elf_head *,
+						   const char *, uintptr_t *),
 			 struct elf_load_state **state);
 TEE_Result elf_load_head(struct elf_load_state *state, size_t head_size,
 			void **head, size_t *vasize, bool *is_32bit);
@@ -68,6 +68,7 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase);
 TEE_Result elf_load_get_next_segment(struct elf_load_state *state, size_t *idx,
 			vaddr_t *vaddr, size_t *size, uint32_t *flags,
 			uint32_t *type);
+TEE_Result elf_process_rel(struct elf_load_state *state, vaddr_t vabase);
 void elf_load_final(struct elf_load_state *state);
 
 #endif /*ELF_LOAD_H*/

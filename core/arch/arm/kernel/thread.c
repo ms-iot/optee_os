@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <platform_config.h>
@@ -46,6 +23,7 @@
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
 #include <optee_msg.h>
+#include <smccc.h>
 #include <sm/optee_smc.h>
 #include <sm/sm.h>
 #include <tee/tee_cryp_utl.h>
@@ -113,7 +91,7 @@ struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE];
 linkage uint32_t name[num_stacks] \
 		[ROUNDUP(stack_size + STACK_CANARY_SIZE, STACK_ALIGNMENT) / \
 		sizeof(uint32_t)] \
-		__attribute__((section(".nozi_stack"), \
+		__attribute__((section(".nozi_stack." # name), \
 			       aligned(STACK_ALIGNMENT)))
 
 #define STACK_SIZE(stack) (sizeof(stack) - STACK_CANARY_SIZE / 2)
@@ -152,10 +130,20 @@ thread_pm_handler_t thread_system_reset_handler_ptr;
 static vaddr_t thread_user_kcode_va;
 long thread_user_kcode_offset;
 static size_t thread_user_kcode_size;
-#endif /*CFG_CORE_UNMAP_CORE_AT_EL0*/
+#endif
+
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) && \
+	defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC) && defined(ARM64)
+long thread_user_kdata_sp_offset;
+static uint8_t thread_user_kdata_page[
+	ROUNDUP(sizeof(thread_core_local), SMALL_PAGE_SIZE)]
+	__aligned(SMALL_PAGE_SIZE) __section(".nozi.kdata_page");
+#endif
 
 static unsigned int thread_global_lock = SPINLOCK_UNLOCK;
 static bool thread_prealloc_rpc_cache;
+
+static unsigned int thread_rpc_pnum;
 
 static void init_canaries(void)
 {
@@ -892,19 +880,25 @@ static void init_thread_stacks(void)
 static void init_user_kcode(void)
 {
 #ifdef CFG_CORE_UNMAP_CORE_AT_EL0
-	vaddr_t v;
+	vaddr_t v = (vaddr_t)thread_excp_vect;
+	vaddr_t ve = (vaddr_t)thread_excp_vect_end;
 
-	v = (vaddr_t)thread_vect_table;
 	thread_user_kcode_va = ROUNDDOWN(v, CORE_MMU_USER_CODE_SIZE);
-	/*
-	 * The maximum size of the exception vector and associated code is
-	 * something slightly larger than 2 KiB. Worst case the exception
-	 * vector can span two pages.
-	 */
-	thread_user_kcode_size = CORE_MMU_USER_CODE_SIZE * 2;
+	ve = ROUNDUP(ve, CORE_MMU_USER_CODE_SIZE);
+	thread_user_kcode_size = ve - thread_user_kcode_va;
 
 	core_mmu_get_user_va_range(&v, NULL);
 	thread_user_kcode_offset = thread_user_kcode_va - v;
+
+#if defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC) && defined(ARM64)
+	/*
+	 * When transitioning to EL0 subtract SP with this much to point to
+	 * this special kdata page instead. SP is restored by add this much
+	 * while transitioning back to EL1.
+	 */
+	v += thread_user_kcode_size;
+	thread_user_kdata_sp_offset = (vaddr_t)thread_core_local - v;
+#endif
 #endif /*CFG_CORE_UNMAP_CORE_AT_EL0*/
 }
 
@@ -929,6 +923,85 @@ static void init_sec_mon(size_t pos __maybe_unused)
 #endif
 }
 
+static uint32_t __maybe_unused get_midr_implementer(uint32_t midr)
+{
+	return (midr >> MIDR_IMPLEMENTER_SHIFT) & MIDR_IMPLEMENTER_MASK;
+}
+
+static uint32_t __maybe_unused get_midr_primary_part(uint32_t midr)
+{
+	return (midr >> MIDR_PRIMARY_PART_NUM_SHIFT) &
+	       MIDR_PRIMARY_PART_NUM_MASK;
+}
+
+#ifdef ARM64
+static bool probe_workaround_available(void)
+{
+	int32_t r;
+
+	r = thread_smc(SMCCC_VERSION, 0, 0, 0);
+	if (r < 0)
+		return false;
+	if (r < 0x10001)	/* compare with version 1.1 */
+		return false;
+
+	/* Version >= 1.1, so SMCCC_ARCH_FEATURES is available */
+	r = thread_smc(SMCCC_ARCH_FEATURES, SMCCC_ARCH_WORKAROUND_1, 0, 0);
+	return r >= 0;
+}
+
+static vaddr_t select_vector(vaddr_t a)
+{
+	if (probe_workaround_available()) {
+		DMSG("SMCCC_ARCH_WORKAROUND_1 (%#08" PRIx32 ") available",
+		     SMCCC_ARCH_WORKAROUND_1);
+		DMSG("SMC Workaround for CVE-2017-5715 used");
+		return a;
+	}
+
+	DMSG("SMCCC_ARCH_WORKAROUND_1 (%#08" PRIx32 ") unavailable",
+	     SMCCC_ARCH_WORKAROUND_1);
+	DMSG("SMC Workaround for CVE-2017-5715 not needed (if ARM-TF is up to date)");
+	return (vaddr_t)thread_excp_vect;
+}
+#else
+static vaddr_t select_vector(vaddr_t a)
+{
+	return a;
+}
+#endif
+
+static vaddr_t get_excp_vect(void)
+{
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
+	uint32_t midr = read_midr();
+
+	if (get_midr_implementer(midr) != MIDR_IMPLEMENTER_ARM)
+		return (vaddr_t)thread_excp_vect;
+
+	switch (get_midr_primary_part(midr)) {
+#ifdef ARM32
+	case CORTEX_A8_PART_NUM:
+	case CORTEX_A9_PART_NUM:
+	case CORTEX_A17_PART_NUM:
+#endif
+	case CORTEX_A57_PART_NUM:
+	case CORTEX_A72_PART_NUM:
+	case CORTEX_A73_PART_NUM:
+	case CORTEX_A75_PART_NUM:
+		return select_vector((vaddr_t)thread_excp_vect_workaround);
+#ifdef ARM32
+	case CORTEX_A15_PART_NUM:
+		return select_vector((vaddr_t)thread_excp_vect_workaround_a15);
+#endif
+	default:
+		return (vaddr_t)thread_excp_vect;
+	}
+#endif /*CFG_CORE_WORKAROUND_SPECTRE_BP_SEC*/
+
+	return (vaddr_t)thread_excp_vect;
+}
+
 void thread_init_per_cpu(void)
 {
 	size_t pos = get_core_pos();
@@ -939,7 +1012,7 @@ void thread_init_per_cpu(void)
 	set_tmp_stack(l, GET_STACK(stack_tmp[pos]) - STACK_TMP_OFFS);
 	set_abt_stack(l, GET_STACK(stack_abt[pos]));
 
-	thread_init_vbar();
+	thread_init_vbar(get_excp_vect());
 }
 
 struct thread_specific_data *thread_get_tsd(void)
@@ -1177,10 +1250,25 @@ void thread_get_user_kcode(struct mobj **mobj, size_t *offset,
 {
 	core_mmu_get_user_va_range(va, NULL);
 	*mobj = mobj_tee_ram;
-	*offset = thread_user_kcode_va - CFG_TEE_RAM_START;
+	*offset = thread_user_kcode_va - TEE_RAM_START;
 	*sz = thread_user_kcode_size;
 }
-#endif /*CFG_CORE_UNMAP_CORE_AT_EL0*/
+#endif
+
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) && \
+	defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC) && defined(ARM64)
+void thread_get_user_kdata(struct mobj **mobj, size_t *offset,
+			   vaddr_t *va, size_t *sz)
+{
+	vaddr_t v;
+
+	core_mmu_get_user_va_range(&v, NULL);
+	*va = v + thread_user_kcode_size;
+	*mobj = mobj_tee_ram;
+	*offset = (vaddr_t)thread_user_kdata_page - TEE_RAM_START;
+	*sz = sizeof(thread_user_kdata_page);
+}
+#endif
 
 void thread_add_mutex(struct mutex *m)
 {
@@ -1356,13 +1444,9 @@ uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
 	uint64_t carg;
 	size_t n;
 
-	/*
-	 * Break recursion in case plat_prng_add_jitter_entropy_norpc()
-	 * sleeps on a mutex or unlocks a mutex with a sleeper (contended
-	 * mutex).
-	 */
-	if (cmd != OPTEE_MSG_RPC_CMD_WAIT_QUEUE)
-		plat_prng_add_jitter_entropy_norpc();
+	/* The source CRYPTO_RNG_SRC_JITTER_RPC is safe to use here */
+	plat_prng_add_jitter_entropy(CRYPTO_RNG_SRC_JITTER_RPC,
+				     &thread_rpc_pnum);
 
 	if (!get_rpc_arg(cmd, num_params, &arg, &carg))
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -1488,4 +1572,14 @@ struct mobj *thread_rpc_alloc_payload(size_t size, uint64_t *cookie)
 void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj)
 {
 	thread_rpc_free(OPTEE_MSG_RPC_SHM_TYPE_APPL, cookie, mobj);
+}
+
+struct mobj *thread_rpc_alloc_global_payload(size_t size, uint64_t *cookie)
+{
+	return thread_rpc_alloc(size, 8, OPTEE_MSG_RPC_SHM_TYPE_GLOBAL, cookie);
+}
+
+void thread_rpc_free_global_payload(uint64_t cookie, struct mobj *mobj)
+{
+	thread_rpc_free(OPTEE_MSG_RPC_SHM_TYPE_GLOBAL, cookie, mobj);
 }

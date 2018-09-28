@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <arm.h>
@@ -75,16 +52,18 @@ static const struct thread_handlers handlers = {
 static struct gic_data gic_data;
 static struct pl011_data console_data;
 
+register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
 #if defined(PLATFORM_FLAVOR_fvp)
 register_phys_mem(MEM_AREA_RAM_SEC, TZCDRAM_BASE, TZCDRAM_SIZE);
 #endif
 #if defined(PLATFORM_FLAVOR_qemu_virt)
 register_phys_mem(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_COHERENT_SIZE);
 #endif
-register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
-register_nsec_ddr(DRAM0_BASE, DRAM0_SIZE);
+#ifdef DRAM0_BASE
+register_ddr(DRAM0_BASE, DRAM0_SIZE);
+#endif
 #ifdef DRAM1_BASE
-register_nsec_ddr(DRAM1_BASE, DRAM1_SIZE);
+register_ddr(DRAM1_BASE, DRAM1_SIZE);
 #endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
@@ -194,14 +173,32 @@ service_init(init_tzc400);
 #endif /*CFG_TZC400*/
 
 #if defined(PLATFORM_FLAVOR_qemu_virt)
+static void release_secondary_early_hpen(size_t pos)
+{
+	struct mailbox {
+		uint64_t ep;
+		uint64_t hpen[];
+	} *mailbox;
+
+	if (cpu_mmu_enabled())
+		mailbox = phys_to_virt(SECRAM_BASE, MEM_AREA_IO_SEC);
+	else
+		mailbox = (void *)SECRAM_BASE;
+
+	if (!mailbox)
+		panic();
+
+	mailbox->ep = TEE_LOAD_ADDR;
+	dsb_ishst();
+	mailbox->hpen[pos] = 1;
+	dsb_ishst();
+	sev();
+}
+
 int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id)
 {
 	size_t pos = get_core_pos_mpidr(core_id);
-	uint32_t *sec_entry_addrs = phys_to_virt(SECRAM_BASE, MEM_AREA_IO_SEC);
 	static bool core_is_released[CFG_TEE_CORE_NB_CORE];
-
-	if (!sec_entry_addrs)
-		panic();
 
 	if (!pos || pos >= CFG_TEE_CORE_NB_CORE)
 		return PSCI_RET_INVALID_PARAMETERS;
@@ -214,12 +211,8 @@ int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id)
 	}
 	core_is_released[pos] = true;
 
-	/* set NS entry addresses of core */
 	generic_boot_set_core_ns_entry(pos, entry, context_id);
-
-	sec_entry_addrs[pos] = CFG_TEE_LOAD_ADDR;
-	dsb_ishst();
-	sev();
+	release_secondary_early_hpen(pos);
 
 	return PSCI_RET_SUCCESS;
 }

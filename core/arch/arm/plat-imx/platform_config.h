@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
  *
@@ -31,20 +30,21 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
+#include <mm/generic_ram_layout.h>
 #include <imx-regs.h>
 
+#ifndef CFG_DDR_SIZE
+#error "CFG_DDR_SIZE not defined"
+#endif
+
 #define STACK_ALIGNMENT			64
+#define CONSOLE_UART_BASE		(CFG_UART_BASE)
 
-/* For i.MX7D/S platforms */
-#if defined(CFG_MX7)
-#include <config/config_imx7.h>
-
-#elif defined(CFG_MX6SX)
-#include <config/config_imx6sx.h>
+#if defined(CFG_MX6SX)
+#include <config/imx6sx.h>
 
 /* For i.MX 6UltraLite and 6ULL EVK board */
 #elif defined(CFG_MX6UL) || defined(CFG_MX6ULL)
-#include <imx-regs.h>
 
 #ifdef CFG_WITH_PAGER
 #error "Pager not supported for platform mx6ulevk"
@@ -53,134 +53,30 @@
 #error "LPAE not supported for now"
 #endif
 
-#define CFG_TEE_CORE_NB_CORE		1
-
-#define DDR_PHYS_START			DRAM0_BASE
-#define DDR_SIZE			DRAM0_SIZE
-
-#define CFG_DDR_START			DDR_PHYS_START
-#define CFG_DDR_SIZE			DDR_SIZE
-
-#ifndef CFG_DDR_TEETZ_RESERVED_START
-#define CFG_DDR_TEETZ_RESERVED_START	0x9E000000
-#endif
-
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x02000000
-
-#define CFG_PUB_RAM_SIZE	(2 * 1024 * 1024)
-
-#define TZDRAM_BASE		(CFG_DDR_TEETZ_RESERVED_START)
-#define TZDRAM_SIZE		(CFG_DDR_TEETZ_RESERVED_SIZE - \
-				 CFG_PUB_RAM_SIZE)
-
-#define CFG_SHMEM_START		(CFG_DDR_TEETZ_RESERVED_START + \
-				 TZDRAM_SIZE)
-/* Full GlobalPlatform test suite requires CFG_SHMEM_SIZE to be at least 2MB */
-#define CFG_SHMEM_SIZE		CFG_PUB_RAM_SIZE
-
-/*
- * Everything is in TZDRAM.
- * +------------------+
- * |        | TEE_RAM |
- * + TZDRAM +---------+
- * |        | TA_RAM  |
- * +--------+---------+
- */
-#define CFG_TEE_RAM_VA_SIZE	(1024 * 1024)
-#define CFG_TEE_RAM_PH_SIZE	CFG_TEE_RAM_VA_SIZE
-#define CFG_TEE_RAM_START	TZDRAM_BASE
-#define CFG_TA_RAM_START	ROUNDUP((TZDRAM_BASE + CFG_TEE_RAM_VA_SIZE), \
-					CORE_MMU_DEVICE_SIZE)
-#define CFG_TA_RAM_SIZE		ROUNDDOWN((TZDRAM_SIZE - CFG_TEE_RAM_VA_SIZE), \
-					  CORE_MMU_DEVICE_SIZE)
-#ifndef CFG_TEE_LOAD_ADDR
-#define CFG_TEE_LOAD_ADDR	CFG_TEE_RAM_START
-#endif
-
-
-#define CONSOLE_UART_BASE	(UART1_BASE)
-
 /* For i.MX6 Quad SABRE Lite and Smart Device board */
 
 #elif defined(CFG_MX6Q) || defined(CFG_MX6D) || defined(CFG_MX6DL) || \
 	defined(CFG_MX6S)
-
-#include <imx-regs.h>
-
-#if defined(CFG_CONSOLE_UART)
-#define CONSOLE_UART_BASE	CFG_CONSOLE_UART
-#else
-
-/* Board specific console UART */
-#if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-    defined(PLATFORM_FLAVOR_mx6qvab820)
-#define CONSOLE_UART_BASE		UART2_BASE
-#endif
-
-#if (defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-    defined(PLATFORM_FLAVOR_mx6qhmbedge) || \
-    defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
-    defined(PLATFORM_FLAVOR_mx6dlhmbedge) || \
-    defined(PLATFORM_FLAVOR_mx6shmbedge) )
-#define CONSOLE_UART_BASE		UART1_BASE
-#endif
-
-#if defined(PLATFORM_FLAVOR_mx6dlsabresd)
-#define CONSOLE_UART_BASE		UART1_BASE
-#endif
-
-#endif /* #if defined(CFG_CONSOLE_UART) */
-
-/* Board specific RAM size */
-#if defined(PLATFORM_FLAVOR_mx6qhmbedge)
-#define DRAM0_SIZE			0x80000000
-#endif
-#if defined(PLATFORM_FLAVOR_mx6qsabrelite) || \
-	defined(PLATFORM_FLAVOR_mx6qsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6dlsabresd) || \
-	defined(PLATFORM_FLAVOR_mx6qvab820)
-#define DRAM0_SIZE			0x40000000
-#endif
-#if defined(PLATFORM_FLAVOR_mx6dhmbedge) || \
-        defined(PLATFORM_FLAVOR_mx6dlhmbedge)
-#define DRAM0_SIZE                      0x20000000
-#endif
-#if defined(PLATFORM_FLAVOR_mx6shmbedge)
-#define DRAM0_SIZE                      0x10000000
-#endif
-
-/* This is OK even if SOC has fewer than 4 cores */
-#define CFG_TEE_CORE_NB_CORE		4
-
-/* Common RAM and cache controller configuration */
-#define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
-
-#define DDR_PHYS_START			DRAM0_BASE
-#define DDR_SIZE			DRAM0_SIZE
-
-#define CFG_DDR_START			DDR_PHYS_START
-#define CFG_DDR_SIZE			DDR_SIZE
-
 /*
  * PL310 TAG RAM Control Register
  *
  * bit[10:8]:1 - 2 cycle of write accesses latency
- * bit[6:4]:3 - 4 cycle of read accesses latency
- * bit[2:0]:2 - 3 cycle of setup latency
+ * bit[6:4]:1 - 2 cycle of read accesses latency
+ * bit[2:0]:1 - 2 cycle of setup latency
  */
 #ifndef PL310_TAG_RAM_CTRL_INIT
-#define PL310_TAG_RAM_CTRL_INIT		0x00000132
+#define PL310_TAG_RAM_CTRL_INIT		0x00000111
 #endif
 
 /*
  * PL310 DATA RAM Control Register
  *
- * bit[10:8]:1 - 2 cycle of write accesses latency
- * bit[6:4]:3 - 4 cycle of read accesses latency
+ * bit[10:8]:2 - 3 cycle of write accesses latency
+ * bit[6:4]:2 - 3 cycle of read accesses latency
  * bit[2:0]:2 - 3 cycle of setup latency
  */
 #ifndef PL310_DATA_RAM_CTRL_INIT
-#define PL310_DATA_RAM_CTRL_INIT	0x00000132
+#define PL310_DATA_RAM_CTRL_INIT	0x00000222
 #endif
 
 /*
@@ -199,7 +95,7 @@
  * - 16-way associciativity (bit16=1)
  * Platform fmavor specific way config (dual lite / solo):
  * - 32kb way size (bit19:17=3b010)
- * - 16-way associciativity (bit16=1)
+ * - no 16-way associciativity (bit16=0)
  * Store buffer device limitation enabled (bit11=1)
  * Cacheable accesses have high prio (bit10=0)
  * Full Line Zero (FLZ) disabled (bit0=0)
@@ -208,7 +104,7 @@
 #if defined(CFG_MX6Q) || defined(CFG_MX6D)
 #define PL310_AUX_CTRL_INIT		0x3C470800
 #else
-#define PL310_AUX_CTRL_INIT		0x3C450800
+#define PL310_AUX_CTRL_INIT		0x3C440800
 #endif
 #endif
 
@@ -250,114 +146,6 @@
  */
 #define SCU_NSAC_CTRL_INIT		0x00000FFF
 
-/* define the memory areas */
-
-#ifdef CFG_WITH_PAGER
-
-/*
- * TEE/TZ RAM layout:
- *
- *  +---------------------------------------+  <- CFG_CORE_TZSRAM_EMUL_START
- *  | TEE private highly | TEE_RAM          |   ^
- *  |   secure memory    |                  |   | CFG_CORE_TZSRAM_EMUL_SIZE
- *  +---------------------------------------+   v
- *
- *  +---------------------------------------+  <- CFG_DDR_TEETZ_RESERVED_START
- *  | TEE private secure |  TA_RAM          |   ^
- *  |   external memory  |                  |   |
- *  +---------------------------------------+   | CFG_DDR_TEETZ_RESERVED_SIZE
- *  |     Non secure     |  SHM             |   |
- *  |   shared memory    |                  |   |
- *  +---------------------------------------+   v
- *
- *  TEE_RAM : default 256kByte
- *  TA_RAM  : all what is left in DDR TEE reserved area
- *  PUB_RAM : default 2MByte
- */
-
-/* On-chip SRAM */
-#define TZSRAM_BASE			0x00900000
-#define TZSRAM_SIZE			(1 * 256 * 1024)
-
-#define CFG_TEE_RAM_START               TZSRAM_BASE
-#define CFG_TEE_RAM_PH_SIZE		        TZSRAM_SIZE
-#define CFG_TEE_LOAD_ADDR               CFG_TEE_RAM_START
-
-/* Location of trusted dram */
-
-#define CFG_DDR_TEETZ_RESERVED_START	0x10A00000
-#define CFG_DDR_TEETZ_RESERVED_SIZE		0x02000000
-
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
-
-
-/* Area reserved for nonpageable part of image */
-#define CFG_PAGEABLE_PART_SIZE			CORE_MMU_DEVICE_SIZE
-
-#define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START + \
-							 CFG_PAGEABLE_PART_SIZE)
-
-#define TZDRAM_SIZE			(CFG_DDR_TEETZ_RESERVED_SIZE - \
-				CFG_PUB_RAM_SIZE - CFG_PAGEABLE_PART_SIZE)
-
-#define CFG_TA_RAM_START		TZDRAM_BASE
-#define CFG_TA_RAM_SIZE			TZDRAM_SIZE
-
-#else /* CFG_WITH_PAGER */
-
-/*
- * TEE/TZ RAM layout:
- *
- *  +---------------------------------------+  <- CFG_DDR_TEETZ_RESERVED_START
- *  | TEE private secure |  TEE_RAM         |   ^
- *  |   external memory  +------------------+   |
- *  |                    |  TA_RAM          |   |
- *  +---------------------------------------+   | CFG_DDR_TEETZ_RESERVED_SIZE
- *  |     Non secure     |  SHM             |   |
- *  |   shared memory    |                  |   |
- *  +---------------------------------------+   v
- *
- *  TEE_RAM : default 1MByte
- *  PUB_RAM : default 2MByte
- *  TA_RAM  : all what is left
- */
-
-#define CFG_DDR_TEETZ_RESERVED_START    0x10A00000
-#define CFG_DDR_TEETZ_RESERVED_SIZE     0x02000000
-
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
-#define CFG_TEE_RAM_PH_SIZE		(2 * 1024 * 1024)
-
-#define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START)
-#define TZDRAM_SIZE			(CFG_DDR_TEETZ_RESERVED_SIZE - \
-				CFG_PUB_RAM_SIZE)
-
-#define CFG_TA_RAM_START		(CFG_DDR_TEETZ_RESERVED_START + \
-				CFG_TEE_RAM_PH_SIZE)
-#define CFG_TA_RAM_SIZE			(CFG_DDR_TEETZ_RESERVED_SIZE - \
-				CFG_TEE_RAM_PH_SIZE - \
-				CFG_PUB_RAM_SIZE)
-
-#define CFG_TEE_RAM_START		TZDRAM_BASE
-
-#endif /* CFG_WITH_PAGER */
-
-#define CFG_SHMEM_START			(CFG_DDR_TEETZ_RESERVED_START + \
-								 CFG_DDR_TEETZ_RESERVED_SIZE - \
-								 CFG_PUB_RAM_SIZE)
-
-#define CFG_SHMEM_SIZE			CFG_PUB_RAM_SIZE
-
-#ifndef CFG_TEE_LOAD_ADDR
-#define CFG_TEE_LOAD_ADDR		TZDRAM_BASE
-#endif
-
-#else
-#error "Unknown platform flavor"
-#endif
-
-#ifdef CFG_CYREP
-#include <mx6-cyrep.h>
 #endif
 
 #endif /*PLATFORM_CONFIG_H*/

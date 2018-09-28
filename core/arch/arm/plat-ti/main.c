@@ -32,7 +32,7 @@ static struct gic_data gic_data;
 static struct serial8250_uart_data console_data;
 static uint8_t plat_huk[PLAT_HW_UNIQUE_KEY_LENGTH];
 
-register_phys_mem(MEM_AREA_RAM_SEC, TZDRAM_BASE, CFG_TEE_RAM_VA_SIZE);
+register_phys_mem(MEM_AREA_RAM_SEC, TZDRAM_BASE, TEE_RAM_VA_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GICC_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GICD_SIZE);
@@ -125,20 +125,20 @@ void init_sec_mon(unsigned long nsec_entry)
 	/* Initialize secure monitor */
 	nsec_ctx = sm_get_nsec_ctx();
 
-	nsec_ctx->mode_regs.usr_sp = plat_boot_args->nsec_ctx.usr_sp;
-	nsec_ctx->mode_regs.usr_lr = plat_boot_args->nsec_ctx.usr_lr;
-	nsec_ctx->mode_regs.irq_spsr = plat_boot_args->nsec_ctx.irq_spsr;
-	nsec_ctx->mode_regs.irq_sp = plat_boot_args->nsec_ctx.irq_sp;
-	nsec_ctx->mode_regs.irq_lr = plat_boot_args->nsec_ctx.irq_lr;
-	nsec_ctx->mode_regs.svc_spsr = plat_boot_args->nsec_ctx.svc_spsr;
-	nsec_ctx->mode_regs.svc_sp = plat_boot_args->nsec_ctx.svc_sp;
-	nsec_ctx->mode_regs.svc_lr = plat_boot_args->nsec_ctx.svc_lr;
-	nsec_ctx->mode_regs.abt_spsr = plat_boot_args->nsec_ctx.abt_spsr;
-	nsec_ctx->mode_regs.abt_sp = plat_boot_args->nsec_ctx.abt_sp;
-	nsec_ctx->mode_regs.abt_lr = plat_boot_args->nsec_ctx.abt_lr;
-	nsec_ctx->mode_regs.und_spsr = plat_boot_args->nsec_ctx.und_spsr;
-	nsec_ctx->mode_regs.und_sp = plat_boot_args->nsec_ctx.und_sp;
-	nsec_ctx->mode_regs.und_lr = plat_boot_args->nsec_ctx.und_lr;
+	nsec_ctx->ub_regs.usr_sp = plat_boot_args->nsec_ctx.usr_sp;
+	nsec_ctx->ub_regs.usr_lr = plat_boot_args->nsec_ctx.usr_lr;
+	nsec_ctx->ub_regs.irq_spsr = plat_boot_args->nsec_ctx.irq_spsr;
+	nsec_ctx->ub_regs.irq_sp = plat_boot_args->nsec_ctx.irq_sp;
+	nsec_ctx->ub_regs.irq_lr = plat_boot_args->nsec_ctx.irq_lr;
+	nsec_ctx->ub_regs.svc_spsr = plat_boot_args->nsec_ctx.svc_spsr;
+	nsec_ctx->ub_regs.svc_sp = plat_boot_args->nsec_ctx.svc_sp;
+	nsec_ctx->ub_regs.svc_lr = plat_boot_args->nsec_ctx.svc_lr;
+	nsec_ctx->ub_regs.abt_spsr = plat_boot_args->nsec_ctx.abt_spsr;
+	nsec_ctx->ub_regs.abt_sp = plat_boot_args->nsec_ctx.abt_sp;
+	nsec_ctx->ub_regs.abt_lr = plat_boot_args->nsec_ctx.abt_lr;
+	nsec_ctx->ub_regs.und_spsr = plat_boot_args->nsec_ctx.und_spsr;
+	nsec_ctx->ub_regs.und_sp = plat_boot_args->nsec_ctx.und_sp;
+	nsec_ctx->ub_regs.und_lr = plat_boot_args->nsec_ctx.und_lr;
 	nsec_ctx->mon_lr = plat_boot_args->nsec_ctx.mon_lr;
 	nsec_ctx->mon_spsr = plat_boot_args->nsec_ctx.mon_spsr;
 

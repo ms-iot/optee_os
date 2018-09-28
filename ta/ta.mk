@@ -8,19 +8,39 @@ sm-$(sm) := y
 COMPILER_$(sm)		?= $(COMPILER)
 include mk/$(COMPILER_$(sm)).mk
 
+#
+# Config flags from mk/config.mk
+#
+
+ifeq ($(CFG_TA_MBEDTLS_SELF_TEST),y)
+$(sm)-platform-cppflags += -DMBEDTLS_SELF_TEST
+endif
+
+ifeq ($(CFG_TEE_TA_MALLOC_DEBUG),y)
+# Build malloc debug code into libutils: (mdbg_malloc(), mdbg_free(),
+# mdbg_check(), etc.).
+$(sm)-platform-cppflags += -DENABLE_MDBG=1
+endif
+
+# Config variables to be explicitly exported to the dev kit conf.mk
+ta-mk-file-export-vars-$(sm) += CFG_TA_FLOAT_SUPPORT
+ta-mk-file-export-vars-$(sm) += CFG_CACHE_API
+ta-mk-file-export-vars-$(sm) += CFG_SECURE_DATA_PATH
+ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS_SELF_TEST
+ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS
+ta-mk-file-export-vars-$(sm) += CFG_SYSTEM_PTA
+ta-mk-file-export-vars-$(sm) += CFG_TA_DYNLINK
+
 # Expand platform flags here as $(sm) will change if we have several TA
 # targets. Platform flags should not change after inclusion of ta/ta.mk.
 cppflags$(sm)	:= $(platform-cppflags) $($(sm)-platform-cppflags)
 cflags$(sm)	:= $(platform-cflags) $($(sm)-platform-cflags)
 aflags$(sm)	:= $(platform-aflags) $($(sm)-platform-aflags)
 
+# Changes to cppflags$(sm) will only affect how TA dev kit libraries are
+# compiled, these flags are not propagated to the TA
 cppflags$(sm)	+= -include $(conf-file)
-
-# Config flags from mk/config.mk
 cppflags$(sm) += -DTRACE_LEVEL=$(CFG_TEE_TA_LOG_LEVEL)
-ifeq ($(CFG_TEE_TA_MALLOC_DEBUG),y)
-cppflags$(sm) += -DENABLE_MDBG=1
-endif
 
 base-prefix := $(sm)-
 
@@ -36,6 +56,13 @@ libname = utee
 libdir = lib/libutee
 include mk/lib.mk
 
+ifeq ($(CFG_TA_MBEDTLS),y)
+libname = mbedtls
+libdir = lib/libmbedtls
+include mk/lib.mk
+ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS
+endif
+
 base-prefix :=
 
 incdirs-host := $(filter-out lib/libutils%, $(incdirs$(sm)))
@@ -44,6 +71,7 @@ incfiles-extra-host += lib/libutils/ext/include/util.h
 incfiles-extra-host += lib/libutils/ext/include/types_ext.h
 incfiles-extra-host += $(conf-file)
 incfiles-extra-host += $(conf-mk-file)
+incfiles-extra-host += $(conf-cmake-file)
 incfiles-extra-host += core/include/tee/tee_fs_key_manager.h
 incfiles-extra-host += core/include/tee/fs_htree.h
 incfiles-extra-host += core/include/signed_hdr.h
@@ -61,6 +89,7 @@ $2/$$(notdir $1): $1
 
 cleanfiles += $2/$$(notdir $1)
 ta_dev_kit: $2/$$(notdir $1)
+ta_dev_kit-files += $2/$$(notdir $1)
 endef
 
 # Copy the .a files
@@ -69,7 +98,8 @@ $(foreach f, $(libfiles), \
 
 # Copy .mk files
 ta-mkfiles = mk/compile.mk mk/subdir.mk mk/gcc.mk mk/cleandirs.mk \
-	ta/arch/$(ARCH)/link.mk ta/mk/ta_dev_kit.mk
+	ta/arch/$(ARCH)/link.mk ta/arch/$(ARCH)/link_shlib.mk \
+	ta/mk/ta_dev_kit.mk
 
 $(foreach f, $(ta-mkfiles), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/mk)))
@@ -108,14 +138,15 @@ $(foreach f, $(ta-scripts), \
 conf-mk-file-export := $(out-dir)/export-$(sm)/mk/conf.mk
 sm-$(conf-mk-file-export) := $(sm)
 define mk-file-export
-$(conf-mk-file-export): $(conf-mk-file)
-	@$$(cmd-echo-silent) '  GEN    ' $$@
-	$(q)echo sm := $$(sm-$(conf-mk-file-export)) > $$@
-	$(q)echo sm-$$(sm-$(conf-mk-file-export)) := y >> $$@
-	$(q)echo CFG_TA_FLOAT_SUPPORT := $$(CFG_TA_FLOAT_SUPPORT) >> $$@
+.PHONY: $(conf-mk-file-export)
+$(conf-mk-file-export):
+	@$$(cmd-echo-silent) '  CHK    ' $$@
+	$(q)echo sm := $$(sm-$(conf-mk-file-export)) > $$@.tmp
+	$(q)echo sm-$$(sm-$(conf-mk-file-export)) := y >> $$@.tmp
 	$(q)($$(foreach v, $$(ta-mk-file-export-vars-$$(sm-$(conf-mk-file-export))), \
-		echo $$(v) := $$($$(v));)) >> $$@
-	$(q)echo '$$(ta-mk-file-export-add-$$(sm-$(conf-mk-file-export)))' | sed 's/_nl_ */\n/g' >> $$@
+		$$(if $$($$(v)),echo $$(v) := $$($$(v));,))) >> $$@.tmp
+	$(q)echo '$$(ta-mk-file-export-add-$$(sm-$(conf-mk-file-export)))' | sed 's/_nl_ */\n/g' >> $$@.tmp
+	$(q)$(call mv-if-changed,$$@.tmp,$$@)
 endef
 $(eval $(mk-file-export))
 

@@ -32,9 +32,6 @@ endif
 # Supported values: undefined, 1, 2 and 3. 3 gives more warnings.
 WARNS ?= 3
 
-# Define NOWERROR=1 so that warnings are not treated as errors
-# NOWERROR=1
-
 # Define DEBUG=1 to compile without optimization (forces -O0)
 # DEBUG=1
 
@@ -59,18 +56,22 @@ CFG_TEE_TA_LOG_LEVEL ?= 1
 # CFG_TEE_TA_LOG_LEVEL. Otherwise, they are not output at all
 CFG_TEE_CORE_TA_TRACE ?= y
 
-# If 1, enable debug features in TA memory allocation.
-# Debug features include check of buffer overflow, statistics, mark/check heap
-# feature.
-CFG_TEE_CORE_USER_MEM_DEBUG ?= 1
-
-# If y, enable memory leak detection feature in bget memory allocator.
+# If y, enable the memory leak detection feature in the bget memory allocator.
+# When this feature is enabled, calling mdbg_check(1) will print a list of all
+# the currently allocated buffers and the location of the allocation (file and
+# line number).
+# Note: make sure the log level is high enough for the messages to show up on
+# the secure console! For instance:
+# - To debug user-mode (TA) allocations: build OP-TEE *and* the TA with:
+#   $ make CFG_TEE_TA_MALLOC_DEBUG=y CFG_TEE_TA_LOG_LEVEL=3
+# - To debug TEE core allocations: build OP-TEE with:
+#   $ make CFG_TEE_CORE_MALLOC_DEBUG=y CFG_TEE_CORE_LOG_LEVEL=3
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
 CFG_TEE_TA_MALLOC_DEBUG ?= n
 
 # Mask to select which messages are prefixed with long debugging information
-# (severity, thread ID, component name, function name, line number) based on
-# the message level. If BIT(level) is set, the long prefix is shown.
+# (severity, core ID, thread ID, component name, function name, line number)
+# based on the message level. If BIT(level) is set, the long prefix is shown.
 # Otherwise a short prefix is used (severity and component name only).
 # Levels: 0=none 1=error 2=info 3=debug 4=flow
 CFG_MSG_LONG_PREFIX_MASK ?= 0x1a
@@ -106,7 +107,7 @@ endif
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 3
-CFG_OPTEE_REVISION_MINOR ?= 0
+CFG_OPTEE_REVISION_MINOR ?= 2
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -198,7 +199,12 @@ CFG_REE_FS_TA ?= y
 #                                    # later library recompilations.
 #   <build some TAs>
 #   $ make EARLY_TA_PATHS=<paths>    # Build OP-TEE and embbed the TA(s)
-ifneq ($(EARLY_TA_PATHS),)
+#
+# Another option is CFG_IN_TREE_EARLY_TAS which is used to point at
+# in-tree TAs. CFG_IN_TREE_EARLY_TAS is formatted as:
+# <name-of-ta>/<uuid>
+# for instance avb/023f8f1a-292a-432b-8fc4-de8471358067
+ifneq ($(EARLY_TA_PATHS)$(CFG_IN_TREE_EARLY_TAS),)
 $(call force,CFG_EARLY_TA,y)
 else
 CFG_EARLY_TA ?= n
@@ -206,6 +212,9 @@ endif
 ifeq ($(CFG_EARLY_TA),y)
 $(call force,CFG_ZLIB,y)
 endif
+
+# Support for dynamically linked user TAs
+CFG_TA_DYNLINK ?= y
 
 # Enable paging, requires SRAM, can't be enabled by default
 CFG_WITH_PAGER ?= n
@@ -233,7 +242,7 @@ CFG_DT ?= n
 # editing of the supplied DTB.
 CFG_DTB_MAX_SIZE ?= 0x10000
 
-# Enable static TA and core self tests
+# Enable core self tests and related pseudo TAs
 CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 
 # This option enables OP-TEE to respond to SMP boot request: the Rich OS
@@ -279,6 +288,10 @@ $(eval $(call cfg-depends-all,CFG_SECSTOR_TA,CFG_REE_FS CFG_WITH_USER_TA))
 CFG_SECSTOR_TA_MGMT_PTA ?= $(call cfg-all-enabled,CFG_SECSTOR_TA)
 $(eval $(call cfg-depends-all,CFG_SECSTOR_TA_MGMT_PTA,CFG_SECSTOR_TA))
 
+# Enable the pseudo TA for misc. auxilary services, extending existing
+# GlobalPlatform Core API (for example, re-seeding RNG entropy pool etc.)
+CFG_SYSTEM_PTA ?= y
+
 # Define the number of cores per cluster used in calculating core position.
 # The cluster number is shifted by this value and added to the core ID,
 # so its value represents log2(cores/cluster).
@@ -295,3 +308,23 @@ CFG_DYN_SHM_CAP ?= y
 # Enables support for larger physical addresses, that is, it will define
 # paddr_t as a 64-bit type.
 CFG_CORE_LARGE_PHYS_ADDR ?= n
+
+# Define the maximum size, in bits, for big numbers in the Internal Core API
+# Arithmetical functions. This does *not* influence the key size that may be
+# manipulated through the Cryptographic API.
+# Set this to a lower value to reduce the TA memory footprint.
+CFG_TA_BIGNUM_MAX_BITS ?= 2048
+
+# Define the maximum size, in bits, for big numbers in the TEE core (privileged
+# layer).
+# This value is an upper limit for the key size in any cryptographic algorithm
+# implemented by the TEE core.
+# Set this to a lower value to reduce the memory footprint.
+CFG_CORE_BIGNUM_MAX_BITS ?= 4096
+
+# Compiles mbedTLS for TA usage
+CFG_TA_MBEDTLS ?= y
+
+# Compile the TA library mbedTLS with self test functions, the functions
+# need to be called to test anything
+CFG_TA_MBEDTLS_SELF_TEST ?= y

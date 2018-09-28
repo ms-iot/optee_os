@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <arm.h>
@@ -187,7 +164,7 @@ void tee_pager_get_stats(struct tee_pager_stats *stats)
 #define TBL_SHIFT	SMALL_PAGE_SHIFT
 
 #define EFFECTIVE_VA_SIZE \
-	(ROUNDUP(TEE_RAM_VA_START + CFG_TEE_RAM_VA_SIZE, \
+	(ROUNDUP(TEE_RAM_VA_START + TEE_RAM_VA_SIZE, \
 		 CORE_MMU_PGDIR_SIZE) - \
 	 ROUNDDOWN(TEE_RAM_VA_START, CORE_MMU_PGDIR_SIZE))
 
@@ -291,7 +268,7 @@ void *tee_pager_phys_to_virt(paddr_t pa)
 	while (true) {
 		while (idx < TBL_NUM_ENTRIES) {
 			v = core_mmu_idx2va(&pager_tables[n].tbl_info, idx);
-			if (v >= (TEE_RAM_VA_START + CFG_TEE_RAM_VA_SIZE))
+			if (v >= (TEE_RAM_VA_START + TEE_RAM_VA_SIZE))
 				return NULL;
 
 			core_mmu_get_entry(&pager_tables[n].tbl_info,
@@ -355,7 +332,7 @@ static struct pgt *find_core_pgt(vaddr_t va)
 	return &find_pager_table(va)->pgt;
 }
 
-static void set_alias_area(tee_mm_entry_t *mm)
+void tee_pager_set_alias_area(tee_mm_entry_t *mm)
 {
 	struct pager_table *pt;
 	unsigned idx;
@@ -390,11 +367,11 @@ out:
 	tlbi_mva_range(smem, nbytes, SMALL_PAGE_SIZE);
 }
 
-static void generate_ae_key(void)
+void tee_pager_generate_authenc_key(void)
 {
 	uint8_t key[PAGER_AE_KEY_BITS / 8];
 
-	if (rng_generate(key, sizeof(key)) != TEE_SUCCESS)
+	if (crypto_rng_read(key, sizeof(key)) != TEE_SUCCESS)
 		panic("failed to generate random");
 	if (internal_aes_gcm_expand_enc_key(key, sizeof(key),
 					    &pager_ae_key))
@@ -464,12 +441,6 @@ void tee_pager_early_init(void)
 		pgt_set_used_entries(&pager_tables[n].pgt,
 				tbl_usage_count(&pager_tables[n].tbl_info));
 	}
-}
-
-void tee_pager_init(tee_mm_entry_t *mm_alias)
-{
-	set_alias_area(mm_alias);
-	generate_ae_key();
 }
 
 static void *pager_add_alias_page(paddr_t pa)

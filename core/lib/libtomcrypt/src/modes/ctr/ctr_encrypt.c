@@ -46,75 +46,46 @@
 
 #ifdef LTC_CTR_MODE
 
+static void ctr_increment_counter(symmetric_CTR *ctr)
+{
+	int x;
+
+	if (ctr->mode == CTR_COUNTER_LITTLE_ENDIAN) {
+		for (x = 0; x < ctr->ctrlen; x++) {
+			ctr->ctr[x] = (ctr->ctr[x] + 1) & 0xff;
+			if (ctr->ctr[x])
+				return;
+		}
+	} else {
+		for (x = ctr->blocklen - 1; x >= ctr->ctrlen; x--) {
+			ctr->ctr[x] = (ctr->ctr[x] + 1) & 0xff;
+			if (ctr->ctr[x]) {
+				return;
+			}
+		}
+	}
+}
+
 /**
-  CTR encrypt
+  CTR encrypt sub
   @param pt     Plaintext
   @param ct     [out] Ciphertext
   @param len    Length of plaintext (octets)
   @param ctr    CTR state
   @return CRYPT_OK if successful
 */
-int ctr_encrypt(const unsigned char *pt, unsigned char *ct, unsigned long len, symmetric_CTR *ctr)
+static int ctr_encrypt_sub(const unsigned char *pt, unsigned char *ct, unsigned long len, symmetric_CTR *ctr)
 {
-   int x, err;
-
-   LTC_ARGCHK(pt != NULL);
-   LTC_ARGCHK(ct != NULL);
-   LTC_ARGCHK(ctr != NULL);
-
-   if ((err = cipher_is_valid(ctr->cipher)) != CRYPT_OK) {
-       return err;
-   }
-   
-   /* is blocklen/padlen valid? */
-   if (ctr->blocklen < 1 || ctr->blocklen > (int)sizeof(ctr->ctr) ||
-       ctr->padlen   < 0 || ctr->padlen   > (int)sizeof(ctr->pad)) {
-      return CRYPT_INVALID_ARG;
-   }
-
-#ifdef LTC_FAST
-   if (ctr->blocklen % sizeof(LTC_FAST_TYPE)) {
-      return CRYPT_INVALID_ARG;
-   }
-#endif
-   
-   /* handle acceleration only if pad is empty, accelerator is present and length is >= a block size */
-   if ((ctr->padlen == ctr->blocklen) && cipher_descriptor[ctr->cipher]->accel_ctr_encrypt != NULL && (len >= (unsigned long)ctr->blocklen)) {
-      if ((err = cipher_descriptor[ctr->cipher]->accel_ctr_encrypt(pt, ct, len/ctr->blocklen, ctr->ctr, ctr->mode, &ctr->key)) != CRYPT_OK) {
-         return err;
-      }
-      pt += (len / ctr->blocklen) * ctr->blocklen;
-      ct += (len / ctr->blocklen) * ctr->blocklen;
-      len %= ctr->blocklen;
-   }
+   int err;
 
    while (len) {
       /* is the pad empty? */
       if (ctr->padlen == ctr->blocklen) {
-         /* increment counter */
-         if (ctr->mode == CTR_COUNTER_LITTLE_ENDIAN) {
-            /* little-endian */
-            for (x = 0; x < ctr->ctrlen; x++) {
-               ctr->ctr[x] = (ctr->ctr[x] + (unsigned char)1) & (unsigned char)255;
-               if (ctr->ctr[x] != (unsigned char)0) {
-                  break;
-               }
-            }
-         } else {
-            /* big-endian */
-            for (x = ctr->blocklen-1; x >= ctr->ctrlen; x--) {
-               ctr->ctr[x] = (ctr->ctr[x] + (unsigned char)1) & (unsigned char)255;
-               if (ctr->ctr[x] != (unsigned char)0) {
-                  break;
-               }
-            }
-         }
-
-         /* encrypt it */
-         if ((err = cipher_descriptor[ctr->cipher]->ecb_encrypt(ctr->ctr, ctr->pad, &ctr->key)) != CRYPT_OK) {
-            return err;
-         }
-         ctr->padlen = 0;
+        /* encrypt counter into pad */
+        if ((err = cipher_descriptor[ctr->cipher]->ecb_encrypt(ctr->ctr, ctr->pad, &ctr->key)) != CRYPT_OK) {
+          return err;
+        }
+        ctr->padlen = 0;
       }
 #ifdef LTC_FAST
       if (ctr->padlen == 0 && len >= (unsigned long)ctr->blocklen) {
@@ -128,11 +99,78 @@ int ctr_encrypt(const unsigned char *pt, unsigned char *ct, unsigned long len, s
        ctr->padlen = ctr->blocklen;
        continue;
       }
-#endif    
+#endif
       *ct++ = *pt++ ^ ctr->pad[ctr->padlen++];
       --len;
+
+      /* done with one full block? if so, set counter for next block. */
+      if (ctr->padlen == ctr->blocklen) {
+         ctr_increment_counter(ctr);
+      }
    }
    return CRYPT_OK;
+}
+
+/**
+  CTR encrypt
+  @param pt     Plaintext
+  @param ct     [out] Ciphertext
+  @param len    Length of plaintext (octets)
+  @param ctr    CTR state
+  @return CRYPT_OK if successful
+*/
+int ctr_encrypt(const unsigned char *pt, unsigned char *ct, unsigned long len, symmetric_CTR *ctr)
+{
+   unsigned long incr;
+   int err;
+
+   LTC_ARGCHK(pt != NULL);
+   LTC_ARGCHK(ct != NULL);
+   LTC_ARGCHK(ctr != NULL);
+
+   if ((err = cipher_is_valid(ctr->cipher)) != CRYPT_OK) {
+       return err;
+   }
+
+   /* is blocklen/padlen valid? */
+   if (ctr->blocklen < 1 || ctr->blocklen > (int)sizeof(ctr->ctr) ||
+       ctr->padlen   < 0 || ctr->padlen   > (int)sizeof(ctr->pad)) {
+      return CRYPT_INVALID_ARG;
+   }
+
+#ifdef LTC_FAST
+   if (ctr->blocklen % sizeof(LTC_FAST_TYPE)) {
+      return CRYPT_INVALID_ARG;
+   }
+#endif
+
+   if (cipher_descriptor[ctr->cipher]->accel_ctr_encrypt != NULL ) {
+     /* handle acceleration only if not in the middle of a block, accelerator is present and length is >= a block size */
+     if ((ctr->padlen == 0 || ctr->padlen == ctr->blocklen) && len >= (unsigned long)ctr->blocklen) {
+       if ((err = cipher_descriptor[ctr->cipher]->accel_ctr_encrypt(pt, ct, len/ctr->blocklen, ctr->ctr, ctr->mode, &ctr->key)) != CRYPT_OK) {
+         return err;
+       }
+       pt += (len / ctr->blocklen) * ctr->blocklen;
+       ct += (len / ctr->blocklen) * ctr->blocklen;
+       len %= ctr->blocklen;
+       /* counter was changed by accelerator so mark pad empty (will need updating in ctr_encrypt_sub()) */
+       ctr->padlen = ctr->blocklen;
+     }
+
+     /* try to re-synchronize on a block boundary for maximum use of acceleration */
+     incr = ctr->blocklen - ctr->padlen;
+     if (len >= incr + (unsigned long)ctr->blocklen) {
+       if ((err = ctr_encrypt_sub(pt, ct, incr, ctr)) != CRYPT_OK) {
+         return err;
+       }
+       pt += incr;
+       ct += incr;
+       len -= incr;
+       return ctr_encrypt(pt, ct, len, ctr);
+     }
+   }
+
+   return ctr_encrypt_sub(pt, ct, len, ctr);
 }
 
 #endif

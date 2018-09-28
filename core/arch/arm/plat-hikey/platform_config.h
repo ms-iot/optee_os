@@ -6,6 +6,8 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
+#include <mm/generic_ram_layout.h>
+
 /* Make stacks aligned to data cache line length */
 #define STACK_ALIGNMENT		64
 
@@ -35,7 +37,7 @@
 #endif
 
 #else /* PLATFORM_FLAVOR_hikey */
-#error Unknown console UART
+#error Unknown HiKey PLATFORM_FLAVOR
 #endif /* PLATFORM_FLAVOR_hikey */
 
 #define CONSOLE_BAUDRATE	115200
@@ -43,6 +45,8 @@
 
 /*
  * HiKey and HiKey960 memory map
+ *
+ * Refer to the default configuration from conf.mk for description below.
  *
  * TZDRAM is secured (firewalled) by the DDR controller, see ARM-TF, but note
  * that security of this type of memory is weak for two reasons:
@@ -63,7 +67,7 @@
  *  0x4000_0000                               -
  *    TA RAM: 14 MiB                          |
  *  0x3F20_0000                               | TZDRAM
- *    TEE RAM: 2 MiB (CFG_TEE_RAM_VA_SIZE)    |
+ *    TEE RAM: 2 MiB (TEE_RAM_VA_SIZE)	      |
  *  0x3F00_0000 [TZDRAM_BASE, BL32_LOAD_ADDR] -
  *    Shared memory: 2 MiB                    |
  *  0x3EE0_0000                               | DRAM0
@@ -100,48 +104,30 @@
 #define DRAM0_BASE		0x00000000
 #define DRAM0_SIZE		0x3F000000
 #define DRAM0_SIZE_NSEC		0x3E000000
+#define DRAM1_BASE		0x40000000
 
-#ifdef CFG_WITH_PAGER
+#if defined(PLATFORM_FLAVOR_hikey)
 
-#define TZSRAM_BASE		0x3F000000
-#define TZSRAM_SIZE		CFG_CORE_TZSRAM_EMUL_SIZE
+#if (CFG_DRAM_SIZE_GB == 2)
+#define DRAM1_SIZE_NSEC		0x40000000
+#elif (CFG_DRAM_SIZE_GB == 1)
+/* do nothing */
+#else
+#error Unknown DRAM size
+#endif
 
-#define TZDRAM_BASE		0x3F200000
-#define TZDRAM_SIZE		(14 * 1024 * 1024)
+#elif defined(PLATFORM_FLAVOR_hikey960)
 
-#else /* CFG_WITH_PAGER */
+#if (CFG_DRAM_SIZE_GB == 3)
+#define DRAM1_SIZE_NSEC		0x80000000
+#elif (CFG_DRAM_SIZE_GB == 4)
+#define DRAM1_SIZE_NSEC		0xC0000000
+#else
+#error Unknown DRAM size
+#endif
 
-#define TZDRAM_BASE		0x3F000000
-#define TZDRAM_SIZE		(16 * 1024 * 1024)
-
-#endif /* CFG_WITH_PAGER */
-
-#define CFG_SHMEM_START		0x3EE00000
-#define CFG_SHMEM_SIZE		(2 * 1024 * 1024)
-
-#define CFG_TEE_CORE_NB_CORE	8
-
-#define CFG_TEE_RAM_VA_SIZE	(2 * 1024 * 1024)
-
-#define CFG_TEE_LOAD_ADDR	0x3F000000
-
-#ifdef CFG_WITH_PAGER
-
-#define CFG_TEE_RAM_START	TZSRAM_BASE
-#define CFG_TEE_RAM_PH_SIZE	TZSRAM_SIZE
-#define CFG_TA_RAM_START	ROUNDUP(TZDRAM_BASE, CORE_MMU_DEVICE_SIZE)
-#define CFG_TA_RAM_SIZE		ROUNDDOWN(TZDRAM_SIZE, CORE_MMU_DEVICE_SIZE)
-
-#else /* CFG_WITH_PAGER */
-
-#define CFG_TEE_RAM_PH_SIZE	CFG_TEE_RAM_VA_SIZE
-#define CFG_TEE_RAM_START	TZDRAM_BASE
-#define CFG_TA_RAM_START	ROUNDUP((TZDRAM_BASE + CFG_TEE_RAM_VA_SIZE), \
-					CORE_MMU_DEVICE_SIZE)
-
-#define CFG_TA_RAM_SIZE		ROUNDDOWN((TZDRAM_SIZE - CFG_TEE_RAM_VA_SIZE),\
-					  CORE_MMU_DEVICE_SIZE)
-
-#endif /* CFG_WITH_PAGER */
+#else /* PLATFORM_FLAVOR_hikey */
+#error Unknown HiKey PLATFORM_FLAVOR
+#endif /* PLATFORM_FLAVOR_hikey */
 
 #endif /* PLATFORM_CONFIG_H */

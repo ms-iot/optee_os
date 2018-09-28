@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef CORE_MMU_H
 #define CORE_MMU_H
@@ -74,10 +51,6 @@
 #define CORE_MMU_USER_PARAM_SIZE	(1 << CORE_MMU_USER_PARAM_SHIFT)
 #define CORE_MMU_USER_PARAM_MASK	(CORE_MMU_USER_PARAM_SIZE - 1)
 
-#ifndef CFG_TEE_RAM_VA_SIZE
-#define CFG_TEE_RAM_VA_SIZE		CORE_MMU_PGDIR_SIZE
-#endif
-
 /*
  * CORE_MMU_L1_TBL_OFFSET is used when switching to/from reduced kernel
  * mapping. The actual value depends on internals in core_mmu_lpae.c and
@@ -96,10 +69,19 @@
 
 /*
  * Identify mapping constraint: virtual base address is the physical start addr.
+ * If platform did not set some macros, some get default value.
  */
-#define TEE_RAM_VA_START		CFG_TEE_RAM_START
+#ifndef TEE_RAM_VA_SIZE
+#define TEE_RAM_VA_SIZE			CORE_MMU_PGDIR_SIZE
+#endif
+
+#ifndef TEE_LOAD_ADDR
+#define TEE_LOAD_ADDR			TEE_RAM_START
+#endif
+
+#define TEE_RAM_VA_START		TEE_RAM_START
 #define TEE_TEXT_VA_START		(TEE_RAM_VA_START + \
-				(CFG_TEE_LOAD_ADDR - CFG_TEE_RAM_START))
+					 (TEE_LOAD_ADDR - TEE_RAM_START))
 
 #ifndef STACK_ALIGNMENT
 #define STACK_ALIGNMENT			(sizeof(long) * 2)
@@ -124,6 +106,7 @@
  * MEM_AREA_RES_VASPACE: Reserved virtual memory space
  * MEM_AREA_SHM_VASPACE: Virtual memory space for dynamic shared memory buffers
  * MEM_AREA_TA_VASPACE: TA va space, only used with phys_to_virt()
+ * MEM_AREA_DDR_OVERALL: Overall DDR address range, candidate to dynamic shm.
  * MEM_AREA_MAXTYPE:  lower invalid 'type' value
  */
 enum teecore_memtypes {
@@ -145,6 +128,7 @@ enum teecore_memtypes {
 	MEM_AREA_TA_VASPACE,
 	MEM_AREA_PAGER_VASPACE,
 	MEM_AREA_SDP_MEM,
+	MEM_AREA_DDR_OVERALL,
 	MEM_AREA_MAXTYPE
 };
 
@@ -169,6 +153,7 @@ static inline const char *teecore_memtype_name(enum teecore_memtypes type)
 		[MEM_AREA_TA_VASPACE] = "TA_VASPACE",
 		[MEM_AREA_PAGER_VASPACE] = "PAGER_VASPACE",
 		[MEM_AREA_SDP_MEM] = "SDP_MEM",
+		[MEM_AREA_DDR_OVERALL] = "DDR_OVERALL"
 	};
 
 	COMPILE_TIME_ASSERT(ARRAY_SIZE(names) == MEM_AREA_MAXTYPE);
@@ -244,9 +229,14 @@ struct core_mmu_phys_mem {
 			__unused
 #endif
 
-#define register_nsec_ddr(addr, size) \
+#define register_dynamic_shm(addr, size) \
 		__register_memory1(#addr, MEM_AREA_RAM_NSEC, (addr), (size), \
 				   phys_nsec_ddr_section, __COUNTER__)
+
+#define register_ddr(addr, size) \
+		__register_memory1(#addr, MEM_AREA_DDR_OVERALL, (addr), \
+				   (size), phys_ddr_overall_section,\
+				   __COUNTER__)
 
 /* Default NSec shared memory allocated from NSec world */
 extern unsigned long default_nsec_shm_paddr;
@@ -384,15 +374,15 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 		struct core_mmu_table_info *tbl_info);
 
 /*
- * core_mmu_prepare_small_page_mapping() - prepare target small page parent
- *	pgdir so that each of its entry can be used to map a page.
+ * core_mmu_entry_to_finer_grained() - divide mapping at current level into
+ *     smaller ones so memory can be mapped with finer granularity
  * @tbl_info:	table where target record located
  * @idx:	index of record for which a pdgir must be setup.
  * @secure:	true/false if pgdir maps secure/non-secure memory (32bit mmu)
  * @return true on successful, false on error
  */
-bool core_mmu_prepare_small_page_mapping(struct core_mmu_table_info *tbl_info,
-					 unsigned int idx, bool secure);
+bool core_mmu_entry_to_finer_grained(struct core_mmu_table_info *tbl_info,
+				     unsigned int idx, bool secure);
 
 void core_mmu_set_entry_primitive(void *table, size_t level, size_t idx,
 				  paddr_t pa, uint32_t attr);
@@ -568,10 +558,11 @@ void map_memarea_sections(const struct tee_mmap_region *mm, uint32_t *ttb);
  */
 bool core_mmu_nsec_ddr_is_defined(void);
 
-#ifdef CFG_DT
 void core_mmu_set_discovered_nsec_ddr(struct core_mmu_phys_mem *start,
 				      size_t nelems);
-#endif
+
+unsigned int asid_alloc(void);
+void asid_free(unsigned int asid);
 
 #ifdef CFG_SECURE_DATA_PATH
 /* Alloc and fill SDP memory objects table - table is NULL terminated */

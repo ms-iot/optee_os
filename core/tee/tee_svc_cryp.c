@@ -1,29 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <assert.h>
@@ -387,7 +364,7 @@ static const struct tee_cryp_obj_type_attrs tee_cryp_obj_ecc_keypair_attrs[] = {
 
 	{
 	.attr_id = TEE_ATTR_ECC_CURVE,
-	.flags = TEE_TYPE_ATTR_REQUIRED,
+	.flags = TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_SIZE_INDICATOR,
 	.ops_index = ATTR_OPS_INDEX_VALUE,
 	RAW_DATA(struct ecc_keypair, curve)
 	},
@@ -463,11 +440,11 @@ static const struct tee_cryp_obj_type_props tee_cryp_obj_props[] = {
 		4096 / 8 + sizeof(struct tee_cryp_obj_secret),
 		tee_cryp_obj_pbkdf2_passwd_attrs),
 #endif
-	PROP(TEE_TYPE_RSA_PUBLIC_KEY, 1, 256, 2048,
+	PROP(TEE_TYPE_RSA_PUBLIC_KEY, 1, 256, CFG_CORE_BIGNUM_MAX_BITS,
 		sizeof(struct rsa_public_key),
 		tee_cryp_obj_rsa_pub_key_attrs),
 
-	PROP(TEE_TYPE_RSA_KEYPAIR, 1, 256, 2048,
+	PROP(TEE_TYPE_RSA_KEYPAIR, 1, 256, CFG_CORE_BIGNUM_MAX_BITS,
 		sizeof(struct rsa_keypair),
 		tee_cryp_obj_rsa_keypair_attrs),
 
@@ -576,7 +553,7 @@ static TEE_Result op_attr_secret_value_to_user(void *attr,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	if (s < key->key_size)
+	if (s < key->key_size || !buffer)
 		return TEE_ERROR_SHORT_BUFFER;
 
 	return tee_svc_copy_to_user(buffer, key + 1, key->key_size);
@@ -672,7 +649,7 @@ static TEE_Result op_attr_bignum_to_user(void *attr,
 		return res;
 	if (!req_size)
 		return TEE_SUCCESS;
-	if (s < req_size)
+	if (s < req_size || !buffer)
 		return TEE_ERROR_SHORT_BUFFER;
 
 	/* Check we can access data using supplied user mode pointer */
@@ -781,7 +758,7 @@ static TEE_Result op_attr_value_to_user(void *attr,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	if (s < req_size)
+	if (s < req_size || !buffer)
 		return TEE_ERROR_SHORT_BUFFER;
 
 	return tee_svc_copy_to_user(buffer, value, req_size);
@@ -1447,6 +1424,31 @@ static TEE_Result tee_svc_cryp_check_attr(enum attr_usage usage,
 	return TEE_SUCCESS;
 }
 
+static TEE_Result get_ec_key_size(uint32_t curve, size_t *key_size)
+{
+	switch (curve) {
+	case TEE_ECC_CURVE_NIST_P192:
+		*key_size = 192;
+		break;
+	case TEE_ECC_CURVE_NIST_P224:
+		*key_size = 224;
+		break;
+	case TEE_ECC_CURVE_NIST_P256:
+		*key_size = 256;
+		break;
+	case TEE_ECC_CURVE_NIST_P384:
+		*key_size = 384;
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		*key_size = 521;
+		break;
+	default:
+		return TEE_ERROR_NOT_SUPPORTED;
+	}
+
+	return TEE_SUCCESS;
+}
+
 static TEE_Result tee_svc_cryp_obj_populate_type(
 		struct tee_obj *o,
 		const struct tee_cryp_obj_type_props *type_props,
@@ -1487,8 +1489,20 @@ static TEE_Result tee_svc_cryp_obj_populate_type(
 		 * of the object
 		 */
 		if (type_props->type_attrs[idx].flags &
-		    TEE_TYPE_ATTR_SIZE_INDICATOR)
-			obj_size += attrs[n].content.ref.length * 8;
+		    TEE_TYPE_ATTR_SIZE_INDICATOR) {
+			/*
+			 * For ECDSA/ECDH we need to translate curve into
+			 * object size
+			 */
+			if (attrs[n].attributeID == TEE_ATTR_ECC_CURVE) {
+				res = get_ec_key_size(attrs[n].content.value.a,
+						      &obj_size);
+				if (res != TEE_SUCCESS)
+					return res;
+			} else {
+				obj_size += (attrs[n].content.ref.length * 8);
+			}
+		}
 	}
 
 	/*
@@ -3014,7 +3028,7 @@ TEE_Result syscall_authenc_enc_final(unsigned long state,
 	struct tee_cryp_state *cs;
 	struct tee_ta_session *sess;
 	uint64_t dlen;
-	uint64_t tlen;
+	uint64_t tlen = 0;
 	size_t tmp_dlen;
 	size_t tmp_tlen;
 

@@ -29,12 +29,17 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
+#include <mm/generic_ram_layout.h>
+
 #define STACK_ALIGNMENT			64
 
-#define GIC_BASE			0x01400000
-#define GICC_OFFSET			0x2000
-#define GICD_OFFSET			0x1000
+/* console uart define */
+#define CONSOLE_UART_BASE		UART0_BASE
 
+/* Platform specific defines */
+#if defined(PLATFORM_FLAVOR_ls1021aqds) || defined(PLATFORM_FLAVOR_ls1021atwr)
+/*  DUART 1 */
+#define UART0_BASE			0x021C0500
 #define DCFG_BASE			0x01EE0000
 #define DCFG_CCSR_BRR			0xE4
 #define DCFG_SCRATCHRW1			0x200
@@ -50,113 +55,34 @@
 #define	CSU_ACCESS_SEC_ONLY		0x003F003F
 #define CSU_SETTING_LOCK		0x01000100
 
+#define GIC_BASE			0x01400000
+#define GICC_OFFSET			0x2000
+#define GICD_OFFSET			0x1000
+#endif
+
+#if defined(PLATFORM_FLAVOR_ls1043ardb) || defined(PLATFORM_FLAVOR_ls1046ardb) \
+|| defined(PLATFORM_FLAVOR_ls1012ardb) || defined(PLATFORM_FLAVOR_ls1012afrwy)
 /*  DUART 1 */
 #define UART0_BASE			0x021C0500
-/*  DUART 2 */
-#define UART1_BASE			0x021D0500
-/*  LPUART 1 */
-#define UART2_BASE			0x02950000
-/*  LPUART 2 */
-#define UART3_BASE			0x02960000
-
-
-/* console uart define */
-#define CONSOLE_UART_BASE		UART0_BASE
-
-#define DRAM0_BASE			0x80000000
-
-/* Platform specific defines */
-
-#if defined(PLATFORM_FLAVOR_ls1021aqds)
-#define DRAM0_SIZE			0x80000000
-#define CFG_DDR_TEETZ_RESERVED_START	0xFC000000
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x03F00000
-#define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
-#define CFG_PUB_RAM_SIZE		(1024 * 1024)
-#define CFG_TEE_CORE_NB_CORE		2
+#define GIC_BASE			0x01400000
+#define GICC_OFFSET			0x2000
+#define GICD_OFFSET			0x1000
 #endif
 
-#if defined(PLATFORM_FLAVOR_ls1021atwr)
-#define DRAM0_SIZE			0x40000000
-#define CFG_DDR_TEETZ_RESERVED_START	0xBC000000
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x03F00000
-#define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
-#define CFG_PUB_RAM_SIZE		(1024 * 1024)
-#define CFG_TEE_CORE_NB_CORE		2
+#if defined(PLATFORM_FLAVOR_ls1088ardb)
+/*  DUART 1 */
+#define UART0_BASE			0x021C0500
+#define GIC_BASE			0x06000000
+#define GICC_OFFSET			0x0
+#define GICD_OFFSET			0x0
 #endif
 
-#if defined(PLATFORM_FLAVOR_ls1043ardb) || defined(PLATFORM_FLAVOR_ls1046ardb)
-#define DRAM0_SIZE			0x80000000
-#define CFG_DDR_TEETZ_RESERVED_START	0xFC000000
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x04000000
-#define CFG_TEE_RAM_VA_SIZE		(2 * 1024 * 1024)
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
-#define CFG_TEE_CORE_NB_CORE		4
-#endif
-
-#if defined(PLATFORM_FLAVOR_ls1012ardb)
-#define DRAM0_SIZE			0x40000000
-#define CFG_DDR_TEETZ_RESERVED_START	0xBC000000
-#define CFG_DDR_TEETZ_RESERVED_SIZE	0x04000000
-#define CFG_TEE_RAM_VA_SIZE		(2 * 1024 * 1024)
-#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
-#define CFG_TEE_CORE_NB_CORE		1
-#endif
-
-#define DDR_PHYS_START			DRAM0_BASE
-#define DDR_SIZE			DRAM0_SIZE
-
-#define CFG_DDR_START			DDR_PHYS_START
-#define CFG_DDR_SIZE			DDR_SIZE
-
-#ifndef CFG_DDR_TEETZ_RESERVED_START
-#error "TEETZ reserved DDR start address undef: CFG_DDR_TEETZ_RESERVED_START"
-#endif
-#ifndef CFG_DDR_TEETZ_RESERVED_SIZE
-#error "TEETZ reserved DDR siez undefined: CFG_DDR_TEETZ_RESERVED_SIZE"
-#endif
-
-/*
- * TEE/TZ RAM layout:
- *
- *  +-----------------------------------------+  <- CFG_DDR_TEETZ_RESERVED_START
- *  | TEETZ private RAM  |  TEE_RAM           |   ^
- *  |                    +--------------------+   |
- *  |                    |  TA_RAM            |   |
- *  +-----------------------------------------+   | CFG_DDR_TEETZ_RESERVED_SIZE
- *  |                    |      teecore alloc |   |
- *  |  TEE/TZ and NSec   |  PUB_RAM   --------|   |
- *  |   shared memory    |         NSec alloc |   |
- *  +-----------------------------------------+   v
- *
- *  TEE_RAM : 1MByte
- *  PUB_RAM : 1MByte
- *  TA_RAM  : all what is left (at least 2MByte !)
- */
-
-/* define the several memory area sizes */
-#if (CFG_DDR_TEETZ_RESERVED_SIZE < (4 * 1024 * 1024))
-#error "Invalid CFG_DDR_TEETZ_RESERVED_SIZE: at least 4MB expected"
-#endif
-
-/* Full GlobalPlatform test suite requires CFG_SHMEM_SIZE to be at least 2MB */
-#define CFG_TEE_RAM_PH_SIZE		CFG_TEE_RAM_VA_SIZE
-#define CFG_TA_RAM_SIZE			(CFG_DDR_TEETZ_RESERVED_SIZE - \
-					 CFG_TEE_RAM_PH_SIZE - CFG_PUB_RAM_SIZE)
-
-/* define the secure/unsecure memory areas */
-#define TZDRAM_BASE			(CFG_DDR_TEETZ_RESERVED_START)
-#define TZDRAM_SIZE			(CFG_TEE_RAM_PH_SIZE + CFG_TA_RAM_SIZE)
-
-#define CFG_SHMEM_START			(TZDRAM_BASE + TZDRAM_SIZE)
-#define CFG_SHMEM_SIZE			 CFG_PUB_RAM_SIZE
-
-/* define the memory areas (TEE_RAM must start at reserved DDR start addr */
-#define CFG_TEE_RAM_START		TZDRAM_BASE
-#define CFG_TA_RAM_START		(CFG_TEE_RAM_START + \
-					 CFG_TEE_RAM_PH_SIZE)
-#ifndef CFG_TEE_LOAD_ADDR
-#define CFG_TEE_LOAD_ADDR		CFG_TEE_RAM_START
+#if defined(PLATFORM_FLAVOR_ls2088ardb)
+/*  DUART 1 */
+#define UART0_BASE			0x021C0600
+#define GIC_BASE			0x06000000
+#define GICC_OFFSET			0x0
+#define GICD_OFFSET			0x0
 #endif
 
 #endif /*PLATFORM_CONFIG_H*/

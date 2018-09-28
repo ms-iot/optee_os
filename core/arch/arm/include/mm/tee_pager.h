@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifndef MM_TEE_PAGER_H
@@ -67,13 +44,26 @@ bool tee_pager_get_table_info(vaddr_t va, struct core_mmu_table_info *ti);
 void *tee_pager_phys_to_virt(paddr_t pa);
 
 /*
- * tee_pager_init() - Initialized the pager
+ * tee_pager_set_alias_area() - Initialize pager alias area
  * @mm_alias:	The alias area where all physical pages managed by the
  *		pager are aliased
  *
  * Panics if called twice or some other error occurs.
  */
-void tee_pager_init(tee_mm_entry_t *mm_alias);
+void tee_pager_set_alias_area(tee_mm_entry_t *mm_alias);
+
+/*
+ * tee_pager_generate_authenc_key() - Generates authenc key for r/w paging
+ *
+ * Needs to draw random from RNG, panics if some error occurs.
+ */
+#ifdef CFG_WITH_PAGER
+void tee_pager_generate_authenc_key(void);
+#else
+static inline void tee_pager_generate_authenc_key(void)
+{
+}
+#endif
 
 /*
  * tee_pager_add_core_area() - Adds a pageable core area
@@ -110,7 +100,16 @@ void tee_pager_add_core_area(vaddr_t base, size_t size, uint32_t flags,
  *
  * Return true on success of false if the area can't be added
  */
+#ifdef CFG_PAGED_USER_TA
 bool tee_pager_add_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size);
+#else
+static inline bool tee_pager_add_uta_area(struct user_ta_ctx *utc __unused,
+					  vaddr_t base __unused,
+					  size_t size __unused)
+{
+	return false;
+}
+#endif
 
 /*
  * tee_pager_set_uta_area_attr() - Set attributes of a initialized memory area
@@ -121,8 +120,18 @@ bool tee_pager_add_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size);
  *
  * Return true on success of false if the area can't be updated
  */
+#ifdef CFG_PAGED_USER_TA
 bool tee_pager_set_uta_area_attr(struct user_ta_ctx *utc, vaddr_t base,
 				 size_t size, uint32_t flags);
+#else
+static inline bool tee_pager_set_uta_area_attr(struct user_ta_ctx *utc __unused,
+					       vaddr_t base __unused,
+					       size_t size __unused,
+					       uint32_t flags __unused)
+{
+	return false;
+}
+#endif
 
 void tee_pager_transfer_uta_region(struct user_ta_ctx *src_utc,
 				   vaddr_t src_base,

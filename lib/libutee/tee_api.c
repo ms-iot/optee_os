@@ -1,37 +1,14 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdlib.h>
 #include <string.h>
 
 #include <tee_api.h>
-#include <utee_syscalls.h>
+#include <tee_internal_api_extensions.h>
 #include <user_ta_header.h>
-#include "tee_user_mem.h"
+#include <utee_syscalls.h>
 #include "tee_api_private.h"
 
 static const void *tee_api_instance_data;
@@ -312,21 +289,24 @@ void TEE_GetREETime(TEE_Time *time)
 
 void *TEE_Malloc(uint32_t len, uint32_t hint)
 {
-	return tee_user_mem_alloc(len, hint);
+	if (hint == TEE_MALLOC_FILL_ZERO)
+		return calloc(1, len);
+	else if (hint == TEE_USER_MEM_HINT_NO_FILL_ZERO)
+		return malloc(len);
+
+	EMSG("Invalid hint %#" PRIx32, hint);
+
+	return NULL;
 }
 
-void *TEE_Realloc(const void *buffer, uint32_t newSize)
+void *TEE_Realloc(void *buffer, uint32_t newSize)
 {
-	/*
-	 * GP TEE Internal API specifies newSize as 'uint32_t'.
-	 * use unsigned 'size_t' type. it is at least 32bit!
-	 */
-	return tee_user_mem_realloc((void *)buffer, (size_t) newSize);
+	return realloc(buffer, newSize);
 }
 
 void TEE_Free(void *buffer)
 {
-	tee_user_mem_free(buffer);
+	free(buffer);
 }
 
 /* Cache maintenance support (TA requires the CACHE_MAINTENANCE property) */

@@ -60,7 +60,7 @@ void imx_wdog_restart(void)
 
 	DMSG("val %x\n", val);
 
-	write16(val, wdog_base + WCR_OFF);
+	write16(val, wdog_base + WDT_WCR);
 	dsb();
 
 	if (read16(wdog_base + WDT_WCR) & WDT_WCR_WDE) {
@@ -68,8 +68,8 @@ void imx_wdog_restart(void)
 		write16(WDT_SEQ2, wdog_base + WDT_WSR);
 	}
 
-	write16(val, wdog_base + WCR_OFF);
-	write16(val, wdog_base + WCR_OFF);
+	write16(val, wdog_base + WDT_WCR);
+	write16(val, wdog_base + WDT_WCR);
 
 	while (1)
 		;
@@ -77,7 +77,7 @@ void imx_wdog_restart(void)
 KEEP_PAGER(imx_wdog_restart);
 
 #ifdef CFG_DT
-static TEE_Result imx_wdog_init(void)
+static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
 {
 	enum teecore_memtypes mtype;
 	void *fdt;
@@ -97,8 +97,8 @@ static TEE_Result imx_wdog_init(void)
 	};
 #else
 	static const char * const wdog_path[] = {
-		"/soc/aips-bus@02000000/wdog@020bc000",
-		"/soc/aips-bus@02000000/wdog@020c0000",
+		"/soc/aips-bus@2000000/wdog@20bc000",
+		"/soc/aips-bus@2000000/wdog@20c0000",
 	};
 #endif
 
@@ -158,44 +158,25 @@ static TEE_Result imx_wdog_init(void)
 		return TEE_ERROR_GENERIC;
 	}
 
-	wdog_base = vbase;
+	*wdog_vbase = vbase;
 
 	return TEE_SUCCESS;
 }
 #else
+register_phys_mem(MEM_AREA_IO_SEC, WDOG_BASE, CORE_MMU_DEVICE_SIZE);
+static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
+{
+	*wdog_vbase = (vaddr_t)phys_to_virt(WDOG_BASE, MEM_AREA_IO_SEC);
+	return TEE_SUCCESS;
+}
+#endif
+
 static TEE_Result imx_wdog_init(void)
 {
-	vaddr_t vbase;
-	paddr_t pbase = WDOG_BASE;
-	size_t sz = CORE_MMU_DEVICE_SIZE;
-
 #if defined(PLATFORM_FLAVOR_mx7dsabresd) || \
     defined(PLATFORM_FLAVOR_mx7dclsom)
 	ext_reset = true;
 #endif
-
-	/*
-	 * Check to see whether it has been mapped using
-	 * register_phys_mem or not.
-	 */
-	vbase = (vaddr_t)phys_to_virt(pbase, MEM_AREA_IO_SEC);
-	if (!vbase) {
-		if (!core_mmu_add_mapping(MEM_AREA_IO_SEC, pbase, sz)) {
-			EMSG("Failed to map %zu bytes at PA 0x%"PRIxPA,
-			     (size_t)sz, pbase);
-			return TEE_ERROR_GENERIC;
-		}
-	}
-
-	vbase = (vaddr_t)phys_to_virt(pbase, MEM_AREA_IO_SEC);
-	if (!vbase) {
-		EMSG("Failed to get VA for PA 0x%"PRIxPA, pbase);
-		return TEE_ERROR_GENERIC;
-	}
-
-	wdog_base = vbase;
-
-	return TEE_SUCCESS;
+	return imx_wdog_base(&wdog_base);
 }
-#endif // CFG_DT
 driver_init(imx_wdog_init);

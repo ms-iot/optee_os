@@ -1,29 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -1472,23 +1449,25 @@ TEE_Result TEE_AEEncryptFinal(TEE_OperationHandle operation,
 	 * Check that required destLen is big enough before starting to feed
 	 * data to the algorithm. Errors during feeding of data are fatal as we
 	 * can't restore sync with this API.
+	 *
+	 * Need to check this before update_payload since sync would be lost if
+	 * we return short buffer after that.
 	 */
+	res = TEE_ERROR_GENERIC;
+
 	req_dlen = operation->buffer_offs + srcLen;
 	if (*destLen < req_dlen) {
 		*destLen = req_dlen;
 		res = TEE_ERROR_SHORT_BUFFER;
-		goto out;
 	}
 
-	/*
-	 * Need to check this before update_payload since sync would be lost if
-	 * we return short buffer after that.
-	 */
 	if (*tagLen < operation->ae_tag_len) {
 		*tagLen = operation->ae_tag_len;
 		res = TEE_ERROR_SHORT_BUFFER;
-		goto out;
 	}
+
+	if (res == TEE_ERROR_SHORT_BUFFER)
+		goto out;
 
 	tl = *tagLen;
 	tmp_dlen = *destLen - acc_dlen;
@@ -1811,4 +1790,17 @@ void TEE_GenerateRandom(void *randomBuffer, uint32_t randomBufferLen)
 	res = utee_cryp_random_number_generate(randomBuffer, randomBufferLen);
 	if (res != TEE_SUCCESS)
 		TEE_Panic(res);
+}
+
+int rand(void)
+{
+	int rc;
+
+	TEE_GenerateRandom(&rc, sizeof(rc));
+
+	/*
+	 * RAND_MAX is the larges int, INT_MAX which is all bits but the
+	 * highest bit set.
+	 */
+	return rc & RAND_MAX;
 }

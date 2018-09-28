@@ -3,25 +3,21 @@
  * Copyright (c) 2016, Linaro Limited
  */
 
+#include <gen-asm-defines.h>
 #include <kernel/thread.h>
 #include <sm/pm.h>
 #include <sm/sm.h>
 #include <types_ext.h>
 #include "thread_private.h"
 
-#define DEFINES void __defines(void); void __defines(void)
-
-#define DEFINE(def, val) \
-	asm volatile("\n==>" #def " %0 " #val : : "i" (val))
-
 DEFINES
 {
 #ifdef ARM32
 	DEFINE(SM_NSEC_CTX_R0, offsetof(struct sm_nsec_ctx, r0));
 	DEFINE(SM_NSEC_CTX_R8, offsetof(struct sm_nsec_ctx, r8));
-	DEFINE(SM_NSEC_CTX_MON_LR, offsetof(struct sm_nsec_ctx, mon_lr));
 	DEFINE(SM_SEC_CTX_R0, offsetof(struct sm_sec_ctx, r0));
 	DEFINE(SM_SEC_CTX_MON_LR, offsetof(struct sm_sec_ctx, mon_lr));
+	DEFINE(SM_CTX_SEC_SIZE, sizeof(struct sm_sec_ctx));
 	DEFINE(SM_CTX_SIZE, sizeof(struct sm_ctx));
 	DEFINE(SM_CTX_NSEC, offsetof(struct sm_ctx, nsec));
 	DEFINE(SM_CTX_SEC, offsetof(struct sm_ctx, sec));

@@ -1,29 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <types_ext.h>
@@ -525,7 +502,7 @@ static TEE_Result tee_ta_init_session(TEE_ErrorOrigin *err,
 			goto out;
 	}
 
-	/* Look for static TA */
+	/* Look for pseudo TA */
 	res = tee_ta_init_pseudo_ta_session(uuid, s);
 	if (res == TEE_SUCCESS || res != TEE_ERROR_ITEM_NOT_FOUND)
 		goto out;
@@ -642,8 +619,11 @@ TEE_Result tee_ta_invoke_command(TEE_ErrorOrigin *err,
 	}
 
 	tee_ta_clear_busy(sess->ctx);
-	if (res != TEE_SUCCESS)
+
+	/* Short buffer is not an effective error case */
+	if (res != TEE_SUCCESS && res != TEE_ERROR_SHORT_BUFFER)
 		DMSG("Error: %x of %d\n", res, *err);
+
 	return res;
 }
 
@@ -707,7 +687,7 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 	 * if ctx->mmu != NULL we must have user mapping active.
 	 */
 	if (((ctx && is_user_ta_ctx(ctx) ?
-			to_user_ta_ctx(ctx)->mmu : NULL) == NULL) ==
+			to_user_ta_ctx(ctx)->vm_info : NULL) == NULL) ==
 					core_mmu_user_mapping_is_active())
 		panic("unexpected active mapping");
 }
@@ -749,22 +729,6 @@ struct tee_ta_session *tee_ta_get_calling_session(void)
 	if (s)
 		s = TAILQ_NEXT(s, link_tsd);
 	return s;
-}
-
-TEE_Result tee_ta_get_client_id(TEE_Identity *id)
-{
-	TEE_Result res;
-	struct tee_ta_session *sess;
-
-	res = tee_ta_get_current_session(&sess);
-	if (res != TEE_SUCCESS)
-		return res;
-
-	if (id == NULL)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	*id = sess->clnt_id;
-	return TEE_SUCCESS;
 }
 
 /*

@@ -15,6 +15,8 @@
 #include <sm/teesmc_opteed.h>
 #include <sm/teesmc_opteed_macros.h>
 
+.arch_extension sec
+
 .section .data
 .balign 4
 
@@ -208,7 +210,7 @@ END_FUNC reset_vect_table
 	mov	r7, r1
 	.endm
 
-	.macro maybe_init_ca15_spectre_workaround
+	.macro maybe_init_spectre_workaround
 #if !defined(CFG_WITH_ARM_TRUSTED_FW) && \
     (defined(CFG_CORE_WORKAROUND_SPECTRE_BP) || \
      defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC))
@@ -218,11 +220,19 @@ END_FUNC reset_vect_table
 	bne	1f
 	ubfx	r1, r0, #MIDR_PRIMARY_PART_NUM_SHIFT, \
 			#MIDR_PRIMARY_PART_NUM_WIDTH
+
+	movw	r2, #CORTEX_A8_PART_NUM
+	cmp	r1, r2
+	moveq	r2, #ACTLR_CA8_ENABLE_INVALIDATE_BTB
+	beq	2f
+
 	movw	r2, #CORTEX_A15_PART_NUM
 	cmp	r1, r2
-	bne	1f
+	moveq	r2, #ACTLR_CA15_ENABLE_INVALIDATE_BTB
+	bne	1f	/* Skip it for all other CPUs */
+2:
 	read_actlr r0
-	orr	r0, r0, #ACTLR_CA15_ENABLE_INVALIDATE_BTB
+	orr	r0, r0, r2
 	write_actlr r0
 	isb
 1:
@@ -235,9 +245,15 @@ UNWIND(	.cantunwind)
 
 	bootargs_entry
 
+	/*
+	 * 32bit entry is expected to execute Supervisor mode,
+	 * some bootloader may enter in Supervisor or Monitor
+	 */
+	cps	#CPSR_MODE_SVC
+
 	/* Early ARM secure MP specific configuration */
 	bl	plat_cpu_reset_early
-	maybe_init_ca15_spectre_workaround
+	maybe_init_spectre_workaround
 
 	set_sctlr
 	isb
@@ -282,7 +298,7 @@ KEEP_INIT _start
 	 * Use ANSI #define to trap source file line number for PL310 assertion
 	 */
 	.macro __inval_cache_vrange vbase, vend, line
-#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
+#if defined(CFG_PL310) && !defined(CFG_PL310_SIP_PROTOCOL)
 		assert_flat_mapped_range (\vbase), (\line)
 		bl	pl310_base
 		ldr	r1, =(\vbase)
@@ -296,7 +312,7 @@ KEEP_INIT _start
 	.endm
 
 	.macro __flush_cache_vrange vbase, vend, line
-#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
+#if defined(CFG_PL310) && !defined(CFG_PL310_SIP_PROTOCOL)
 		assert_flat_mapped_range (\vbase), (\line)
 		ldr	r0, =(\vbase)
 		ldr	r1, =(\vend)
@@ -422,7 +438,7 @@ shadow_stack_access_ok:
 	inval_cache_vrange(__text_start, __end)
 #endif
 
-#if defined(CFG_PL310) && !defined(CFG_SKIP_L2_INIT)
+#if defined(CFG_PL310) && !defined(CFG_PL310_SIP_PROTOCOL)
 	/* Enable PL310 if not yet enabled */
 	bl	pl310_base
 	bl	arm_cl2_enable
@@ -458,7 +474,10 @@ shadow_stack_access_ok:
 	flush_cpu_semaphores
 	wait_secondary
 
-#if defined(CFG_PL310_LOCKED) && !defined(CFG_SKIP_L2_INIT)
+#ifdef CFG_PL310_LOCKED
+#ifdef CFG_PL310_SIP_PROTOCOL
+#error "CFG_PL310_LOCKED must not be defined when CFG_PL310_SIP_PROTOCOL=y"
+#endif
 	/* lock/invalidate all lines: pl310 behaves as if disable */
 	bl	pl310_base
 	bl	arm_cl2_lockallways

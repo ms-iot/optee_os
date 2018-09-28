@@ -2,29 +2,6 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifndef SM_SM_H
@@ -33,7 +10,7 @@
 #include <compiler.h>
 #include <types_ext.h>
 
-struct sm_mode_regs {
+struct sm_unbanked_regs {
 	uint32_t usr_sp;
 	uint32_t usr_lr;
 	uint32_t irq_spsr;
@@ -55,10 +32,13 @@ struct sm_mode_regs {
 	uint32_t und_spsr;
 	uint32_t und_sp;
 	uint32_t und_lr;
+#ifdef CFG_SM_NO_CYCLE_COUNTING
+	uint32_t pmcr;
+#endif
 };
 
 struct sm_nsec_ctx {
-	struct sm_mode_regs mode_regs;
+	struct sm_unbanked_regs ub_regs;
 
 	uint32_t r8;
 	uint32_t r9;
@@ -81,7 +61,7 @@ struct sm_nsec_ctx {
 };
 
 struct sm_sec_ctx {
-	struct sm_mode_regs mode_regs;
+	struct sm_unbanked_regs ub_regs;
 
 	uint32_t r0;
 	uint32_t r1;
@@ -98,8 +78,13 @@ struct sm_sec_ctx {
 };
 
 struct sm_ctx {
+#ifndef CFG_SM_NO_CYCLE_COUNTING
 	uint32_t pad;
+#endif
 	struct sm_sec_ctx sec;
+#ifdef CFG_SM_NO_CYCLE_COUNTING
+	uint32_t pad;
+#endif
 	struct sm_nsec_ctx nsec;
 };
 
@@ -135,6 +120,6 @@ static inline bool sm_platform_handler(__unused struct sm_ctx *ctx)
 bool sm_platform_handler(struct sm_ctx *ctx);
 #endif
 
-void sm_save_modes_regs(struct sm_mode_regs *regs);
-void sm_restore_modes_regs(struct sm_mode_regs *regs);
+void sm_save_unbanked_regs(struct sm_unbanked_regs *regs);
+void sm_restore_unbanked_regs(struct sm_unbanked_regs *regs);
 #endif /*SM_SM_H*/

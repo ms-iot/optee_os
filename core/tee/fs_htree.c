@@ -397,7 +397,8 @@ static TEE_Result init_tree_from_data(struct tee_fs_htree *ht)
 	return TEE_SUCCESS;
 }
 
-static TEE_Result calc_node_hash(struct htree_node *node, void *ctx,
+static TEE_Result calc_node_hash(struct htree_node *node,
+				 struct tee_fs_htree_meta *meta, void *ctx,
 				 uint8_t *digest)
 {
 	TEE_Result res;
@@ -412,6 +413,12 @@ static TEE_Result calc_node_hash(struct htree_node *node, void *ctx,
 	res = crypto_hash_update(ctx, alg, ndata, nsize);
 	if (res != TEE_SUCCESS)
 		return res;
+
+	if (meta) {
+		res = crypto_hash_update(ctx, alg, (void *)meta, sizeof(*meta));
+		if (res != TEE_SUCCESS)
+			return res;
+	}
 
 	if (node->child[0]) {
 		res = crypto_hash_update(ctx, alg, node->child[0]->node.hash,
@@ -463,36 +470,39 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 				  TEE_FS_HTREE_IV_SIZE, TEE_FS_HTREE_TAG_SIZE,
 				  aad_len, payload_len);
 	if (res != TEE_SUCCESS)
-		goto exit;
+		goto err_free;
 
 	if (!ni) {
 		res = crypto_authenc_update_aad(ctx, alg, mode,
 						ht->root.node.hash,
 						TEE_FS_HTREE_FEK_SIZE);
 		if (res != TEE_SUCCESS)
-			goto exit;
+			goto err;
 
 		res = crypto_authenc_update_aad(ctx, alg, mode,
 						(void *)&ht->head.counter,
 						sizeof(ht->head.counter));
 		if (res != TEE_SUCCESS)
-			goto exit;
+			goto err;
 	}
 
 	res = crypto_authenc_update_aad(ctx, alg, mode, ht->head.enc_fek,
 					TEE_FS_HTREE_FEK_SIZE);
 	if (res != TEE_SUCCESS)
-		goto exit;
+		goto err;
 
 	res = crypto_authenc_update_aad(ctx, alg, mode, iv,
 					TEE_FS_HTREE_IV_SIZE);
+	if (res != TEE_SUCCESS)
+		goto err;
 
-exit:
-	if (res == TEE_SUCCESS)
-		*ctx_ret = ctx;
-	else
-		crypto_authenc_final(ctx, alg);
+	*ctx_ret = ctx;
 
+	return TEE_SUCCESS;
+err:
+	crypto_authenc_final(ctx, alg);
+err_free:
+	crypto_authenc_free_ctx(ctx, alg);
 	return res;
 }
 
@@ -563,7 +573,10 @@ static TEE_Result verify_node(struct traverse_arg *targ,
 	TEE_Result res;
 	uint8_t digest[TEE_FS_HTREE_HASH_SIZE];
 
-	res = calc_node_hash(node, ctx, digest);
+	if (node->parent)
+		res = calc_node_hash(node, NULL, ctx, digest);
+	else
+		res = calc_node_hash(node, &targ->ht->imeta.meta, ctx, digest);
 	if (res == TEE_SUCCESS &&
 	    buf_compare_ct(digest, node->node.hash, sizeof(digest)))
 		return TEE_ERROR_CORRUPT_OBJECT;
@@ -598,7 +611,8 @@ static TEE_Result init_root_node(struct tee_fs_htree *ht)
 	ht->root.id = 1;
 	ht->root.dirty = true;
 
-	res = calc_node_hash(&ht->root, ctx, ht->root.node.hash);
+	res = calc_node_hash(&ht->root, &ht->imeta.meta, ctx,
+			     ht->root.node.hash);
 	crypto_hash_free_ctx(ctx, TEE_FS_HTREE_HASH_ALG);
 
 	return res;
@@ -667,6 +681,12 @@ struct tee_fs_htree_meta *tee_fs_htree_get_meta(struct tee_fs_htree *ht)
 	return &ht->imeta.meta;
 }
 
+void tee_fs_htree_meta_set_dirty(struct tee_fs_htree *ht)
+{
+	ht->dirty = true;
+	ht->root.dirty = true;
+}
+
 static TEE_Result free_node(struct traverse_arg *targ __unused,
 			    struct htree_node *node)
 {
@@ -689,6 +709,7 @@ static TEE_Result htree_sync_node_to_storage(struct traverse_arg *targ,
 {
 	TEE_Result res;
 	uint8_t vers;
+	struct tee_fs_htree_meta *meta = NULL;
 
 	/*
 	 * The node can be dirty while the block isn't updated due to
@@ -712,9 +733,10 @@ static TEE_Result htree_sync_node_to_storage(struct traverse_arg *targ,
 		 * writing the header.
 		 */
 		vers = !(targ->ht->head.counter & 1);
+		meta = &targ->ht->imeta.meta;
 	}
 
-	res = calc_node_hash(node, targ->arg, node->node.hash);
+	res = calc_node_hash(node, meta, targ->arg, node->node.hash);
 	if (res != TEE_SUCCESS)
 		return res;
 

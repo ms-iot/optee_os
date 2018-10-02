@@ -236,4 +236,9 @@
  * End of definitions for messages with .cmd == OPTEE_MSG_RPC_CMD_SOCKET
  */
 
+/*
+ * Generic RPC PTA command
+ */
+#define OPTEE_MSG_RPC_CMD_GENERIC   11
+
 #endif /*__OPTEE_MSG_SUPPLICANT_H*/

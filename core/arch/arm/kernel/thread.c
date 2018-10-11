@@ -1548,7 +1548,7 @@ static struct mobj *thread_rpc_alloc_full(size_t size, size_t align, unsigned in
 	if (arg->ret != TEE_SUCCESS)
 		goto fail;
 
-	if (arg->num_params != 1)
+	if (arg->num_params != num_params)
 		goto fail;
 
 	if (arg->params[0].attr == OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT) {

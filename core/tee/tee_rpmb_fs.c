@@ -281,13 +281,17 @@ out:
  *
  * Maybe tee_get_hw_unique_key() should be exposed as
  * generic API for getting hw unique key!
+ * We should change the API tee_otp_get_hw_unique_key()
+ * to return error code!
  */
 static TEE_Result tee_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	if (!hwkey)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	return tee_otp_get_hw_unique_key(hwkey);
+	tee_otp_get_hw_unique_key(hwkey);
+
+	return TEE_SUCCESS;
 }
 
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,

@@ -107,7 +107,7 @@ endif
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 3
-CFG_OPTEE_REVISION_MINOR ?= 2
+CFG_OPTEE_REVISION_MINOR ?= 3
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -218,6 +218,10 @@ CFG_TA_DYNLINK ?= y
 
 # Enable paging, requires SRAM, can't be enabled by default
 CFG_WITH_PAGER ?= n
+
+# BestFit algorithm in bget reduces the fragmentation of the heap when running
+# with the pager enabled.
+CFG_CORE_BGET_BESTFIT ?= $(CFG_WITH_PAGER)
 
 # Use the pager for user TAs
 CFG_PAGED_USER_TA ?= $(CFG_WITH_PAGER)

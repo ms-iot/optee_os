@@ -1597,7 +1597,7 @@ fail:
 static struct mobj *thread_rpc_alloc(size_t size, size_t align, unsigned int bt,
 				     uint64_t *cookie)
 {
-	return thread_rpc_alloc_full(size, align, bt, cookie, 0, 0);
+	return thread_rpc_alloc_full(size, align, bt, cookie, 0);
 }
 
 struct mobj *thread_rpc_alloc_payload(size_t size, uint64_t *cookie)

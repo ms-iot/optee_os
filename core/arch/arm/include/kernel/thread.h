@@ -620,18 +620,20 @@ void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj);
  *
  * @size:	size in bytes of payload buffer
  * @cookie:	returned cookie used when freeing the buffer
+ * @session:	session ID under which to allocate the buffer.
  *
  * @returns	mobj that describes allocated buffer or NULL on error
  */
-struct mobj *thread_rpc_alloc_host_payload(size_t size, uint64_t *cookie, uint64_t session, uint64_t key);
+struct mobj *thread_rpc_alloc_host_payload(size_t size, uint64_t *cookie, uint64_t session);
 
 /**
  * Free physical memory previously allocated with thread_rpc_alloc_host_payload()
  *
  * @cookie:	cookie received when allocating the buffer
  * @mobj:	mobj that describes the buffer
+ * @session:    session ID under which the buffer was allocated.
  */
-void thread_rpc_free_host_payload(uint64_t cookie, struct mobj *mobj, uint64_t session, uint64_t key);
+void thread_rpc_free_host_payload(uint64_t cookie, struct mobj *mobj, uint64_t session);
 
 /**
  * Does an RPC using a preallocated argument buffer

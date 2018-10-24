@@ -1472,8 +1472,19 @@ uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
 	return arg->ret;
 }
 
+/**
+ * Free physical memory previously allocated with thread_rpc_alloc_full()
+ *
+ * @cookie:	cookie received when allocating the buffer
+ * @bt:		must be the same as supplied when allocating
+ * @mobj:	mobj that describes allocated buffer
+ * @session:    session ID under which the buffer was allocated if buffer
+ *		type was OPTEE_MSG_RPC_SHM_TYPE_HOST.
+ *
+ * This function also frees corresponding mobj.
+ */
 static void thread_rpc_free_full(unsigned int bt, uint64_t cookie, struct mobj *mobj,
-				 uint64_t session, uint64_t key)
+				 uint64_t session)
 {
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
 	struct optee_msg_arg *arg;
@@ -1493,7 +1504,8 @@ static void thread_rpc_free_full(unsigned int bt, uint64_t cookie, struct mobj *
 	if (bt == OPTEE_MSG_RPC_SHM_TYPE_HOST) {
 		arg->params[1].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
 		arg->params[1].u.value.a = session;
-		arg->params[1].u.value.b = key;
+		arg->params[1].u.value.b = 0;
+		arg->params[1].u.value.c = 0;
 	}
 
 	mobj_free(mobj);
@@ -1502,23 +1514,25 @@ static void thread_rpc_free_full(unsigned int bt, uint64_t cookie, struct mobj *
 	thread_rpc(rpc_args);
 }
 
-/**
- * Free physical memory previously allocated with thread_rpc_alloc()
- *
- * @cookie:	cookie received when allocating the buffer
- * @bt:		must be the same as supplied when allocating
- * @mobj:	mobj that describes allocated buffer
- *
- * This function also frees corresponding mobj.
- */
-
 static void thread_rpc_free(unsigned int bt, uint64_t cookie, struct mobj *mobj)
 {
-	thread_rpc_free_full(bt, cookie, mobj, 0, 0);
+	thread_rpc_free_full(bt, cookie, mobj, 0);
 }
 
+/**
+ * Allocates shared memory buffer via RPC
+ *
+ * @size:	size in bytes of shared memory buffer
+ * @align:	required alignment of buffer
+ * @bt:		buffer type OPTEE_MSG_RPC_SHM_TYPE_*
+ * @payload:	returned physical pointer to buffer, 0 if allocation
+ *		failed.
+ * @cookie:	returned cookie used when freeing the buffer
+ * @session:	session ID under which to allocate the buffer if buffer
+ *		type is OPTEE_MSG_RPC_SHM_TYPE_HOST.
+ */
 static struct mobj *thread_rpc_alloc_full(size_t size, size_t align, unsigned int bt,
-					  uint64_t *cookie, uint64_t session, uint64_t key)
+					  uint64_t *cookie, uint64_t session)
 {
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
 	struct optee_msg_arg *arg;
@@ -1539,7 +1553,8 @@ static struct mobj *thread_rpc_alloc_full(size_t size, size_t align, unsigned in
 	if (bt == OPTEE_MSG_RPC_SHM_TYPE_HOST) {
 		arg->params[1].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
 		arg->params[1].u.value.a = session;
-		arg->params[1].u.value.b = key;
+		arg->params[1].u.value.b = 0;
+		arg->params[1].u.value.c = 0;
 	}
 
 	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
@@ -1579,16 +1594,6 @@ fail:
 	return NULL;
 }
 
-/**
- * Allocates shared memory buffer via RPC
- *
- * @size:	size in bytes of shared memory buffer
- * @align:	required alignment of buffer
- * @bt:		buffer type OPTEE_MSG_RPC_SHM_TYPE_*
- * @payload:	returned physical pointer to buffer, 0 if allocation
- *		failed.
- * @cookie:	returned cookie used when freeing the buffer
- */
 static struct mobj *thread_rpc_alloc(size_t size, size_t align, unsigned int bt,
 				     uint64_t *cookie)
 {
@@ -1605,14 +1610,14 @@ void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj)
 	thread_rpc_free(OPTEE_MSG_RPC_SHM_TYPE_APPL, cookie, mobj);
 }
 
-struct mobj *thread_rpc_alloc_host_payload(size_t size, uint64_t *cookie, uint64_t session, uint64_t key)
+struct mobj *thread_rpc_alloc_host_payload(size_t size, uint64_t *cookie, uint64_t session)
 {
-	return thread_rpc_alloc_full(size, 8, OPTEE_MSG_RPC_SHM_TYPE_HOST, cookie, session, key);
+	return thread_rpc_alloc_full(size, 8, OPTEE_MSG_RPC_SHM_TYPE_HOST, cookie, session);
 }
 
-void thread_rpc_free_host_payload(uint64_t cookie, struct mobj *mobj, uint64_t session, uint64_t key)
+void thread_rpc_free_host_payload(uint64_t cookie, struct mobj *mobj, uint64_t session)
 {
-	thread_rpc_free_full(OPTEE_MSG_RPC_SHM_TYPE_HOST, cookie, mobj, session, key);
+	thread_rpc_free_full(OPTEE_MSG_RPC_SHM_TYPE_HOST, cookie, mobj, session);
 }
 
 struct mobj *thread_rpc_alloc_global_payload(size_t size, uint64_t *cookie)

@@ -177,7 +177,7 @@ int get_hw_unique_key(uint64_t smc_func_id, uint64_t in_key, uint64_t size);
 			   OPTEE_SMC_OWNER_SIP, \
 			   OPTEE_SMC_FUNCID_SIP_LS_HW_UNQ_KEY)
 
-void tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
+TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	int ret = 0;
 	uint8_t hw_unq_key[sizeof(hwkey->data)] __aligned(64);

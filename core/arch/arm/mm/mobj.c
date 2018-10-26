@@ -310,7 +310,9 @@ struct mobj_reg_shm {
 	tee_mm_entry_t *mm;
 	paddr_t page_offset;
 	struct refcount refcount;
+	struct refcount mapcount;
 	int num_pages;
+	bool guarded;
 	paddr_t pages[];
 };
 
@@ -321,6 +323,7 @@ static SLIST_HEAD(reg_shm_head, mobj_reg_shm) reg_shm_list =
 	SLIST_HEAD_INITIALIZER(reg_shm_head);
 
 static unsigned int reg_shm_slist_lock = SPINLOCK_UNLOCK;
+static unsigned int reg_shm_map_lock = SPINLOCK_UNLOCK;
 
 static struct mobj_reg_shm *to_mobj_reg_shm(struct mobj *mobj);
 
@@ -374,37 +377,30 @@ static void *mobj_reg_shm_get_va(struct mobj *mobj, size_t offst)
 				 mrs->page_offset);
 }
 
-static void reg_shm_free_helper(struct mobj_reg_shm *mobj_reg_shm,
-				bool unlocked)
+static void reg_shm_unmap_helper(struct mobj_reg_shm *r)
 {
-	uint32_t exceptions;
+	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_map_lock);
 
-	/*
-	 * Counter is supposed to be 1 by decreasing it reaches 0 and
-	 * refcount_dec() should return true, at the same time the counter
-	 * is locked at 0 so it can't be increased any longer. If
-	 * refcount_dec() returns false something is off and we have
-	 * internal inconsistency.
-	 */
-	if (!refcount_dec(&mobj_reg_shm->refcount))
-		panic();
+	if (r->mm) {
+		core_mmu_unmap_pages(tee_mm_get_smem(r->mm),
+				     r->mobj.size / SMALL_PAGE_SIZE);
+		tee_mm_free(r->mm);
+		r->mm = NULL;
+	}
 
-	mobj_reg_shm_unmap(&mobj_reg_shm->mobj);
+	cpu_spin_unlock_xrestore(&reg_shm_map_lock, exceptions);
+}
 
-	if (!unlocked)
-		exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
-
+static void reg_shm_free_helper(struct mobj_reg_shm *mobj_reg_shm)
+{
+	reg_shm_unmap_helper(mobj_reg_shm);
 	SLIST_REMOVE(&reg_shm_list, mobj_reg_shm, mobj_reg_shm, next);
-
-	if (!unlocked)
-		cpu_spin_unlock_xrestore(&reg_shm_slist_lock, exceptions);
-
 	free(mobj_reg_shm);
 }
 
 static void mobj_reg_shm_free(struct mobj *mobj)
 {
-	reg_shm_free_helper(to_mobj_reg_shm(mobj), false /*!unlocked*/);
+	mobj_reg_shm_put(mobj);
 }
 
 static TEE_Result mobj_reg_shm_get_cattr(struct mobj *mobj __unused,
@@ -443,6 +439,14 @@ static struct mobj_reg_shm *to_mobj_reg_shm(struct mobj *mobj)
 	return container_of(mobj, struct mobj_reg_shm, mobj);
 }
 
+static struct mobj_reg_shm *to_mobj_reg_shm_may_fail(struct mobj *mobj)
+{
+	if (mobj->ops != &mobj_reg_shm_ops)
+		return NULL;
+
+	return container_of(mobj, struct mobj_reg_shm, mobj);
+}
+
 struct mobj *mobj_reg_shm_alloc(paddr_t *pages, size_t num_pages,
 				paddr_t page_offset, uint64_t cookie)
 {
@@ -461,6 +465,7 @@ struct mobj *mobj_reg_shm_alloc(paddr_t *pages, size_t num_pages,
 	mobj_reg_shm->mobj.size =  num_pages * SMALL_PAGE_SIZE;
 	mobj_reg_shm->mobj.phys_granule = SMALL_PAGE_SIZE;
 	mobj_reg_shm->cookie = cookie;
+	mobj_reg_shm->guarded = true;
 	mobj_reg_shm->num_pages = num_pages;
 	mobj_reg_shm->page_offset = page_offset;
 	memcpy(mobj_reg_shm->pages, pages, sizeof(*pages) * num_pages);
@@ -487,6 +492,14 @@ err:
 	return NULL;
 }
 
+void mobj_reg_shm_unguard(struct mobj *mobj)
+{
+	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
+
+	to_mobj_reg_shm(mobj)->guarded = false;
+	cpu_spin_unlock_xrestore(&reg_shm_slist_lock, exceptions);
+}
+
 static struct mobj_reg_shm *reg_shm_find_unlocked(uint64_t cookie)
 {
 	struct mobj_reg_shm *mobj_reg_shm;
@@ -496,17 +509,6 @@ static struct mobj_reg_shm *reg_shm_find_unlocked(uint64_t cookie)
 			return mobj_reg_shm;
 
 	return NULL;
-}
-
-void mobj_reg_shm_free_by_cookie(uint64_t cookie)
-{
-	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
-	struct mobj_reg_shm *r = reg_shm_find_unlocked(cookie);
-
-	if (r)
-		reg_shm_free_helper(r, true /*unlocked*/);
-
-	cpu_spin_unlock_xrestore(&reg_shm_slist_lock, exceptions);
 }
 
 struct mobj *mobj_reg_shm_get_by_cookie(uint64_t cookie)
@@ -531,23 +533,18 @@ struct mobj *mobj_reg_shm_get_by_cookie(uint64_t cookie)
 	return NULL;
 }
 
-void mobj_reg_shm_put_by_cookie(uint64_t cookie)
+void mobj_reg_shm_put(struct mobj *mobj)
 {
+	struct mobj_reg_shm *r = to_mobj_reg_shm(mobj);
 	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
-	struct mobj_reg_shm *r = reg_shm_find_unlocked(cookie);
 
 	/*
-	 * A put is supposed to match a get, if the object isn't found
-	 * it's out of sync somehow. The counter is supposed to be larger
-	 * than 1, if it isn't we're in trouble.
-	 *
-	 * Note that if Normal World supplies an invalid shm_ref it will
-	 * fail in the call of mobj_reg_shm_get_by_cookie() before this
-	 * function even will be called. Normal world can not cause a panic
-	 * with an invalid shm_ref.
+	 * A put is supposed to match a get or the initial alloc, once
+	 * we're at zero there's no more user and the original allocator is
+	 * done too.
 	 */
-	if (!r || refcount_dec(&r->refcount))
-		panic();
+	if (refcount_dec(&r->refcount))
+		reg_shm_free_helper(r);
 
 	cpu_spin_unlock_xrestore(&reg_shm_slist_lock, exceptions);
 
@@ -570,12 +567,12 @@ static TEE_Result try_release_reg_shm(uint64_t cookie)
 	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
 	struct mobj_reg_shm *r = reg_shm_find_unlocked(cookie);
 
-	if (!r)
+	if (!r || r->guarded)
 		goto out;
 
 	res = TEE_ERROR_BUSY;
 	if (refcount_val(&r->refcount) == 1) {
-		reg_shm_free_helper(r, true /*unlocked*/);
+		reg_shm_free_helper(r);
 		res = TEE_SUCCESS;
 	}
 out:
@@ -609,52 +606,67 @@ TEE_Result mobj_reg_shm_release_by_cookie(uint64_t cookie)
 	return res;
 }
 
-TEE_Result mobj_reg_shm_map(struct mobj *mobj)
+TEE_Result mobj_reg_shm_inc_map(struct mobj *mobj)
 {
-	TEE_Result res;
-	struct mobj_reg_shm *mrs;
+	TEE_Result res = TEE_SUCCESS;
+	struct mobj_reg_shm *r = to_mobj_reg_shm_may_fail(mobj);
 
-	if (mobj->ops != &mobj_reg_shm_ops)
+	if (!r)
 		return TEE_ERROR_GENERIC;
 
-	mrs = to_mobj_reg_shm(mobj);
+	if (refcount_inc(&r->mapcount))
+		return TEE_SUCCESS;
 
-	if (mrs->mm)	/* Guard against mapping twice */
-		return TEE_ERROR_ACCESS_CONFLICT;
+	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_map_lock);
 
-	mrs->mm = tee_mm_alloc(&tee_mm_shm, SMALL_PAGE_SIZE * mrs->num_pages);
-	if (!mrs->mm)
-		return TEE_ERROR_OUT_OF_MEMORY;
+	if (refcount_val(&r->mapcount))
+		goto out;
 
-	res = core_mmu_map_pages(tee_mm_get_smem(mrs->mm), mrs->pages,
-				  mrs->num_pages, MEM_AREA_NSEC_SHM);
-	if (res) {
-		tee_mm_free(mrs->mm);
-		mrs->mm = NULL;
-		return res;
+	r->mm = tee_mm_alloc(&tee_mm_shm, SMALL_PAGE_SIZE * r->num_pages);
+	if (!r->mm) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
+		goto out;
 	}
 
-	return TEE_SUCCESS;
+	res = core_mmu_map_pages(tee_mm_get_smem(r->mm), r->pages,
+				 r->num_pages, MEM_AREA_NSEC_SHM);
+	if (res) {
+		tee_mm_free(r->mm);
+		r->mm = NULL;
+		goto out;
+	}
+
+	refcount_set(&r->mapcount, 1);
+out:
+	cpu_spin_unlock_xrestore(&reg_shm_map_lock, exceptions);
+
+	return res;
 }
 
-TEE_Result mobj_reg_shm_unmap(struct mobj *mobj)
+TEE_Result mobj_reg_shm_dec_map(struct mobj *mobj)
 {
-	struct mobj_reg_shm *mrs;
+	struct mobj_reg_shm *r = to_mobj_reg_shm_may_fail(mobj);
 
-	if (mobj->ops != &mobj_reg_shm_ops)
+	if (!r)
 		return TEE_ERROR_GENERIC;
 
-	mrs = to_mobj_reg_shm(mobj);
-	if (!mrs->mm)
-		return TEE_ERROR_BAD_STATE;
+	if (!refcount_dec(&r->mapcount))
+		return TEE_SUCCESS;
 
-	core_mmu_unmap_pages(tee_mm_get_smem(mrs->mm),
-			     mobj->size / SMALL_PAGE_SIZE);
-	tee_mm_free(mrs->mm);
-	mrs->mm = NULL;
+	uint32_t exceptions = cpu_spin_lock_xsave(&reg_shm_map_lock);
+
+	if (refcount_val(&r->mapcount)) {
+		core_mmu_unmap_pages(tee_mm_get_smem(r->mm),
+				     r->mobj.size / SMALL_PAGE_SIZE);
+		tee_mm_free(r->mm);
+		r->mm = NULL;
+	}
+
+	cpu_spin_unlock_xrestore(&reg_shm_map_lock, exceptions);
 
 	return TEE_SUCCESS;
 }
+
 
 struct mobj *mobj_mapped_shm_alloc(paddr_t *pages, size_t num_pages,
 				  paddr_t page_offset, uint64_t cookie)
@@ -665,7 +677,7 @@ struct mobj *mobj_mapped_shm_alloc(paddr_t *pages, size_t num_pages,
 	if (!mobj)
 		return NULL;
 
-	if (mobj_reg_shm_map(mobj)) {
+	if (mobj_reg_shm_inc_map(mobj)) {
 		mobj_free(mobj);
 		return NULL;
 	}

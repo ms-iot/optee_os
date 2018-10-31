@@ -238,6 +238,10 @@
 #define SNVS_LPCR_DP_EN			(1u << 5)
 #define SNVS_LPCR_TOP			(1u << 6)
 
+#define SNVS_LPMKCR_MK_OTP	0x00
+#define SNVS_LPLR_MKEYSEL_LCK	(1u << 9)
+#define SNVS_HPLR_MKEYSEL_LCK	(1u << 9)
+
 #define SNVS_LPSR_PGD			(1u << 3)
 
 #define IOMUXC_GPR1_OFFSET	0x04

@@ -109,6 +109,10 @@ register_phys_mem(MEM_AREA_IO_SEC,
 		  CORE_MMU_DEVICE_SIZE);
 #endif
 
+#ifdef CAAM_BASE
+register_phys_mem(MEM_AREA_IO_SEC, CAAM_BASE, CORE_MMU_DEVICE_SIZE);
+#endif
+
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
 	return &handlers;

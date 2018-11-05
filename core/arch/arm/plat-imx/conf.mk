@@ -159,7 +159,9 @@ $(call force,CFG_GENERIC_BOOT,y)
 $(call force,CFG_GIC,y)
 $(call force,CFG_IMX_UART,y)
 $(call force,CFG_PM_STUBS,y)
+ifneq ($(filter y, $(CFG_FSL_SEC)), y)
 $(call force,CFG_WITH_SOFTWARE_PRNG,y)
+endif
 
 CFG_BOOT_SYNC_CPU ?= n
 CFG_BOOT_SECONDARY_REQUEST ?= y

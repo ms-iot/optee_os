@@ -254,12 +254,34 @@ static void ta_close(struct user_ta_store_handle *h)
 	free(h);
 }
 
+#ifdef CFG_CYRES
+static TEE_Result ta_get_hash(
+	struct user_ta_store_handle *h,
+	uint8_t *hash,
+	size_t hash_len
+	)
+{
+	if (hash_len != h->shdr->hash_size)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (h->hash_algo != TEE_ALG_SHA256)
+		return TEE_ERROR_SECURITY;
+
+	memcpy(hash, SHDR_GET_HASH(h->shdr), hash_len);
+
+	return TEE_SUCCESS;
+}
+#endif
+
 static struct user_ta_store_ops ops = {
 	.description = "REE",
 	.open = ta_open,
 	.get_size = ta_get_size,
 	.read = ta_read,
 	.close = ta_close,
+#ifdef CFG_CYRES
+	.get_hash = ta_get_hash,
+#endif
 	.priority = 10,
 };
 

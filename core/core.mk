@@ -106,6 +106,20 @@ libdir = core/lib/zlib
 include mk/lib.mk
 endif
 
+ifeq ($(CFG_CYRES),y)
+libname = riot
+libdir = core/lib/libriot
+include mk/lib.mk
+
+libname = fdt
+libdir = core/lib/libfdt
+include mk/lib.mk
+
+libname = cyres
+libdir = core/lib/libcyres
+include mk/lib.mk
+endif
+
 #
 # Do main source
 #

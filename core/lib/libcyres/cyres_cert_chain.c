@@ -740,6 +740,35 @@ cyres_result cyres_priv_key_to_pem(const struct cyres_key_pair *key,
 	return CYRES_SUCCESS;
 }
 
+cyres_result cyres_pub_key_to_pem(const RIOT_ECC_PUBLIC *key,
+				  char *buf, size_t *buf_size)
+{
+	DERBuilderContext context;
+	uint32_t length;
+	int ret;
+	uint8_t der_buf[DER_MAX_TBS];
+
+	DERInitContext(&context, der_buf, sizeof(der_buf));
+	ret = X509GetDEREccPub(&context, *key);
+	if (ret)
+		return cyres_result_from_x509(ret);
+
+	if (buf && *buf_size > 0)
+		length = *buf_size - 1;
+	else
+		length = 0;
+
+	ret = DERtoPEM(&context, R_PUBLICKEY_TYPE, buf, &length);
+	if (ret) {
+		*buf_size = length + 1;
+		return CYRES_ERROR_SHORT_BUFFER;
+	}
+
+	buf[length] = '\0';
+
+	return CYRES_SUCCESS;
+}
+
 cyres_result cyres_cert_to_pem(const struct cyres_cert *cert,
 			       char *buf, size_t *buf_size)
 {

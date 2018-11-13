@@ -81,6 +81,9 @@ cyres_result cyres_insert_cert(struct cyres_cert_blob *blob,
 cyres_result cyres_cert_to_pem(const struct cyres_cert *cert,
 			       char *buf, size_t *buf_size);
 
+cyres_result cyres_priv_key_to_pem(const struct cyres_key_pair *key,
+				   char *buf, size_t *buf_size);
+
 cyres_result cyres_get_cert_chain_pem(const struct cyres_cert_blob *blob,
 				      const char *subject, char *buf,
 				      size_t *buf_size);

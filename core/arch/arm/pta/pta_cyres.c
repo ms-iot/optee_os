@@ -146,6 +146,28 @@ static TEE_Result compute_ta_cert_chain_buffer_size(
 	return TEE_SUCCESS;
 }
 
+static TEE_Result get_ta_private_key(
+		const struct cyres_pta_sess_ctx *ctx,
+		char *buf, size_t *buf_size)
+{
+	cyres_result cy_res;
+
+	cy_res = cyres_priv_key_to_pem(&ctx->ta_key_pair, buf, buf_size);
+
+	return tee_result_from_cyres(cy_res);
+}
+
+static TEE_Result get_ta_public_key(
+		const struct cyres_pta_sess_ctx *ctx,
+		char *buf, size_t *buf_size)
+{
+	cyres_result cy_res;
+
+	cy_res = cyres_pub_key_to_pem(&ctx->ta_key_pair.pub, buf, buf_size);
+
+	return tee_result_from_cyres(cy_res);
+}
+
 static TEE_Result get_ta_cert_chain(
 		const struct cyres_pta_sess_ctx *ctx,
 		char *buf, size_t *buf_size)
@@ -185,6 +207,48 @@ static TEE_Result get_ta_cert_chain(
 	return TEE_SUCCESS;
 }
 
+static TEE_Result handle_get_private_key(
+		struct cyres_pta_sess_ctx *ctx,
+		uint32_t param_types,
+		TEE_Param params[TEE_NUM_PARAMS])
+{
+	TEE_Result res;
+	size_t size;
+	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_OUTPUT,
+			TEE_PARAM_TYPE_NONE,
+			TEE_PARAM_TYPE_NONE,
+			TEE_PARAM_TYPE_NONE);
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	size = params[0].memref.size;
+	res = get_ta_private_key(ctx, (char *)params[0].memref.buffer, &size);
+	params[0].memref.size = (uint32_t)size;
+	return res;
+}
+
+static TEE_Result handle_get_public_key(
+		struct cyres_pta_sess_ctx *ctx,
+		uint32_t param_types,
+		TEE_Param params[TEE_NUM_PARAMS])
+{
+	TEE_Result res;
+	size_t size;
+	uint32_t exp_pt = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_OUTPUT,
+			TEE_PARAM_TYPE_NONE,
+			TEE_PARAM_TYPE_NONE,
+			TEE_PARAM_TYPE_NONE);
+
+	if (exp_pt != param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	size = params[0].memref.size;
+	res = get_ta_public_key(ctx, (char *)params[0].memref.buffer, &size);
+	params[0].memref.size = (uint32_t)size;
+	return res;
+}
+
 static TEE_Result handle_get_cert_chain(
 		struct cyres_pta_sess_ctx *ctx,
 		uint32_t param_types,
@@ -214,10 +278,12 @@ static TEE_Result cyres_invoke_command(void *sess_ctx, uint32_t cmd_id,
 	struct cyres_pta_sess_ctx *ctx = sess_ctx;
 
 	switch (cmd_id) {
+	case PTA_CYRES_GET_PRIVATE_KEY:
+		return handle_get_private_key(ctx, param_types, params);
+	case PTA_CYRES_GET_PUBLIC_KEY:
+		return handle_get_public_key(ctx, param_types, params);
 	case PTA_CYRES_GET_CERT_CHAIN:
 		return handle_get_cert_chain(ctx, param_types, params);
-	case PTA_CYRES_GET_PUBLIC_KEY:
-	case PTA_CYRES_GET_PRIVATE_KEY:
 	case PTA_CYRES_GET_SEAL_KEY:
 		// XXX implement me
 		if (params[0].memref.size < 256) {

@@ -706,6 +706,63 @@ static TEE_Result add_deps(struct user_ta_ctx *utc __unused,
 
 #endif
 
+#ifdef CFG_CYRES
+static TEE_Result update_hash(const struct user_ta_store_ops *ta_store,
+		struct user_ta_store_handle *handle,
+		struct user_ta_ctx *utc)
+{
+	TEE_Result res;
+	void *hash_ctx = NULL;
+	uint8_t hash[TEE_SHA256_HASH_SIZE] = {0};
+
+	/*
+	 * If this is the first elf to be hashed, i.e. if the current
+	 * hash is zero, set the TA hash to the hash of this ELF.
+	 */
+	if (!memcmp(utc->ta_image_sha256, hash, sizeof(hash))) {
+		return ta_store->get_hash(handle, utc->ta_image_sha256,
+				sizeof(utc->ta_image_sha256));
+	}
+
+	/* get hash for the elf that was just loaded */
+	res = ta_store->get_hash(handle, hash, sizeof(hash));
+	if (res)
+		goto end;
+
+	res = crypto_hash_alloc_ctx(&hash_ctx, TEE_ALG_SHA256);
+	if (res)
+		goto end;
+
+	res = crypto_hash_init(hash_ctx, TEE_ALG_SHA256);
+	if (res)
+		goto end;
+
+	/* hash the existing value */
+	res = crypto_hash_update(hash_ctx, TEE_ALG_SHA256,
+			utc->ta_image_sha256, sizeof(utc->ta_image_sha256));
+	if (res)
+		goto end;
+
+	/* with the new value */
+	res = crypto_hash_update(hash_ctx, TEE_ALG_SHA256,
+			hash, sizeof(hash));
+	if (res)
+		goto end;
+
+	/* and update the TA hash */
+	res = crypto_hash_final(hash_ctx, TEE_ALG_SHA256, utc->ta_image_sha256,
+			sizeof(utc->ta_image_sha256));
+	if (res)
+		goto end;
+
+end:
+	if (hash_ctx)
+		crypto_hash_free_ctx(hash_ctx, TEE_ALG_SHA256);
+
+	return res;
+}
+#endif
+
 static TEE_Result load_elf_from_store(const TEE_UUID *uuid,
 				      const struct user_ta_store_ops *ta_store,
 				      struct user_ta_ctx *utc)
@@ -819,6 +876,15 @@ static TEE_Result load_elf_from_store(const TEE_UUID *uuid,
 
 	/* Find any external dependency (dynamically linked libraries) */
 	res = add_deps(utc, elf_state, elf->load_addr);
+	if (res)
+		goto out;
+
+#ifdef CFG_CYRES
+	res = update_hash(ta_store, handle, utc);
+	if (res)
+		goto out;
+#endif
+
 out:
 	if (res) {
 		free(segs);

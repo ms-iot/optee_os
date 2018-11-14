@@ -3,21 +3,17 @@
  * Copyright (C) Microsoft. All rights reserved
  */
 
-#include <arm.h>
-#include <kernel/misc.h>
 #include <kernel/pseudo_ta.h>
 #include <kernel/user_ta.h>
 #include <kernel/thread.h>
 #include <kernel/panic.h>
 #include <mm/core_memprot.h>
-#include <mm/tee_mmu.h>
-#include <optee_msg_supplicant.h>
-#include <utee_defines.h>
-#include <string.h>
-#include <string_ext.h>
+#include <mm/core_mmu.h>
+#include <crypto/crypto.h>
 #include <initcall.h>
 #include <stdio.h>
 #include <cyres_cert_chain.h>
+#include <RiotCrypt.h>
 #include <pta_cyres.h>
 
 struct cyres_pta_sess_ctx {
@@ -35,6 +31,20 @@ static TEE_Result tee_result_from_cyres(cyres_result cy_res)
 	 * are defined with same underlying values as TEE_ERROR codes.
 	 */
 	return (TEE_Result)cy_res;
+}
+
+static TEE_Result tee_result_from_riot(RIOT_STATUS status)
+{
+	switch (status) {
+	case RIOT_SUCCESS: return TEE_SUCCESS;
+	case RIOT_FAILURE: return TEE_ERROR_GENERIC;
+	case RIOT_INVALID_PARAMETER: return TEE_ERROR_BAD_PARAMETERS;
+	case RIOT_BAD_FORMAT: return TEE_ERROR_BAD_FORMAT;
+	default:
+		break;
+	}
+
+	return TEE_ERROR_SECURITY;
 }
 
 static void uuid_to_string(const TEE_UUID *uuid, char s[64])
@@ -207,6 +217,60 @@ static TEE_Result get_ta_cert_chain(
 	return TEE_SUCCESS;
 }
 
+static TEE_Result get_seal_key(struct cyres_pta_sess_ctx *ctx,
+			       uint8_t *secret,
+			       uint32_t secret_size,
+			       const uint8_t *key_selector,
+			       uint32_t key_selector_size)
+{
+	TEE_Result res;
+	RIOT_STATUS status;
+	void *hash_ctx = NULL;
+	uint8_t hash[TEE_SHA256_HASH_SIZE];
+
+	res = crypto_hash_alloc_ctx(&hash_ctx, TEE_ALG_SHA256);
+	if (res)
+		goto end;
+
+	res = crypto_hash_init(hash_ctx, TEE_ALG_SHA256);
+	if (res)
+		goto end;
+
+	/* hash the TA private key */
+	res = crypto_hash_update(hash_ctx,
+				 TEE_ALG_SHA256,
+				 (const uint8_t *)&ctx->ta_key_pair.priv,
+				 sizeof(ctx->ta_key_pair.priv));
+	if (res)
+		goto end;
+
+	res = crypto_hash_final(hash_ctx, TEE_ALG_SHA256, hash, sizeof(hash));
+	if (res)
+		goto end;
+
+	status = RiotCrypt_Kdf(secret,
+			       secret_size,
+			       hash,
+			       sizeof(hash),
+			       key_selector,
+			       key_selector_size,
+			       (const uint8_t *)"PTA_SEAL_KDF",
+			       sizeof("PTA_SEAL_KDF") - 1,
+			       secret_size);
+
+	if (status != RIOT_SUCCESS) {
+		EMSG("RiotCrypt_Kdf() failed: 0x%x", status);
+		res = tee_result_from_riot(status);
+		goto end;
+	}
+
+end:
+	if (hash_ctx)
+		crypto_hash_free_ctx(hash_ctx, TEE_ALG_SHA256);
+
+	return res;
+}
+
 static TEE_Result handle_get_private_key(
 		struct cyres_pta_sess_ctx *ctx,
 		uint32_t param_types,
@@ -270,6 +334,29 @@ static TEE_Result handle_get_cert_chain(
 	return res;
 }
 
+static TEE_Result handle_get_seal_key(
+		struct cyres_pta_sess_ctx *ctx,
+		uint32_t param_types,
+		TEE_Param params[TEE_NUM_PARAMS])
+{
+	TEE_Result res;
+	uint32_t type;
+
+	type = TEE_PARAM_TYPE_GET(param_types, 0);
+	if (type != TEE_PARAM_TYPE_MEMREF_OUTPUT)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	type = TEE_PARAM_TYPE_GET(param_types, 1);
+	if (type != TEE_PARAM_TYPE_NONE &&
+	    type != TEE_PARAM_TYPE_MEMREF_INPUT)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	res = get_seal_key(ctx,
+			   params[0].memref.buffer, params[0].memref.size,
+			   params[1].memref.buffer, params[1].memref.size);
+	return res;
+}
+
 static TEE_Result cyres_invoke_command(void *sess_ctx, uint32_t cmd_id,
 		uint32_t param_types,
 		TEE_Param params[TEE_NUM_PARAMS])
@@ -285,14 +372,7 @@ static TEE_Result cyres_invoke_command(void *sess_ctx, uint32_t cmd_id,
 	case PTA_CYRES_GET_CERT_CHAIN:
 		return handle_get_cert_chain(ctx, param_types, params);
 	case PTA_CYRES_GET_SEAL_KEY:
-		// XXX implement me
-		if (params[0].memref.size < 256) {
-			params[0].memref.size = 256;
-			return TEE_ERROR_SHORT_BUFFER;
-		}
-
-		strcpy(params[0].memref.buffer, "Hello from cyres PTA");
-		return TEE_SUCCESS;
+		return handle_get_seal_key(ctx, param_types, params);
 	default:
 		EMSG("Command not implemented %d", cmd_id);
 		res = TEE_ERROR_NOT_IMPLEMENTED;

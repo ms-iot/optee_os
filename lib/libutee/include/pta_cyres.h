@@ -65,7 +65,7 @@ enum PTA_CYRES_CMDS {
 	// for symmetric encryption key.
 	//
 	// params[0]: MEMREF_OUTPUT
-	//   Buffer of size 32 bytes to hold the encryption key.
+	//   Buffer to hold the seal key. Size must be a multiple of 32 bytes.
 	//
 	// params[1]: MEMREF_INPUT
 	//   Optional selector buffer. Can be NULL.

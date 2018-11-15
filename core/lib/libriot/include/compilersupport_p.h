@@ -37,7 +37,9 @@
 #  include <assert.h>
 #endif
 #include <float.h>
+#ifndef CFG_OPTEE_REVISION_MAJOR
 #include <math.h>
+#endif /* OPTEE */
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -48,6 +50,10 @@
 
 #ifdef __F16C__
 #  include <immintrin.h>
+#endif
+
+#ifdef CFG_OPTEE_REVISION_MAJOR
+#  include <kernel/panic.h>
 #endif
 
 #if __STDC_VERSION__ >= 201112L || __cplusplus >= 201103L || __cpp_static_assert >= 200410
@@ -247,6 +253,10 @@ static inline unsigned short encode_half(double val)
 /* this function was copied & adapted from RFC 7049 Appendix D */
 static inline double decode_half(unsigned short half)
 {
+#ifdef CFG_OPTEE_REVISION_MAJOR
+    panic("no math support");
+    return 0;
+#else /* OPTEE */
 #ifdef __F16C__
     return _cvtsh_ss(half);
 #else
@@ -258,6 +268,7 @@ static inline double decode_half(unsigned short half)
     else val = mant == 0 ? INFINITY : NAN;
     return half & 0x8000 ? -val : val;
 #endif
+#endif /* OPTEE */
 }
 
 #endif /* COMPILERSUPPORT_H */

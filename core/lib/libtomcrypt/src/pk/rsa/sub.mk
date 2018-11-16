@@ -5,5 +5,6 @@ srcs-y += rsa_exptmod.c
 srcs-y += rsa_free.c
 srcs-y += rsa_import.c
 srcs-y += rsa_make_key.c
+srcs-y += rsa_set.c
 srcs-y += rsa_sign_hash.c
 srcs-y += rsa_verify_hash.c

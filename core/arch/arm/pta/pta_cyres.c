@@ -10,6 +10,8 @@
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
 #include <crypto/crypto.h>
+#include <tomcrypt.h>
+#include <ta_pub_key.h>
 #include <initcall.h>
 #include <stdio.h>
 #include <cyres_cert_chain.h>
@@ -78,15 +80,42 @@ static TEE_Result get_calling_ta_session(struct tee_ta_session **sess)
 	return TEE_SUCCESS;
 }
 
+static TEE_Result export_ta_pub_key(unsigned char *buf, unsigned long *len)
+{
+	rsa_key key;
+	int ret;
+	uint32_t e = TEE_U32_TO_BIG_ENDIAN(ta_pub_key_exponent);
+
+	ret = rsa_set_key(ta_pub_key_modulus, ta_pub_key_modulus_size,
+			  (const unsigned char *)&e, sizeof(e),
+			  NULL, 0,
+			  &key);
+
+	if (ret != CRYPT_OK) {
+		DMSG("rsa_set_key failed (0x%x)", ret);
+		return TEE_ERROR_SECURITY;
+	}
+
+	ret = rsa_export(buf, len, PK_PUBLIC, &key);
+	if (ret != CRYPT_OK) {
+		DMSG("rsa_export failed (0x%x)", ret);
+		return TEE_ERROR_SECURITY;
+	}
+
+	return TEE_SUCCESS;
+}
+
 static TEE_Result gen_ta_cert(struct cyres_pta_sess_ctx *ctx)
 {
 	TEE_Result res;
 	cyres_result cy_res;
+	unsigned long key_size;
 	struct tee_ta_session *ta_session;
 	struct user_ta_ctx *utc;
 	struct cyres_cert *cert = NULL;
 	struct cyres_gen_alias_cert_args args;
 	char ta_guid_str[64];
+	unsigned char key_buf[1024];
 
 	// Make sure the calling TA is a user TA
 	res = get_calling_ta_session(&ta_session);
@@ -99,6 +128,12 @@ static TEE_Result gen_ta_cert(struct cyres_pta_sess_ctx *ctx)
 	utc = to_user_ta_ctx(ta_session->ctx);
 	uuid_to_string(&ta_session->ctx->uuid, ta_guid_str);
 
+	/* export TA public key */
+	key_size = sizeof(key_buf);
+	res = export_ta_pub_key(key_buf, &key_size);
+	if (res != TEE_SUCCESS)
+		return res;
+
 	/* generate a certificate for the TA */
 	memset(&args, 0, sizeof(args));
 	args.issuer_key_pair = &optee_key_pair;
@@ -106,6 +141,8 @@ static TEE_Result gen_ta_cert(struct cyres_pta_sess_ctx *ctx)
 	args.seed_data_size = sizeof(optee_key_pair.priv);
 	args.subject_digest = utc->ta_image_sha256;
 	args.subject_digest_size = sizeof(utc->ta_image_sha256);
+	args.auth_key_pub = key_buf;
+	args.auth_key_pub_size = key_size;
 	args.subject_name = ta_guid_str;
 	args.issuer_name = "OP-TEE";
 	args.path_len = 1;
@@ -405,6 +442,7 @@ static TEE_Result cyres_open_session(
 	 * let close_session handle cleanup, which is called even in
 	 * case of failure
 	 */
+	memset(ctx, 0, sizeof(struct cyres_pta_sess_ctx));
 	*sess_ctx = ctx;
 
 	res = gen_ta_cert(ctx);

@@ -39,9 +39,11 @@ int rand_prime(void *N, long len, prng_state *prng, int wprng);
 int rand_bn_bits(void *N, int bits, prng_state *prng, int wprng);
 int rand_bn_range(void *N, void *limit, prng_state *prng, int wprng);
 
-enum {
+enum ltc_oid_id {
    PKA_RSA,
-   PKA_DSA
+   PKA_DSA,
+   PKA_EC,
+   PKA_EC_PRIMEF
 };
 
 typedef struct Oid {
@@ -130,7 +132,18 @@ int rsa_verify_hash_ex(const unsigned char *sig,      unsigned long siglen,
 /* LTC_PKCS #1 import/export */
 int rsa_export(unsigned char *out, unsigned long *outlen, int type, rsa_key *key);
 int rsa_import(const unsigned char *in, unsigned long inlen, rsa_key *key);
-                        
+
+int rsa_set_key(const unsigned char *N,  unsigned long Nlen,
+                const unsigned char *e,  unsigned long elen,
+                const unsigned char *d,  unsigned long dlen,
+                rsa_key *key);
+int rsa_set_factors(const unsigned char *p,  unsigned long plen,
+                    const unsigned char *q,  unsigned long qlen,
+                    rsa_key *key);
+int rsa_set_crt_params(const unsigned char *dP, unsigned long dPlen,
+                       const unsigned char *dQ, unsigned long dQlen,
+                       const unsigned char *qP, unsigned long qPlen,
+                       rsa_key *key);
 #endif
 
 /* ---- Katja ---- */

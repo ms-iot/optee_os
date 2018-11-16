@@ -50,7 +50,7 @@ static TEE_Result pta_rpc_execute(
 	output_size = params[2].memref.size;
 	total_size = input_size + output_size;
 
-	memory_object = thread_rpc_alloc_payload(total_size, &memory_object_cookie);
+	memory_object = thread_rpc_alloc_host_payload(total_size, &memory_object_cookie, (vaddr_t)sess_ctx);
 
 	if (memory_object == NULL) {
 		EMSG("Failed to allocate memory object");
@@ -136,7 +136,7 @@ static TEE_Result pta_rpc_execute(
 done:
 
 	if (memory_object != NULL) {
-		thread_rpc_free_payload(memory_object_cookie, memory_object);
+		thread_rpc_free_host_payload(memory_object_cookie, memory_object, (vaddr_t)sess_ctx);
 	}
 
 	return tee_result;

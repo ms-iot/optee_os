@@ -384,6 +384,8 @@ struct optee_msg_arg {
  * space application
  */
 #define OPTEE_MSG_RPC_SHM_TYPE_GLOBAL	2
+/* Memory shared with the non-secure user space  application that owns the current session */
+#define OPTEE_MSG_RPC_SHM_TYPE_HOST	3
 
 /*
  * Free shared memory previously allocated with OPTEE_MSG_RPC_CMD_SHM_ALLOC

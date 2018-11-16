@@ -195,7 +195,7 @@ static void pta_rpc_close_session(void *sess_ctx __unused)
 
 /* The TA manager uses a mutex to synchronize calls to any of these routines */
 pseudo_ta_register(.uuid = PTA_RPC_UUID, .name = "RPC_PTA",
-		.flags = PTA_DEFAULT_FLAGS,
+		.flags = PTA_DEFAULT_FLAGS | TA_FLAG_CONCURRENT,
 		.open_session_entry_point = pta_rpc_open_session,
 		.close_session_entry_point = pta_rpc_close_session,
 		.invoke_command_entry_point = pta_rpc_invoke_command);

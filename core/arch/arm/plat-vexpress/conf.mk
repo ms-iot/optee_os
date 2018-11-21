@@ -86,7 +86,6 @@ ifeq ($(CFG_CORE_SANITIZE_KADDRESS),y)
 # calculate it offline, there's some asserts in
 # core/arch/arm/kernel/generic_boot.c to check that we got it right
 CFG_ASAN_SHADOW_OFFSET = 0xc6a71c0
-CFG_TA_RPC ?= y
 endif
 $(call force,CFG_BOOT_SECONDARY_REQUEST,y)
 $(call force,CFG_PSCI_ARM32,y)
@@ -95,6 +94,7 @@ $(call force,CFG_DT,y)
 CFG_SE_API ?= y
 CFG_SE_API_SELF_TEST ?= y
 CFG_PCSC_PASSTHRU_READER_DRV ?= n
+CFG_TA_RPC ?= y
 endif
 
 ifeq ($(PLATFORM_FLAVOR),qemu_armv8a)

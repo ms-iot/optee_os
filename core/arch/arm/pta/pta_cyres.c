@@ -83,6 +83,7 @@ static TEE_Result get_calling_ta_session(struct tee_ta_session **sess)
 static TEE_Result export_ta_pub_key(unsigned char *buf, unsigned long *len)
 {
 	rsa_key key;
+	TEE_Result res;
 	int ret;
 	uint32_t e = TEE_U32_TO_BIG_ENDIAN(ta_pub_key_exponent);
 
@@ -99,10 +100,15 @@ static TEE_Result export_ta_pub_key(unsigned char *buf, unsigned long *len)
 	ret = rsa_export(buf, len, PK_PUBLIC, &key);
 	if (ret != CRYPT_OK) {
 		DMSG("rsa_export failed (0x%x)", ret);
-		return TEE_ERROR_SECURITY;
+		res = TEE_ERROR_SECURITY;
+		goto end;
 	}
 
-	return TEE_SUCCESS;
+	res = TEE_SUCCESS;
+
+end:
+	rsa_free(&key);
+	return res;
 }
 
 static TEE_Result gen_ta_cert(struct cyres_pta_sess_ctx *ctx)

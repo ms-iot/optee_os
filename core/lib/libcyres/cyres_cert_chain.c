@@ -13,6 +13,7 @@
 
 #ifdef __UBOOT__
 #include <common.h>
+#include <linux/libfdt.h>
 #include <fdt_support.h>
 #endif
 
@@ -21,10 +22,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <string_ext.h>
+#include <libfdt.h>
 #endif
 
 #include <malloc.h>
-#include <libfdt.h>
 
 #include <RiotTarget.h>
 #include <RiotStatus.h>
@@ -476,11 +477,12 @@ cyres_insert_root_and_device_certs(struct cyres_cert_blob *blob,
 	RIOT_STATUS status;
 	struct cyres_cert *root_cert = NULL;
 	struct cyres_cert *device_cert = NULL;
-	uint8_t identity_digest[RIOT_DIGEST_LENGTH];
+	uint8_t uds_digest[RIOT_DIGEST_LENGTH];
+	uint8_t cdi[RIOT_DIGEST_LENGTH];
 
 	/* don't use device identity directly */
-	status = RiotCrypt_Hash(identity_digest,
-				sizeof(identity_digest),
+	status = RiotCrypt_Hash(uds_digest,
+				sizeof(uds_digest),
 				args->identity,
 				args->identity_size);
 	if (status != RIOT_SUCCESS) {
@@ -488,11 +490,18 @@ cyres_insert_root_and_device_certs(struct cyres_cert_blob *blob,
 		goto end;
 	}
 
+	status = RiotCrypt_Hash2(cdi,
+				 sizeof(cdi),
+				 uds_digest,
+				 sizeof(uds_digest),
+				 args->fwid,
+				 args->fwid_size);
+
 	/* derive DeviceID key pair from device identity */
 	status = RiotCrypt_DeriveEccKey(&device_key_pair->pub,
 					&device_key_pair->priv,
-					identity_digest,
-					sizeof(identity_digest),
+					cdi,
+					sizeof(cdi),
 					(const uint8_t *)RIOT_LABEL_IDENTITY,
 					STR_LITERAL_LEN(RIOT_LABEL_IDENTITY));
 
@@ -534,7 +543,8 @@ cyres_insert_root_and_device_certs(struct cyres_cert_blob *blob,
 		goto end;
 
 end:
-	cyres_zero_mem(identity_digest, sizeof(identity_digest));
+	cyres_zero_mem(uds_digest, sizeof(uds_digest));
+	cyres_zero_mem(cdi, sizeof(cdi));
 
 	return res;
 }

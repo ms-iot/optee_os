@@ -16,13 +16,19 @@
 
 enum PTA_CYRES_CMDS {
 	//
+	// Get the size of the buffer required by PTA_CYRES_GET_PRIVATE_KEY.
+	//
+	// params[0]: VALUE_OUTPUT
+	//   Receives the size in bytes of the buffer required by
+	//   PTA_CYRES_GET_PRIVATE_KEY
+	//
+	PTA_CYRES_GET_PRIVATE_KEY_SIZE,
+
+	//
 	// Get the calling TA's private key.
 	//
-	// You should first call this command with a zero-length
-	// buffer. The PTA will return TEE_ERROR_SHORT_BUFFER, and will
-	// place the required size of the buffer in params[0].memref.size.
-	// You should allocate a buffer of the required size, then invoke
-	// the command again.
+	// You should first call PTA_CYRES_GET_PRIVATE_KEY_SIZE to
+	// get the required buffer size.
 	//
 	// params[0]: MEMREF_OUTPUT
 	//   A buffer that will receive a null-terminated string containing
@@ -31,13 +37,19 @@ enum PTA_CYRES_CMDS {
 	PTA_CYRES_GET_PRIVATE_KEY,
 
 	//
+	// Get the size of the buffer required by PTA_CYRES_GET_PUBLIC_KEY.
+	//
+	// params[0]: VALUE_OUTPUT
+	//   Receives the size in bytes of the buffer required by
+	//   PTA_CYRES_GET_PUBLIC_KEY
+	//
+	PTA_CYRES_GET_PUBLIC_KEY_SIZE,
+
+	//
 	// Get the calling TA's public key.
 	//
-	// You should first call this command with a zero-length
-	// buffer. The PTA will return TEE_ERROR_SHORT_BUFFER, and will
-	// place the required size of the buffer in params[0].memref.size.
-	// You should allocate a buffer of the required size, then invoke
-	// the command again.
+	// You should first call PTA_CYRES_GET_PUBLIC_KEY_SIZE to get the
+	// required buffer size.
 	//
 	// params[0]: MEMREF_OUTPUT
 	//   A buffer that will receive a null-terminated string containing
@@ -46,13 +58,19 @@ enum PTA_CYRES_CMDS {
 	PTA_CYRES_GET_PUBLIC_KEY,
 
 	//
+	// Get the size of the buffer required by PTA_CYRES_GET_CERT_CHAIN.
+	//
+	// params[0]: VALUE_OUTPUT
+	//   Receives the size in bytes of the buffer required by
+	//   PTA_CYRES_GET_CERT_CHAIN.
+	//
+	PTA_CYRES_GET_CERT_CHAIN_SIZE,
+
+	//
 	// Get the calling TA's Cyres certificate chain.
 	//
-	// You should first call this command with a zero-length
-	// buffer. The PTA will return TEE_ERROR_SHORT_BUFFER, and will
-	// place the required size of the buffer in params[0].memref.size.
-	// You should allocate a buffer of the required size, then invoke
-	// the command again.
+	// You should first call PTA_CYRES_GET_CERT_CHAIN_SIZE to get
+	// the required buffer size.
 	//
 	// params[0]: MEMREF_OUTPUT
 	//   A buffer that will receive a null-terminated string containing

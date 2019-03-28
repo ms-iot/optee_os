@@ -1080,12 +1080,23 @@ static TEE_Result tee_rpmb_write_and_verify_key(uint16_t dev_id)
 {
 	TEE_Result res;
 
+	res = tee_otp_check_rpmb_key_write_lock();
+	if (res != TEE_SUCCESS)
+		goto func_exit;
+
 	DMSG("RPMB INIT: Writing Key");
 	res = tee_rpmb_write_key(dev_id);
-	if (res == TEE_SUCCESS) {
-		DMSG("RPMB INIT: Verifying Key");
-		res = tee_rpmb_verify_key_sync_counter(dev_id);
-	}
+	if (res != TEE_SUCCESS)
+		goto func_exit;
+
+	DMSG("RPMB INIT: Verifying Key");
+	res = tee_rpmb_verify_key_sync_counter(dev_id);
+	if (res != TEE_SUCCESS)
+		goto func_exit;
+
+	res = tee_otp_set_rpmb_key_write_lock();
+
+func_exit:
 	return res;
 }
 #else

@@ -113,6 +113,18 @@ register_phys_mem(MEM_AREA_IO_SEC,
 register_phys_mem(MEM_AREA_IO_SEC, CAAM_BASE, CORE_MMU_DEVICE_SIZE);
 #endif
 
+#ifdef OCOTP_BASE
+register_phys_mem(MEM_AREA_IO_SEC,
+		  ROUNDDOWN(OCOTP_BASE, CORE_MMU_DEVICE_SIZE),
+		  CORE_MMU_DEVICE_SIZE);
+#endif
+
+#ifdef CCM_BASE
+register_phys_mem(MEM_AREA_IO_SEC,
+		  ROUNDDOWN(CCM_BASE, CORE_MMU_DEVICE_SIZE),
+		  CORE_MMU_DEVICE_SIZE);
+#endif
+
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
 	return &handlers;

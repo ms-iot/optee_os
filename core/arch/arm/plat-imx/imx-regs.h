@@ -69,6 +69,10 @@
 #define IRAM_BASE			0x00900000
 
 #define OCOTP_BASE			0x021BC000
+#define OCOTP_CTRL			0x0
+#define OCOTP_DATA			0x20
+#define OCOTP_GP1_OFFSET		0x660
+#define OCOTP_GP2_OFFSET		0x670
 
 #define GIC_BASE			0x00A00000
 #define GICD_OFFSET			0x1000
@@ -106,6 +110,7 @@
 #define MX6Q_GPC_IMR3			0x10
 #define MX6Q_GPC_IMR4			0x14
 #define MX6Q_CCM_CCR			0x0
+#define MX6Q_CCM_CCGR2			0x70
 #define MX6Q_ANATOP_CORE		0x140
 
 #define IOMUXC_GPR9_OFFSET		0x24

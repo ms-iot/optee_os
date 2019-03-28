@@ -47,7 +47,7 @@ static TEE_Result set_master_key_source_otpmk(void)
 	DMSG("Setting master key source to OTPMK\n");
 	val = sec_in32(ptov(SNVS_BASE + SNVS_LPMKCR));
 	val = (val & ~0x3) | SNVS_LPMKCR_MK_OTP;
-	sec_out32(val, ptov(SNVS_BASE + SNVS_LPMKCR));
+	sec_out32(ptov(SNVS_BASE + SNVS_LPMKCR), val);
 
 	return TEE_SUCCESS;
 }
@@ -80,7 +80,7 @@ static void roll_forward_master_key(void)
 	DMSG("Setting priblob configuration forward to normal mode");
 
 	val = sec_in32(ptov(CAAM_BASE + SEC_REG_SCFGR_OFFSET));
-	sec_out32((ptov(CAAM_BASE + SEC_REG_SCFGR_OFFSET)),
+	sec_out32(ptov(CAAM_BASE + SEC_REG_SCFGR_OFFSET),
 		  val | SCFGR_PRIBLOB_NORMAL);
 }
 
@@ -302,3 +302,86 @@ out:
 
 	return res;
 }
+
+#ifdef CFG_RPMB_KEY_WRITE_LOCK
+
+#define RPMB_KEY_WRITE_LOCK_FUSE_BITS 0x80000000
+#define RPMB_KEY_WRITE_LOCK_FUSE_WORD OCOTP_GP1_OFFSET
+
+#ifdef CFG_MX6
+// i.MX6 OCOTP is in CCM_CCGR2
+#define OCOTP_CCG_ENABLE 0x3000
+#elif defined(CFG_MX7)
+// i.MX7 OCOTP is in CCM_CCGR35 (0x4230 offset)
+#endif
+
+TEE_Result tee_otp_check_rpmb_key_write_lock(void)
+{
+	TEE_Result res;
+	uint32_t val;
+
+	res = TEE_SUCCESS;
+
+	DMSG("RPMB INIT: Checking RPMB key write lock");
+
+	val = sec_in32(ptov(OCOTP_BASE + RPMB_KEY_WRITE_LOCK_FUSE_WORD));
+	if (val & RPMB_KEY_WRITE_LOCK_FUSE_BITS) {
+		EMSG("Writing RPMB key forbidden! Write lock fuse is blown!");
+		res = TEE_ERROR_BAD_STATE;
+	}
+
+	return res;
+}
+
+TEE_Result tee_otp_set_rpmb_key_write_lock(void)
+{
+	TEE_Result res;
+	uint32_t val;
+	uint32_t ccg_orig;
+
+	res = TEE_SUCCESS;
+
+	DMSG("RPMB INIT: Setting RPMB key write lock");
+
+	// Enable clock to OTP fuse controller
+	ccg_orig = sec_in32(ptov(CCM_BASE + MX6Q_CCM_CCGR2));
+	sec_out32(ptov(CCM_BASE + MX6Q_CCM_CCGR2), ccg_orig | OCOTP_CCG_ENABLE);
+
+#ifdef CFG_MX6
+	// 0x3E770000 is the OTP unlock key
+	// 0x26 is Bank 4 word 6, 0x27 is Bank 4 Word 7
+#if RPMB_KEY_WRITE_LOCK_FUSE_WORD == OCOTP_GP1_OFFSET
+	val = 0x3E770026;
+#elif RPMB_KEY_WRITE_LOCK_FUSE_WORD == OCOTP_GP2_OFFSET
+abcd
+	val = 0x3E770027;
+#else
+#error "RPMB_KEY_FUSE_WORD is an invalid value"
+#endif
+#elif defined(CFG_MX7)
+	val = 0;
+#else
+#error "CFG_MX6/7 not defined"
+#endif
+	// Prepare the OCOTP control register for a write
+	sec_out32(ptov(OCOTP_BASE + OCOTP_CTRL), val);
+	// Write the OCOTP data register to commit the write to fuses
+	sec_out32(ptov(OCOTP_BASE + OCOTP_DATA), RPMB_KEY_WRITE_LOCK_FUSE_BITS);
+
+	// Wait until the OCOTP write is complete
+	do {
+		val = sec_in32(ptov(OCOTP_BASE + OCOTP_CTRL));
+	} while (val & 0x100);
+
+	// Check the error bit in the OCOTP control register
+	if(val & 0x200) {
+		EMSG("Failure writing RPMB key write lock fuse");
+		res = TEE_ERROR_BAD_STATE;
+	}
+
+	// We should stall then try reloading the shadow registers and reading.
+
+	sec_out32(ptov(CCM_BASE + MX6Q_CCM_CCGR2), ccg_orig);
+	return res;
+}
+#endif

@@ -17,5 +17,7 @@ struct tee_hw_unique_key {
 
 TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey);
 int tee_otp_get_die_id(uint8_t *buffer, size_t len);
+TEE_Result tee_otp_check_rpmb_key_write_lock(void);
+TEE_Result tee_otp_set_rpmb_key_write_lock(void);
 
 #endif /* TEE_COMMON_OTP_H */

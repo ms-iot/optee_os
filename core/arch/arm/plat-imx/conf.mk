@@ -165,7 +165,16 @@ $(call force,CFG_GENERIC_BOOT,y)
 $(call force,CFG_GIC,y)
 $(call force,CFG_IMX_UART,y)
 $(call force,CFG_PM_STUBS,y)
-ifneq ($(filter y, $(CFG_FSL_SEC)), y)
+ifeq ($(filter y, $(CFG_FSL_SEC)), y)
+$(call force,CFG_WITH_SOFTWARE_PRNG,n)
+ifneq ($(filter y, $(CFG_RPMB_KEY_WRITE_LOCK)), y)
+ifneq ($(filter n, $(CFG_RPMB_KEY_WRITE_LOCK)), n)
+$(error Must set CFG_RPMB_KEY_WRITE_LOCK to y or n.\
+Before setting to y make sure that the fuse bits\
+and fuse word are correct for your platform)
+endif
+endif
+else
 $(call force,CFG_WITH_SOFTWARE_PRNG,y)
 endif
 

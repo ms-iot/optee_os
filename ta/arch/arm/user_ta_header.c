@@ -38,7 +38,7 @@ void __utee_entry(unsigned long func, unsigned long session_id,
  */
 #define TA_FRAMEWORK_STACK_SIZE 2048
 
-const struct ta_head ta_head __section(".ta_head") = {
+volatile const struct ta_head ta_head __section(".ta_head") = {
 	/* UUID, unique to each TA */
 	.uuid = TA_UUID,
 	/*
@@ -59,7 +59,13 @@ const struct ta_head ta_head __section(".ta_head") = {
 #else
 	.entry.ptr64 = (uint64_t)__utee_entry,
 #endif
+	.rva = 0,
 };
+
+uintptr_t tahead_get_rva(void)
+{
+	return ta_head.rva;
+}
 
 /* Keeping the heap in bss */
 uint8_t ta_heap[TA_DATA_SIZE];
@@ -88,7 +94,7 @@ const struct user_ta_property ta_props[] = {
 	 TA_DESCRIPTION},
 
 /*
- * Extended propietary properties, name of properties must not begin with
+ * Extended proprietary properties, name of properties must not begin with
  * "gpd."
  */
 #ifdef TA_CURRENT_TA_EXT_PROPERTIES

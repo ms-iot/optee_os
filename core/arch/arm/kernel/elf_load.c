@@ -529,18 +529,29 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 	uint8_t *dst = (uint8_t *)vabase;
 	struct elf_ehdr ehdr;
 	size_t offs = 0;
+	size_t e_hdr_sz;
+	size_t p_hdrs_sz;
 	size_t e_p_hdr_sz;
-
 	copy_ehdr(&ehdr, state);
+	e_hdr_sz = state->is_32bit ? sizeof(Elf32_Ehdr) : sizeof(Elf64_Ehdr);
+	p_hdrs_sz = ehdr.e_phnum * ehdr.e_phentsize;
 	e_p_hdr_sz = ehdr.e_phoff + ehdr.e_phnum * ehdr.e_phentsize;
 
 	/*
 	 * Copy the segments
 	 */
 	if (state->ta_head_size) {
+		((struct ta_head *)(state->ta_head))->rva = vabase;
 		memcpy(dst, state->ta_head, state->ta_head_size);
 		offs = state->ta_head_size;
 	}
+
+	memcpy(dst + offs, state->ehdr, e_hdr_sz);
+	offs += e_hdr_sz;
+
+	memcpy(dst + offs, state->phdr, p_hdrs_sz);
+	offs += p_hdrs_sz;
+
 	for (n = 0; n < ehdr.e_phnum; n++) {
 		struct elf_phdr phdr;
 
@@ -555,14 +566,10 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 		if (phdr.p_offset < e_p_hdr_sz) {
 			/*
 			 * The first loadable segment contains the ELF and
-			 * program headers, which have been read already.
-			 * Make sure we don't try to read them again, thus
-			 * going backwards in the data stream which is not
-			 * supported by the TA store interface.
-			 * We do not even need to copy the data from those
-			 * headers because they are useless at this point.
-			 * We can ignore them and leave zeroes at the beginning
-			 * of the segment.
+			 * program headers, which have been read and loaded
+			 * already. Make sure we don't try to read them again,
+			 * thus going backwards in the data stream which is
+			 * not supported by the TA store interface.
 			 */
 			offs += e_p_hdr_sz;
 			e_p_hdr_sz = 0;

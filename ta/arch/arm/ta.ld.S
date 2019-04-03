@@ -25,11 +25,13 @@ PHDRS {
 	exec PT_LOAD FLAGS (5);		/* RX */
 	rodata PT_LOAD FLAGS (4);	/* RO */
 	rwdata PT_LOAD;
+	cxx PT_GNU_EH_FRAME;
 	dyn PT_DYNAMIC;
 }
 
 SECTIONS {
 	.ta_head : {*(.ta_head)} :exec
+	. = SIZEOF_HEADERS + SIZEOF(.ta_head);
 	.text : {
 		__text_start = .;
 		*(.text .text.*)
@@ -42,17 +44,32 @@ SECTIONS {
 		PROVIDE(MCOUNT_SYM = __utee_mcount);
 		__text_end = .;
 	}
-        .plt : { *(.plt) }
+	.plt : { *(.plt) }
 
-	.eh_frame : { *(.eh_frame) } :rodata
 	.rodata : {
 		*(.gnu.linkonce.r.*)
 		*(.rodata .rodata.*)
-	}
+	} :rodata
+	.eh_frame_hdr : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) } :rodata :cxx
+	.eh_frame : { KEEP (*(.eh_frame)) *(.eh_frame.*) } :rodata
+	.gcc_except_table : { *(.gcc_except_table .gcc_except_table.*) }
+	.gnu_extab : { *(.gnu_extab*) }
 	/* .ARM.exidx is sorted, so has to go in its own output section.  */
 	.ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) }
         .ctors : { *(.ctors) }
         .dtors : { *(.dtors) }
+	.init_array : {
+		PROVIDE_HIDDEN (__init_array_start = .);
+		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP (*(.init_array))
+		PROVIDE_HIDDEN (__init_array_end = .);
+	}
+	.fini_array : {
+		PROVIDE_HIDDEN (__fini_array_start = .);
+		KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
+		KEEP (*(.fini_array))
+		PROVIDE_HIDDEN (__fini_array_end = .);
+	}
 	.got : { *(.got.plt) *(.got) }
 	.rel.text : { *(.rel.text) *(.rel.gnu.linkonce.t*) }
 	.rela.text : { *(.rela.text) *(.rela.gnu.linkonce.t*) }

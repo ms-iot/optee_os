@@ -50,10 +50,10 @@ TEE_Param ta_params[TEE_NUM_PARAMS];
 
 static TEE_Result init_instance(void)
 {
-	trace_set_level(tahead_get_trace_level());
+	//trace_set_level(tahead_get_trace_level());
 	__utee_gprof_init();
-	malloc_add_pool(ta_heap, ta_heap_size);
-	_TEE_MathAPI_Init();
+	//malloc_add_pool(ta_heap, ta_heap_size);
+	//_TEE_MathAPI_Init();
 	return TA_CreateEntryPoint();
 }
 

@@ -41,6 +41,7 @@ struct ta_head {
 	uint32_t stack_size;
 	uint32_t flags;
 	union ta_head_func_ptr entry;
+	uintptr_t rva;
 };
 
 #define TA_PROP_STR_SINGLE_INSTANCE	"gpd.ta.singleInstance"
@@ -89,5 +90,6 @@ typedef struct ta_func_head {
 } ta_func_head_t;
 
 int tahead_get_trace_level(void);
+uintptr_t tahead_get_rva(void);
 
 #endif /* USER_TA_HEADER_H */

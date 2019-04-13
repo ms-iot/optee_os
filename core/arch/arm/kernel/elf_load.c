@@ -145,7 +145,7 @@ static TEE_Result e64_load_ehdr(struct elf_load_state *state, Elf32_Ehdr *eh32)
 	if (eh32->e_ident[EI_VERSION] != EV_CURRENT ||
 	    eh32->e_ident[EI_CLASS] != ELFCLASS64 ||
 	    eh32->e_ident[EI_DATA] != ELFDATA2LSB ||
-	    eh32->e_ident[EI_OSABI] != ELFOSABI_NONE ||
+	    //eh32->e_ident[EI_OSABI] != ELFOSABI_NONE ||
 	    eh32->e_type != ET_DYN || eh32->e_machine != EM_AARCH64)
 		return TEE_ERROR_BAD_FORMAT;
 

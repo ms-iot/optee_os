@@ -137,7 +137,6 @@ CFG_RPMB_FS_DEV_ID ?= 0
 # !!! Security warning !!!
 # If this is enabled in product builds you MUST define the following functions:
 # tee_otp_set_rpmb_key_write_lock() and tee_otp_check_rpmb_key_write_lock()
-# You must also set the config CFG_RPMB_KEY_WRITE_LOCK.
 # These are platform specific functions responsible for checking and fusing an
 # SoC fuse that will only allow a single RPMB key write to occur in the factory.
 # Fusing off RPMB key write removes the need to use a special OP-TEE in factory.

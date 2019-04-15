@@ -99,6 +99,19 @@ data frame format defined by the JEDEC eMMC specification.
 
 HMAC authentication is implemented here also.
 
+## RPMB Security Key Write Lock
+
+In order to make sure that a device with CFG_RPMB_WRITE_KEY=y is suitable as a
+production firmware, you may implement two platform specific functions.
+
+The platform specific functions `tee_otp_check_rpmb_key_write_lock()` and
+`tee_otp_set_rpmb_key_write_lock()` are responsible for checking and burning an
+SoC specific fuse to signal that an RPMB has already been keyed in the factory
+and to forbid all future writes of the RPMB Security Key through the supplicant.
+
+By default both functions have a weak implementation that returns success so
+that they're a no-op to platforms that do not implement them.
+
 ## Encryption
 
 The FS encryption routines are in [core/tee/tee_fs_key_manager.c](../core/tee/tee_fs_key_manager.c).

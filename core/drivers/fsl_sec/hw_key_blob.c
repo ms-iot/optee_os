@@ -353,7 +353,6 @@ TEE_Result tee_otp_set_rpmb_key_write_lock(void)
 #if RPMB_KEY_WRITE_LOCK_FUSE_WORD == OCOTP_GP1_OFFSET
 	val = 0x3E770026;
 #elif RPMB_KEY_WRITE_LOCK_FUSE_WORD == OCOTP_GP2_OFFSET
-abcd
 	val = 0x3E770027;
 #else
 #error "RPMB_KEY_FUSE_WORD is an invalid value"

@@ -7,13 +7,13 @@ $(call force,CFG_16550_UART,y)
 $(call force,CFG_PM_STUBS,y)
 
 $(call force,CFG_DRAM0_BASE,0x80000000)
-$(call force,CFG_TEE_OS_DRAM0_SIZE,0x4000000)
 
 ifeq ($(PLATFORM_FLAVOR),ls1021atwr)
 include core/arch/arm/cpu/cortex-a7.mk
 $(call force,CFG_TEE_CORE_NB_CORE,2)
 $(call force,CFG_DRAM0_SIZE,0x40000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00100000
 CFG_BOOT_SYNC_CPU ?= y
 CFG_BOOT_SECONDARY_REQUEST ?= y
@@ -24,6 +24,7 @@ include core/arch/arm/cpu/cortex-a7.mk
 $(call force,CFG_TEE_CORE_NB_CORE,2)
 $(call force,CFG_DRAM0_SIZE,0x80000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00100000
 CFG_BOOT_SYNC_CPU ?= y
 CFG_BOOT_SECONDARY_REQUEST ?= y
@@ -35,6 +36,7 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,1)
 $(call force,CFG_DRAM0_SIZE,0x40000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
 
@@ -44,7 +46,8 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,1)
 $(call force,CFG_DRAM0_SIZE,0x40000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
-CFG_SHMEM_SIZE ?= 0x00200000
+$(call force,CFG_TEE_OS_DRAM0_SIZE,0x10000000)
+CFG_SHMEM_SIZE ?= 0x2000000
 CFG_CYRES ?= y
 CFG_CYRES_CERT_CHAIN_ADDR ?= 0x81FFD000
 CFG_CYRES_KEY_ADDR ?= 0x81FFC000
@@ -56,6 +59,7 @@ CFG_HW_UNQ_KEY_REQUEST ?= y
 include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,1)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_DRAM0_SIZE ?= 0x20000000
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
@@ -66,6 +70,7 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,4)
 $(call force,CFG_DRAM0_SIZE,0x80000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
 
@@ -75,6 +80,7 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,4)
 $(call force,CFG_DRAM0_SIZE,0x80000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
 
@@ -85,6 +91,7 @@ $(call force,CFG_TEE_CORE_NB_CORE,8)
 $(call force,CFG_DRAM0_SIZE,0x80000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,2)
 $(call force,CFG_ARM_GICV3,y)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
 
@@ -95,6 +102,7 @@ $(call force,CFG_TEE_CORE_NB_CORE,8)
 $(call force,CFG_DRAM0_SIZE,0x80000000)
 $(call force,CFG_CORE_CLUSTER_SHIFT,1)
 $(call force,CFG_ARM_GICV3,y)
+$(call force,CFG_TEE_OS_DRAM0_SIZE,2)
 CFG_SHMEM_SIZE ?= 0x00200000
 endif
 

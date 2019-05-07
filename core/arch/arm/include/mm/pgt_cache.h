@@ -37,7 +37,7 @@ struct pgt {
  * Reserve 2 page tables per thread, but at least 4 page tables in total
  */
 #if CFG_NUM_THREADS < 2
-#define PGT_CACHE_SIZE	16
+#define PGT_CACHE_SIZE	40
 #else
 #define PGT_CACHE_SIZE	ROUNDUP(CFG_NUM_THREADS * 8, PGT_NUM_PGT_PER_PAGE)
 #endif

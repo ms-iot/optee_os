@@ -58,10 +58,4 @@ jobs:
         make optee CROSS_COMPILE=$(Build.SourcesDirectory)/gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
       displayName: Build OP-TEE
 
-    - script: |
-        cd ../optee_os
-        python3 ../imx-iotcore/ci/build_cgmanifest.py
-        cat cgmanifest.json
-      displayName: Generate dynamic Component Governance cgmanifest.json
-      
     - task: ComponentGovernanceComponentDetection@0

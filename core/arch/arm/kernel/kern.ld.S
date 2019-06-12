@@ -257,7 +257,7 @@ SECTIONS
 #ifndef CFG_WITH_PAGER
 		. += CFG_CORE_HEAP_SIZE;
 #endif
-		. = ALIGN(1024 * 1024);
+		. = ALIGN(16 * 1024);
 		__heap1_end = .;
 	}
 

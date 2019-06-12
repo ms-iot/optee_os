@@ -145,7 +145,7 @@ static TEE_Result e64_load_ehdr(struct elf_load_state *state, Elf32_Ehdr *eh32)
 	if (eh32->e_ident[EI_VERSION] != EV_CURRENT ||
 	    eh32->e_ident[EI_CLASS] != ELFCLASS64 ||
 	    eh32->e_ident[EI_DATA] != ELFDATA2LSB ||
-	    //eh32->e_ident[EI_OSABI] != ELFOSABI_NONE ||
+	    eh32->e_ident[EI_OSABI] != ELFOSABI_NONE ||
 	    eh32->e_type != ET_DYN || eh32->e_machine != EM_AARCH64)
 		return TEE_ERROR_BAD_FORMAT;
 
@@ -532,6 +532,7 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 	size_t e_hdr_sz;
 	size_t p_hdrs_sz;
 	size_t e_p_hdr_sz;
+
 	copy_ehdr(&ehdr, state);
 	e_hdr_sz = state->is_32bit ? sizeof(Elf32_Ehdr) : sizeof(Elf64_Ehdr);
 	p_hdrs_sz = ehdr.e_phnum * ehdr.e_phentsize;

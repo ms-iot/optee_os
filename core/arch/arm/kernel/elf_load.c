@@ -529,12 +529,10 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 	uint8_t *dst = (uint8_t *)vabase;
 	struct elf_ehdr ehdr;
 	size_t offs = 0;
-	size_t e_hdr_sz;
 	size_t p_hdrs_sz;
 	size_t e_p_hdr_sz;
 
 	copy_ehdr(&ehdr, state);
-	e_hdr_sz = state->is_32bit ? sizeof(Elf32_Ehdr) : sizeof(Elf64_Ehdr);
 	p_hdrs_sz = ehdr.e_phnum * ehdr.e_phentsize;
 	e_p_hdr_sz = ehdr.e_phoff + ehdr.e_phnum * ehdr.e_phentsize;
 
@@ -546,12 +544,6 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 		memcpy(dst, state->ta_head, state->ta_head_size);
 		offs = state->ta_head_size;
 	}
-
-	memcpy(dst + offs, state->ehdr, e_hdr_sz);
-	offs += e_hdr_sz;
-
-	memcpy(dst + offs, state->phdr, p_hdrs_sz);
-	offs += p_hdrs_sz;
 
 	for (n = 0; n < ehdr.e_phnum; n++) {
 		struct elf_phdr phdr;
@@ -604,6 +596,10 @@ TEE_Result elf_load_body(struct elf_load_state *state, vaddr_t vabase)
 	res = advance_to(state, state->data_len);
 	if (res != TEE_SUCCESS)
 		return res;
+
+	/* Copy the ELF and Program Headers at the top. */
+	memcpy(dst + state->ta_head_size, state->ehdr, ehdr.e_phoff);
+	memcpy(dst + state->ta_head_size + ehdr.e_phoff, state->phdr, p_hdrs_sz);
 
 	return TEE_SUCCESS;
 }

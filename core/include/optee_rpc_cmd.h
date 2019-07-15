@@ -128,6 +128,11 @@
 #define OPTEE_RPC_CMD_SOCKET		10
 
 /*
+ * Generic RPC PTA command
+ */
+#define OPTEE_RPC_CMD_GENERIC		11
+
+/*
  * Register timestamp buffer in the linux kernel optee driver
  *
  * [in]     value[0].a	    Subcommand (register buffer, unregister buffer)

@@ -4,7 +4,7 @@
 
 #include <kernel/msg_param.h>
 #include <kernel/pseudo_ta.h>
-#include <optee_msg_supplicant.h>
+#include <optee_rpc_cmd.h>
 #include <string.h>
 #include <pta_rpc.h>
 
@@ -116,7 +116,7 @@ static TEE_Result pta_rpc_execute(
 
 	/* Send RPC message to the rich OS */
 	tee_result = thread_rpc_cmd(
-			OPTEE_MSG_RPC_CMD_GENERIC,
+			OPTEE_RPC_CMD_GENERIC,
 			ARRAY_SIZE(rpc_msg_params),
 			rpc_msg_params);
 	FMSG("Returned from thread_rpc_cmd with result = %#x", tee_result);

@@ -13,6 +13,7 @@
 #include <mm/tee_mm.h>
 #include <mm/tee_pager.h>
 #include <mm/tee_mmu.h>
+#include <optee_rpc_cmd.h>
 #include <pta_benchmark.h>
 #include <string.h>
 #include <string_ext.h>
@@ -27,19 +28,12 @@ static size_t bench_ts_size;
 
 static struct mutex bench_reg_mu = MUTEX_INITIALIZER;
 static struct mobj *bench_mobj;
-static uint64_t bench_cookie;
 
 static TEE_Result rpc_reg_global_buf(uint64_t type, paddr_t phta, size_t size)
 {
-	struct optee_msg_param rpc_params;
+	struct thread_param tpm = THREAD_PARAM_VALUE(IN, type, phta, size);
 
-	memset(&rpc_params, 0, sizeof(rpc_params));
-	rpc_params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	rpc_params.u.value.a = type;
-	rpc_params.u.value.b = (uint64_t)phta;
-	rpc_params.u.value.c = size;
-
-	return thread_rpc_cmd(OPTEE_MSG_RPC_CMD_BENCH_REG, 1, &rpc_params);
+	return thread_rpc_cmd(OPTEE_RPC_CMD_BENCH_REG, 1, &tpm);
 }
 
 static TEE_Result alloc_benchmark_buffer(uint32_t type,
@@ -73,8 +67,7 @@ static TEE_Result alloc_benchmark_buffer(uint32_t type,
 		return TEE_ERROR_BAD_STATE;
 	}
 
-	bench_mobj = thread_rpc_alloc_global_payload(bench_ts_size,
-						     &bench_cookie);
+	bench_mobj = thread_rpc_alloc_global_payload(bench_ts_size);
 	if (!bench_mobj) {
 		EMSG(TA_PRINT_PREFIX
 			"can't create mobj for timestamp buffer");
@@ -84,7 +77,8 @@ static TEE_Result alloc_benchmark_buffer(uint32_t type,
 
 	bench_ts_global = (struct tee_ts_global *)mobj_get_va(bench_mobj, 0);
 	if (!bench_ts_global) {
-		thread_rpc_free_global_payload(bench_cookie, bench_mobj);
+		thread_rpc_free_global_payload(bench_mobj);
+		bench_mobj = NULL;
 
 		mutex_unlock(&bench_reg_mu);
 		return TEE_ERROR_BAD_STATE;
@@ -159,7 +153,9 @@ static TEE_Result unregister_benchmark(uint32_t type,
 
 	res = rpc_reg_global_buf(OPTEE_MSG_RPC_CMD_BENCH_REG_DEL, 0, 0);
 
-	thread_rpc_free_global_payload(bench_cookie, bench_mobj);
+	thread_rpc_free_global_payload(bench_mobj);
+	bench_mobj = NULL;
+
 	return res;
 }
 

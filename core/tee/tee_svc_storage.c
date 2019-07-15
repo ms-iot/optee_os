@@ -477,11 +477,12 @@ err:
 		res = TEE_ERROR_CORRUPT_OBJECT;
 	if (res == TEE_ERROR_CORRUPT_OBJECT && po)
 		fops->remove(po);
-	if (o)
+	if (o) {
 		fops->close(&o->fh);
+		tee_obj_free(o);
+	}
 	if (po)
 		tee_pobj_release(po);
-	free(o);
 
 	return res;
 }
@@ -569,7 +570,7 @@ TEE_Result syscall_storage_obj_rename(unsigned long obj, void *object_id,
 
 	/* move */
 	res = fops->rename(o->pobj, po, false /* no overwrite */);
-	if (res == TEE_ERROR_GENERIC)
+	if (res)
 		goto exit;
 
 	res = tee_pobj_rename(o->pobj, object_id, object_id_len);
@@ -777,7 +778,8 @@ TEE_Result syscall_storage_next_enum(unsigned long obj_enum,
 exit:
 	if (o) {
 		if (o->pobj) {
-			o->pobj->fops->close(&o->fh);
+			if (o->pobj->fops)
+				o->pobj->fops->close(&o->fh);
 			free(o->pobj->obj_id);
 		}
 		free(o->pobj);

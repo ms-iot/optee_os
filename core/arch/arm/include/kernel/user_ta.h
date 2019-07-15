@@ -11,6 +11,7 @@
 #include <mm/tee_mm.h>
 #include <tee_api_types.h>
 #include <types_ext.h>
+#include <scattered_array.h>
 #include <util.h>
 
 TAILQ_HEAD(tee_cryp_state_head, tee_cryp_state);
@@ -57,9 +58,6 @@ struct user_ta_ctx {
 	struct vm_info *vm_info;
 	void *ta_time_offs;
 	struct tee_pager_area_head *areas;
-#if defined(CFG_SE_API)
-	struct tee_se_service *se_service;
-#endif
 #if defined(CFG_WITH_VFP)
 	struct thread_user_vfp_state vfp;
 #endif
@@ -87,7 +85,6 @@ struct user_ta_store_ops;
 #ifdef CFG_WITH_USER_TA
 TEE_Result tee_ta_init_user_ta_session(const TEE_UUID *uuid,
 			struct tee_ta_session *s);
-TEE_Result tee_ta_register_ta_store(struct user_ta_store_ops *ops);
 #else
 static inline TEE_Result tee_ta_init_user_ta_session(
 			const TEE_UUID *uuid __unused,
@@ -95,12 +92,25 @@ static inline TEE_Result tee_ta_init_user_ta_session(
 {
 	return TEE_ERROR_ITEM_NOT_FOUND;
 }
-
-static inline TEE_Result tee_ta_register_ta_store(
-			struct user_ta_store_ops *ops __unused)
-{
-	return TEE_ERROR_NOT_SUPPORTED;
-}
 #endif
+
+/*
+ * Registers a TA storage.
+ *
+ * A TA is loaded from the first TA storage in which the TA can be found.
+ * TA storage is searched in order of priority, where lower values are
+ * tried first.
+ *
+ * Note prio must be unique per storage in order to avoid dependency on
+ * registration order. This is enforced by a deliberate linker error in
+ * case of conflict.
+ *
+ * Also note that TA storage is sorted lexicographically instead of
+ * numerically.
+ */
+#define TEE_TA_REGISTER_TA_STORE(prio) \
+	int __tee_ta_store_##prio __unused; \
+	SCATTERED_ARRAY_DEFINE_PG_ITEM_ORDERED(ta_stores, prio, \
+					       struct user_ta_store_ops)
 
 #endif /*KERNEL_USER_TA_H*/

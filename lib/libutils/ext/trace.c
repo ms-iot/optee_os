@@ -15,11 +15,11 @@
 #include <util.h>
 #include <types_ext.h>
 
-#if (TRACE_LEVEL > 0)
-
 #if (TRACE_LEVEL < TRACE_MIN) || (TRACE_LEVEL > TRACE_MAX)
 #error "Invalid value of TRACE_LEVEL"
 #endif
+
+#if (TRACE_LEVEL >= TRACE_ERROR)
 
 void trace_set_level(int level)
 {
@@ -73,7 +73,7 @@ static int print_thread_id(char *buf, size_t bs)
 #if defined(__KERNEL__)
 static int print_core_id(char *buf, size_t bs)
 {
-#if CFG_TEE_CORE_NB_CORE > 9
+#if CFG_TEE_CORE_NB_CORE > 10
 	const int num_digits = 2;
 #else
 	const int num_digits = 1;
@@ -82,7 +82,7 @@ static int print_core_id(char *buf, size_t bs)
 	if (thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR)
 		return snprintk(buf, bs, "%0*zu ", num_digits, get_core_pos());
 	else
-		return snprintk(buf, bs, "%*s ", num_digits, "?");
+		return snprintk(buf, bs, "%s ", num_digits > 1 ? "??" : "?");
 }
 #else  /* defined(__KERNEL__) */
 static int print_core_id(char *buf __unused, size_t bs __unused)

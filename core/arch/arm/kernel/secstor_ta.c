@@ -25,8 +25,10 @@ static TEE_Result secstor_ta_open(const TEE_UUID *uuid,
 	res = tee_tadb_ta_read(ta, NULL, &l);
 	if (res)
 		goto err;
-	if (l != prop->custom_size)
+	if (l != prop->custom_size) {
+		res = TEE_ERROR_CORRUPT_OBJECT;
 		goto err;
+	}
 
 	*handle = (struct user_ta_store_handle *)ta;
 
@@ -69,18 +71,10 @@ static void secstor_ta_close(struct user_ta_store_handle *h)
 	tee_tadb_ta_close(ta);
 }
 
-static struct user_ta_store_ops ops = {
+TEE_TA_REGISTER_TA_STORE(4) = {
 	.description = "Secure Storage TA",
 	.open = secstor_ta_open,
 	.get_size = secstor_ta_get_size,
 	.read = secstor_ta_read,
 	.close = secstor_ta_close,
-	.priority = 9,
 };
-
-static TEE_Result secstor_ta_init(void)
-{
-	return tee_ta_register_ta_store(&ops);
-}
-
-service_init(secstor_ta_init);

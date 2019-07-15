@@ -39,6 +39,9 @@
 #include <tee_api_types.h>
 #include <tee/tee_svc.h>
 #include <trace.h>
+#include <util.h>
+
+#include "unwind_private.h"
 
 /* The register names */
 #define	FP	11
@@ -180,10 +183,9 @@ static bool unwind_exec_read_byte(struct unwind_state_arm32 *state,
 static bool pop_vsp(uint32_t *reg, vaddr_t *vsp, bool kernel_stack,
 		    vaddr_t stack, size_t stack_size)
 {
-	if (!core_is_buffer_inside(*vsp, sizeof(*reg), stack, stack_size)) {
-		DMSG("vsp out of bounds %#" PRIxVA, *vsp);
+	if (!core_is_buffer_inside(*vsp, sizeof(*reg), stack, stack_size))
 		return false;
-	}
+
 	if (!copy_in(reg, (void *)*vsp, sizeof(*reg), kernel_stack))
 		return false;
 	(*vsp) += sizeof(*reg);
@@ -443,7 +445,7 @@ TEE_Result relocate_exidx(void *exidx, size_t exidx_sz, int32_t offset)
 	return TEE_SUCCESS;
 }
 
-#if defined(CFG_UNWIND) && (TRACE_LEVEL > 0)
+#if (TRACE_LEVEL > 0)
 
 void print_stack_arm32(int level, struct unwind_state_arm32 *state,
 		       vaddr_t exidx, size_t exidx_sz, bool kernel_stack,
@@ -459,7 +461,7 @@ void print_stack_arm32(int level, struct unwind_state_arm32 *state,
 
 #endif
 
-#if defined(CFG_UNWIND) && defined(ARM32) && (TRACE_LEVEL > 0)
+#if defined(ARM32) && (TRACE_LEVEL > 0)
 
 void print_kernel_stack(int level)
 {
@@ -482,4 +484,55 @@ void print_kernel_stack(int level)
 			  true /*kernel_stack*/, stack, stack_size);
 }
 
+#endif
+
+#if defined(ARM32)
+vaddr_t *unw_get_kernel_stack(void)
+{
+	size_t n = 0;
+	size_t size = 0;
+	size_t exidx_sz = 0;
+	vaddr_t *tmp = NULL;
+	vaddr_t *addr = NULL;
+	struct unwind_state_arm32 state = { 0 };
+	uaddr_t exidx = (vaddr_t)__exidx_start;
+	vaddr_t stack = thread_stack_start();
+	size_t stack_size = thread_stack_size();
+
+	if (SUB_OVERFLOW((vaddr_t)__exidx_end, (vaddr_t)__exidx_start,
+			 &exidx_sz))
+		return NULL;
+
+	/* r7: Thumb-style frame pointer */
+	state.registers[7] = read_r7();
+	/* r11: ARM-style frame pointer */
+	state.registers[FP] = read_fp();
+	state.registers[SP] = read_sp();
+	state.registers[LR] = read_lr();
+	state.registers[PC] = (uint32_t)unw_get_kernel_stack;
+
+	while (unwind_stack_arm32(&state, exidx, exidx_sz,
+				  true /*kernel stack*/, stack, stack_size)) {
+		tmp = unw_grow(addr, &size, (n + 1) * sizeof(vaddr_t));
+		if (!tmp)
+			goto err;
+		addr = tmp;
+		addr[n] = state.registers[PC];
+		n++;
+	}
+
+	if (addr) {
+		tmp = unw_grow(addr, &size, (n + 1) * sizeof(vaddr_t));
+		if (!tmp)
+			goto err;
+		addr = tmp;
+		addr[n] = 0;
+	}
+
+	return addr;
+err:
+	EMSG("Out of memory");
+	free(addr);
+	return NULL;
+}
 #endif

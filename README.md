@@ -65,6 +65,7 @@ The **Maintained?** column shows:
 | [NXP ls1088ardb](http://www.nxp.com/products/microcontrollers-and-processors/power-architecture-processors/qoriq-platforms/developer-resources/qoriq-ls1088a-reference-design-board:LS1088A-RDB)|`PLATFORM=ls-ls1088ardb`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [NXP ls2088ardb](http://www.nxp.com/products/microcontrollers-and-processors/power-architecture-processors/qoriq-platforms/developer-resources/qoriq-ls2088a-reference-design-board:LS2088A-RDB)|`PLATFORM=ls-ls2088ardb`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [NXP ls1012afrwy](https://www.nxp.com/support/developer-resources/software-development-tools/qoriq-developer-resources/layerscape-frwy-ls1012a-board:FRWY-LS1012A)|`PLATFORM=ls-ls1012afrwy`| Yes | ![Actively Maintained](documentation/images/green.svg) |
+| [NXP lx2160ardb](https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/qoriq-layerscape-arm-processors/layerscape-lx2160a-multicore-communications-processor:LX2160A)|`PLATFORM=ls-lx2160ardb`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [FSL i.MX6 Quad SABRE Lite Board](https://boundarydevices.com/product/sabre-lite-imx6-sbc/) |`PLATFORM=imx-mx6qsabrelite`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [FSL i.MX6 Quad SABRE SD Board](http://www.nxp.com/products/software-and-tools/hardware-development-tools/sabre-development-system/sabre-board-for-smart-devices-based-on-the-i.mx-6quad-applications-processors:RD-IMX6Q-SABRE) |`PLATFORM=imx-mx6qsabresd`| Yes | ![Actively maintained](documentation/images/green.svg) |
 | [SolidRun i.MX6 Quad Hummingboard Edge](https://www.solid-run.com/product/hummingboard-edge-imx6q-wa-h/) |`PLATFORM=imx-mx6qhmbedge`| Yes | ![Actively Maintained](documentation/images/green.svg) |
@@ -74,6 +75,9 @@ The **Maintained?** column shows:
 | [FSL i.MX6 UltraLite EVK Board](http://www.freescale.com/products/arm-processors/i.mx-applications-processors-based-on-arm-cores/i.mx-6-processors/i.mx6qp/i.mx6ultralite-evaluation-kit:MCIMX6UL-EVK) |`PLATFORM=imx-mx6ulevk`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [NXP i.MX7Dual SabreSD Board](http://www.nxp.com/products/software-and-tools/hardware-development-tools/sabre-development-system/sabre-board-for-smart-devices-based-on-the-i.mx-7dual-applications-processors:MCIMX7SABRE) |`PLATFORM=imx-mx7dsabresd`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [NXP i.MX7Solo WaRP7 Board](http://www.nxp.com/products/developer-resources/reference-designs/warp7-next-generation-iot-and-wearable-development-platform:WARP7) |`PLATFORM=imx-mx7swarp7`| Yes | ![Actively Maintained](documentation/images/green.svg) |
+| [NXP i.MX7Solo WaRP7 Board - Mbed Linux OS](https://os.mbed.com/platforms/WaRP7) |`PLATFORM=imx-mx7swarp7_mbl`| Yes | ![Actively Maintained](documentation/images/green.svg) |
+| [NXP i.MX8MQEVK Board](https://www.nxp.com/support/developer-resources/run-time-software/i.mx-developer-resources/evaluation-kit-for-the-i.mx-8m-applications-processor:MCIMX8M-EVK) |`PLATFORM=imx-imx8mqevk`| Yes | ![Actively Maintained](documentation/images/green.svg) |
+| [NXP i.MX8MMEVK Board](https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/i.mx-applications-processors/i.mx-8-processors/i.mx-8m-mini-family-arm-cortex-a53-cortex-m4-audio-voice-video:i.MX8MMINI?lang=en&lang_cd=en&) |`PLATFORM=imx-imx8mmevk`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [ARM Foundation FVP](https://developer.arm.com/products/system-design/fixed-virtual-platforms) |`PLATFORM=vexpress-fvp`| Yes | ![Actively Maintained](documentation/images/green.svg) |
 | [HiSilicon D02](http://open-estuary.org/d02-2)|`PLATFORM=d02`| No | ![Actively Maintained](documentation/images/green.svg) |
 | [HiKey Board (HiSilicon Kirin 620)](https://www.96boards.org/product/hikey)|`PLATFORM=hikey` or `PLATFORM=hikey-hikey`| Yes | ![Actively Maintained](documentation/images/green.svg) |
@@ -127,6 +131,14 @@ the code also follows GlobalPlatform standards. The exceptions are as follows:
 Regarding the checkpatch tool, it is not included directly into this project.
 Please use checkpatch.pl from the Linux kernel git in combination with the
 local [checkpatch script].
+
+There are also targets for common use cases in the [Makefile](Makefile):
+
+```
+make checkpatch			#check staging and working area
+make checkpatch-staging #check staging area (added, but not committed files)
+make checkpatch-working #check working area (modified, but not added files)
+```
 
 [build]: https://github.com/OP-TEE/build
 [checkpatch script]: scripts/checkpatch.sh

@@ -200,6 +200,9 @@
 #ifdef CFG_CRYPTO_SHA512
 #define LTC_SHA512
 #endif
+#ifdef CFG_CRYPTO_SHA512_256
+#define LTC_SHA512_256
+#endif
 
 #define LTC_NO_MACS
 
@@ -275,7 +278,7 @@
 #define LTC_NO_FILE
 
 /* disable all forms of ASM */
-#define LTC_NO_ASM
+/* #define LTC_NO_ASM */
 
 /* disable FAST mode */
 /* #define LTC_NO_FAST */
@@ -534,6 +537,21 @@
 
 /* define this if you use Valgrind, note: it CHANGES the way SOBER-128 and LTC_RC4 work (see the code) */
 /* #define LTC_VALGRIND */
+
+#if defined(ARM32) || defined(ARM64)
+#define ENDIAN_LITTLE
+#endif
+#ifdef ARM32
+#define ENDIAN_32BITWORD
+#endif
+#ifdef ARM64
+#define ENDIAN_64BITWORD
+#endif
+
+#define LTC_ULONGXX_DEFINED
+typedef uint32_t ulong32;
+typedef uint64_t ulong64;
+#define CONST64(x)	UINT64_C(x)
 
 #endif
 

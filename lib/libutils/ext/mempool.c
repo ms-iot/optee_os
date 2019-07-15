@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2018, Linaro Limited
+ * Copyright (c) 2018-2019, Linaro Limited
  */
 
 
@@ -9,12 +9,14 @@
 #include <compiler.h>
 #include <malloc.h>
 #include <mempool.h>
+#include <string.h>
 #include <util.h>
 
 #if defined(__KERNEL__)
 #include <kernel/mutex.h>
 #include <kernel/panic.h>
 #include <kernel/thread.h>
+#include <kernel/refcount.h>
 #endif
 
 /*
@@ -57,11 +59,14 @@ struct mempool {
 	size_t size;  /* size of the memory pool, in bytes */
 	ssize_t last_offset;   /* offset to the last one */
 	vaddr_t data;
+#ifdef CFG_MEMPOOL_REPORT_LAST_OFFSET
+	ssize_t max_last_offset;
+#endif
 #if defined(__KERNEL__)
 	void (*release_mem)(void *ptr, size_t size);
 	struct mutex mu;
 	struct condvar cv;
-	size_t count;
+	struct refcount refc;
 	int owner;
 #endif
 };
@@ -69,18 +74,25 @@ struct mempool {
 static void get_pool(struct mempool *pool __maybe_unused)
 {
 #if defined(__KERNEL__)
-	mutex_lock(&pool->mu);
-
-	if (pool->owner != thread_get_id()) {
-		/* Wait until the pool is available */
-		while (pool->owner != THREAD_ID_INVALID)
-			condvar_wait(&pool->cv, &pool->mu);
-
-		pool->owner = thread_get_id();
-		assert(pool->count == 0);
+	/*
+	 * Owner matches our thread it cannot be changed. If it doesn't
+	 * match it can change any at time we're not holding the mutex to
+	 * any value but our thread id.
+	 */
+	if (atomic_load_int(&pool->owner) == thread_get_id()) {
+		if (!refcount_inc(&pool->refc))
+			panic();
+		return;
 	}
 
-	pool->count++;
+	mutex_lock(&pool->mu);
+
+	/* Wait until the pool is available */
+	while (pool->owner != THREAD_ID_INVALID)
+		condvar_wait(&pool->cv, &pool->mu);
+
+	pool->owner = thread_get_id();
+	refcount_set(&pool->refc, 1);
 
 	mutex_unlock(&pool->mu);
 #endif
@@ -89,23 +101,26 @@ static void get_pool(struct mempool *pool __maybe_unused)
 static void put_pool(struct mempool *pool __maybe_unused)
 {
 #if defined(__KERNEL__)
-	mutex_lock(&pool->mu);
+	assert(atomic_load_int(&pool->owner) == thread_get_id());
 
-	assert(pool->owner == thread_get_id());
-	assert(pool->count > 0);
+	if (refcount_dec(&pool->refc)) {
+		mutex_lock(&pool->mu);
 
-	pool->count--;
-	if (!pool->count) {
-		pool->owner = THREAD_ID_INVALID;
+		/*
+		 * Do an atomic store to match the atomic load in
+		 * get_pool() above.
+		 */
+		atomic_store_int(&pool->owner, THREAD_ID_INVALID);
 		condvar_signal(&pool->cv);
+
 		/* As the refcount is 0 there should be no items left */
 		if (pool->last_offset >= 0)
 			panic();
 		if (pool->release_mem)
 			pool->release_mem((void *)pool->data, pool->size);
-	}
 
-	mutex_unlock(&pool->mu);
+		mutex_unlock(&pool->mu);
+	}
 #endif
 }
 
@@ -165,12 +180,35 @@ void *mempool_alloc(struct mempool *pool, size_t size)
 		last_item->next_item_offset = offset;
 	new_item->next_item_offset = -1;
 	pool->last_offset = offset;
+#ifdef CFG_MEMPOOL_REPORT_LAST_OFFSET
+	if (pool->last_offset > pool->max_last_offset) {
+		pool->max_last_offset = pool->last_offset;
+		DMSG("Max memory usage increased to %zu",
+		     (size_t)pool->max_last_offset);
+	}
+#endif
 
 	return new_item + 1;
 
 error:
+	EMSG("Failed to allocate %zu bytes, please tune the pool size", size);
 	put_pool(pool);
 	return NULL;
+}
+
+void *mempool_calloc(struct mempool *pool, size_t nmemb, size_t size)
+{
+	size_t sz;
+	void *p;
+
+	if (MUL_OVERFLOW(nmemb, size, &sz))
+		return NULL;
+
+	p = mempool_alloc(pool, sz);
+	if (p)
+		memset(p, 0, sz);
+
+	return p;
 }
 
 void mempool_free(struct mempool *pool, void *ptr)

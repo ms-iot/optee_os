@@ -142,7 +142,7 @@
 /*
  * Generic RPC PTA command
  */
-#define OPTEE_RPC_CMD_GENERIC		11
+#define OPTEE_RPC_CMD_GENERIC		12
 
 /*
  * Register timestamp buffer in the linux kernel optee driver

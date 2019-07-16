@@ -378,7 +378,7 @@ static bool __maybe_unused gic_it_is_pending(struct gic_data *gd, size_t it)
 	size_t idx = it / NUM_INTS_PER_REG;
 	uint32_t mask = 1 << (it % NUM_INTS_PER_REG);
 
-	return !!(read32(gd->gicd_base + GICD_ISPENDR(idx)) & mask);
+	return !!(io_read32(gd->gicd_base + GICD_ISPENDR(idx)) & mask);
 }
 
 void gic_get_enabled_irqs(struct gic_data *gd, uint32_t *irqs)
@@ -388,7 +388,7 @@ void gic_get_enabled_irqs(struct gic_data *gd, uint32_t *irqs)
 	for (i = 0; i < (gd->max_it + NUM_INTS_PER_REG - 1) / NUM_INTS_PER_REG;
 		i++) {
 
-		irqs[i] = read32(gd->gicd_base + GICD_ISENABLER(i));
+		irqs[i] = io_read32(gd->gicd_base + GICD_ISENABLER(i));
 	}
 }
 

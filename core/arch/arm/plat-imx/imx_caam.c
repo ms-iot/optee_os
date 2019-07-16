@@ -11,6 +11,7 @@
 #include <platform_config.h>
 #include <stdint.h>
 
+#if defined CFG_FSL_SEC
 void init_caam(void)
 {
 	struct imx_caam_ctrl *caam = (struct imx_caam_ctrl *)(vaddr_t)CAAM_BASE;
@@ -38,3 +39,6 @@ void init_caam(void)
 		io_write32((vaddr_t)&caam->jr[i].jrmidr_ms, reg);
 	}
 }
+#else
+void init_caam(void) {}
+#endif

@@ -63,7 +63,7 @@ static TEE_Result set_tmem_param(const struct optee_msg_param_tmem *tmem,
 	paddr_t pa = READ_ONCE(tmem->buf_ptr);
 	size_t sz = READ_ONCE(tmem->size);
 
-	/* NULL Memory Rerefence? */
+	/* Handle NULL memory reference */
 	if (!pa && !sz) {
 		mem->mobj = NULL;
 		mem->offs = 0;
@@ -71,7 +71,7 @@ static TEE_Result set_tmem_param(const struct optee_msg_param_tmem *tmem,
 		return TEE_SUCCESS;
 	}
 
-	/* Non-contigous buffer from non sec DDR? */
+	/* Handle non-contiguous reference from a shared memory area */
 	if (attr & OPTEE_MSG_ATTR_NONCONTIG) {
 		uint64_t shm_ref = READ_ONCE(tmem->shm_ref);
 
@@ -84,12 +84,12 @@ static TEE_Result set_tmem_param(const struct optee_msg_param_tmem *tmem,
 		return TEE_SUCCESS;
 	}
 
-	/* Belongs to nonsecure shared memory? */
+	/* Handle memory reference in the contiguous shared memory */
 	if (param_mem_from_mobj(mem, shm_mobj, pa, sz))
 		return TEE_SUCCESS;
 
 #ifdef CFG_SECURE_DATA_PATH
-	/* Belongs to SDP memories? */
+	/* Handle memory reference to Secure Data Path memory areas */
 	for (mobj = sdp_mem_mobjs; *mobj; mobj++)
 		if (param_mem_from_mobj(mem, *mobj, pa, sz))
 			return TEE_SUCCESS;
@@ -330,7 +330,7 @@ cleanup_shm_refs:
 
 out:
 	if (s)
-		arg->session = (vaddr_t)s;
+		arg->session = s->id;
 	else
 		arg->session = 0;
 	arg->ret = res;
@@ -352,7 +352,7 @@ static void entry_close_session(struct thread_smc_args *smc_args,
 	plat_prng_add_jitter_entropy(CRYPTO_RNG_SRC_JITTER_SESSION,
 				     &session_pnum);
 
-	s = (struct tee_ta_session *)(vaddr_t)arg->session;
+	s = tee_ta_find_session(arg->session, &tee_open_sessions);
 	res = tee_ta_close_session(s, &tee_open_sessions, NSAPP_IDENTITY);
 out:
 	arg->ret = res;
@@ -529,7 +529,7 @@ void __weak tee_entry_std(struct thread_smc_args *smc_args)
 
 	if (smc_args->a0 != OPTEE_SMC_CALL_WITH_ARG) {
 		EMSG("Unknown SMC 0x%" PRIx64, (uint64_t)smc_args->a0);
-		DMSG("Expected 0x%x\n", OPTEE_SMC_CALL_WITH_ARG);
+		DMSG("Expected 0x%x", OPTEE_SMC_CALL_WITH_ARG);
 		smc_args->a0 = OPTEE_SMC_RETURN_EBADCMD;
 		return;
 	}
@@ -580,7 +580,7 @@ void __weak tee_entry_std(struct thread_smc_args *smc_args)
 		break;
 
 	default:
-		EMSG("Unknown cmd 0x%x\n", arg->cmd);
+		EMSG("Unknown cmd 0x%x", arg->cmd);
 		smc_args->a0 = OPTEE_SMC_RETURN_EBADCMD;
 	}
 	mobj_free(mobj);

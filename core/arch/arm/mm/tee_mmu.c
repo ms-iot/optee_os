@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <kernel/panic.h>
 #include <kernel/spinlock.h>
+#include <kernel/virtualization.h>
 #include <kernel/tee_common.h>
 #include <kernel/tee_misc.h>
 #include <kernel/tlb_helpers.h>
@@ -160,11 +161,12 @@ static void free_pgt(struct user_ta_ctx *utc, vaddr_t base, size_t size)
 
 static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg)
 {
-	struct vm_region *r;
-	struct vm_region *prev_r;
-	vaddr_t va_range_base;
-	size_t va_range_size;
-	vaddr_t va;
+	struct vm_region *r = NULL;
+	struct vm_region *prev_r = NULL;
+	vaddr_t va_range_base = 0;
+	size_t va_range_size = 0;
+	vaddr_t va = 0;
+	size_t offs_plus_size = 0;
 
 	core_mmu_get_user_va_range(&va_range_base, &va_range_size);
 
@@ -173,8 +175,9 @@ static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg)
 		return TEE_ERROR_ACCESS_CONFLICT;
 
 	/* Check that the mobj is defined for the entire range */
-	if ((reg->offset + reg->size) >
-	     ROUNDUP(reg->mobj->size, SMALL_PAGE_SIZE))
+	if (ADD_OVERFLOW(reg->offset, reg->size, &offs_plus_size))
+		return TEE_ERROR_BAD_PARAMETERS;
+	if (offs_plus_size > ROUNDUP(reg->mobj->size, SMALL_PAGE_SIZE))
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	prev_r = NULL;
@@ -841,7 +844,11 @@ void teecore_init_ta_ram(void)
 
 	/* get virtual addr/size of RAM where TA are loaded/executedNSec
 	 * shared mem allcated from teecore */
+#ifndef CFG_VIRTUALIZATION
 	core_mmu_get_mem_by_type(MEM_AREA_TA_RAM, &s, &e);
+#else
+	virt_get_ta_ram(&s, &e);
+#endif
 	ps = virt_to_phys((void *)s);
 	pe = virt_to_phys((void *)(e - 1)) + 1;
 

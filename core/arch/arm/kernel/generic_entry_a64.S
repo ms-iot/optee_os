@@ -100,6 +100,19 @@ clear_bss:
 	cmp	x0, x1
 	b.lt	clear_bss
 
+#ifdef CFG_VIRTUALIZATION
+	/*
+	 * Clear .nex_bss, this code obviously depends on the linker keeping
+	 * start/end of .bss at least 8 byte aligned.
+	 */
+	adr	x0, __nex_bss_start
+	adr	x1, __nex_bss_end
+clear_nex_bss:
+	str	xzr, [x0], #8
+	cmp	x0, x1
+	b.lt	clear_nex_bss
+#endif
+
 	/* Setup SP_EL0 and SP_EL1, SP will be set to SP_EL0 */
 	set_sp
 
@@ -154,7 +167,9 @@ clear_bss:
 	 * next entry. Matches the thread_init_boot_thread in
 	 * generic_boot.c.
 	 */
+#ifndef CFG_VIRTUALIZATION
 	bl 	thread_clr_boot_thread
+#endif
 
 	/* Pass the vector address returned from main_init */
 	mov	x1, x19

@@ -28,11 +28,15 @@ static bool client_is_secure(struct tee_ta_session *s)
 
 static bool validate_in_param(struct tee_ta_session *s, struct mobj *mobj)
 {
+	/* Supplying NULL to query buffer size is OK */
+	if (!mobj)
+		return true;
+
 	/* for secure clients, core entry always holds valid memref objects */
 	if (client_is_secure(s))
 		return true;
 
-	/* all non-secure memory references are hanlded by pTAs */
+	/* all non-secure memory references are hanlded by PTAs */
 	if (mobj_is_nonsec(mobj))
 		return true;
 
@@ -257,7 +261,7 @@ static TEE_Result verify_pseudo_tas_conformance(void)
 	return TEE_SUCCESS;
 err:
 	DMSG("pseudo TA error at %p", (void *)pta);
-	panic("pta");
+	panic("PTA");
 }
 
 service_init(verify_pseudo_tas_conformance);

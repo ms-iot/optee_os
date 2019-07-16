@@ -83,11 +83,11 @@ libname = utils
 libdir = lib/libutils
 include mk/lib.mk
 
-CFG_CRYPTOLIB_NAME ?= tomcrypt
-CFG_CRYPTOLIB_DIR ?= core/lib/libtomcrypt
+# CFG_CRYPTOLIB_NAME must not be changed beyond this line
+CFG_CRYPTOLIB_NAME_$(CFG_CRYPTOLIB_NAME) := y
 
-CFG_CORE_MBEDTLS_MPI ?= y
-ifeq ($(CFG_CORE_MBEDTLS_MPI)_$(CFG_CRYPTOLIB_NAME),y_tomcrypt)
+ifeq ($(CFG_CRYPTOLIB_NAME),tomcrypt)
+ifeq ($(CFG_CORE_MBEDTLS_MPI),y)
 # We're compiling mbedtls too, but with a limited configuration which only
 # provides the MPI routines
 libname = mbedtls
@@ -98,12 +98,29 @@ libname = mpa
 libdir = lib/libmpa
 include mk/lib.mk
 endif
+endif #tomcrypt
 
+ifeq ($(CFG_CRYPTOLIB_NAME),mbedtls)
+$(call force,CFG_CRYPTO_RSASSA_NA1,n,not supported by mbedtls)
+libname = tomcrypt
+libdir = core/lib/libtomcrypt
 base-prefix :=
+include mk/lib.mk
+base-prefix := $(sm)-
+endif
+
+ifeq ($(firstword $(subst /, ,$(CFG_CRYPTOLIB_DIR))),core)
+# If a library can be compiled for both core and user space a base-prefix
+# is needed in order to avoid conflicts in the output. However, if the
+# library resides under core then it can't be compiled to user space.
+base-prefix :=
+endif
 
 libname = $(CFG_CRYPTOLIB_NAME)
 libdir = $(CFG_CRYPTOLIB_DIR)
 include mk/lib.mk
+
+base-prefix :=
 
 ifeq ($(CFG_DT),y)
 libname = fdt

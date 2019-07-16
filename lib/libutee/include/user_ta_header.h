@@ -10,11 +10,13 @@
 #include <tee_api_types.h>
 #include <util.h>
 
+#define TA_FLAG_USER_MODE		0	 /* Deprecated, was (1 << 0) */
+#define TA_FLAG_EXEC_DDR		0	 /* Deprecated, was (1 << 1) */
 #define TA_FLAG_SINGLE_INSTANCE		(1 << 2)
 #define TA_FLAG_MULTI_SESSION		(1 << 3)
 #define TA_FLAG_INSTANCE_KEEP_ALIVE	(1 << 4) /* remains after last close */
 #define TA_FLAG_SECURE_DATA_PATH	(1 << 5) /* accesses SDP memory */
-#define TA_FLAG_REMAP_SUPPORT		(1 << 6) /* use map/unmap syscalls */
+#define TA_FLAG_REMAP_SUPPORT		0	 /* Deprecated, was (1 << 6) */
 #define TA_FLAG_CACHE_MAINTENANCE	(1 << 7) /* use cache flush syscall */
 	/*
 	 * TA instance can execute multiple sessions concurrently
@@ -23,11 +25,7 @@
 #define TA_FLAG_CONCURRENT		(1 << 8)
 #define TA_FLAG_DEVICE_ENUM		(1 << 9) /* device enumeration */
 
-#define TA_FLAGS_MASK			GENMASK_32(9, 2)
-
-/* Deprecated macros that will be removed in the 3.2 release */
-#define TA_FLAG_USER_MODE		0
-#define TA_FLAG_EXEC_DDR		0
+#define TA_FLAGS_MASK			GENMASK_32(9, 0)
 
 union ta_head_func_ptr {
 	uint64_t ptr64;

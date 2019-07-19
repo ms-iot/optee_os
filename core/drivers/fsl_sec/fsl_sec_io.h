@@ -46,14 +46,14 @@ typedef uint32_t phys_size_t;
  * These macros are for ARM-based SoCs.
  * Raw IO access is presumed to be in little-endian.
  */
-#define out8(a, v)	write8(v, a)
-#define out16(a, v)	write16(v, a)
-#define out32(a, v)	write32(v, a)
-#define out64(a, v)	write32(v, a)
-#define in8(a)		read8(a)
-#define in16(a)		read16(a)
-#define in32(a)		read32(a)
-#define in64(a)		read32(a)
+#define out8(a, v)	io_write8(a, v)
+#define out16(a, v)	io_write16(a, v)
+#define out32(a, v)	io_write32(a, v)
+#define out64(a, v)	io_write32(a, v)
+#define in8(a)		io_read8(a)
+#define in16(a)		io_read16(a)
+#define in32(a)		io_read32(a)
+#define in64(a)		io_read32(a)
 
 #define in_le16(a)	in16(a)
 #define in_le32(a)	in32(a)

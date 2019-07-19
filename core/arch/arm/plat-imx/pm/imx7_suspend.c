@@ -90,10 +90,10 @@ static void enable_wake_irqs(struct imx7_pm_info *p)
 	assert((gic_data.max_it / 32) < ARRAY_SIZE(irqs));
 	gic_get_enabled_irqs(&gic_data, irqs);
 
-	write32(~irqs[1], p->gpc_va_base + GPC_IMR1_CORE0_A7);
-	write32(~irqs[2], p->gpc_va_base + GPC_IMR2_CORE0_A7);
-	write32(~irqs[3], p->gpc_va_base + GPC_IMR3_CORE0_A7);
-	write32(~irqs[4], p->gpc_va_base + GPC_IMR4_CORE0_A7);
+	io_write32(p->gpc_va_base + GPC_IMR1_CORE0_A7, ~irqs[1]);
+	io_write32(p->gpc_va_base + GPC_IMR2_CORE0_A7, ~irqs[2]);
+	io_write32(p->gpc_va_base + GPC_IMR3_CORE0_A7, ~irqs[3]);
+	io_write32(p->gpc_va_base + GPC_IMR4_CORE0_A7, ~irqs[4]);
 }
 
 static void imx7_set_run_mode(struct imx7_pm_info *p)
@@ -102,20 +102,20 @@ static void imx7_set_run_mode(struct imx7_pm_info *p)
 
 	imx_gpcv2_unmask_irq(GPR_IRQ);
 
-	val = read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
 	val &= ~GPC_LPCR_A7_BSC_LPM0;
 	val &= ~GPC_LPCR_A7_BSC_LPM1;
 	val |= GPC_LPCR_A7_BSC_CPU_CLK_ON_LPM;
-	write32(val, p->gpc_va_base + GPC_LPCR_A7_BSC);
+	io_write32(p->gpc_va_base + GPC_LPCR_A7_BSC, val);
 }
 
 static void enable_gpr_irq(struct imx7_pm_info *p)
 {
 	uint32_t val;
 
-	val = read32(p->iomuxc_gpr_va_base + IOMUXC_GPR1_OFFSET);
+	val = io_read32(p->iomuxc_gpr_va_base + IOMUXC_GPR1_OFFSET);
 	val |= IOMUXC_GPR1_IRQ;
-	write32(val, p->iomuxc_gpr_va_base + IOMUXC_GPR1_OFFSET);
+	io_write32(p->iomuxc_gpr_va_base + IOMUXC_GPR1_OFFSET, val);
 }
 
 static void imx7_lpm_init(void)
@@ -127,7 +127,7 @@ static void imx7_lpm_init(void)
 	imx_gpcv2_mask_all_irqs();
 	imx_gpcv2_unmask_irq(GPR_IRQ);
 
-	val = read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
 	val &= ~GPC_LPCR_A7_BSC_LPM0;
 	val &= ~GPC_LPCR_A7_BSC_LPM1;
 	val |= GPC_LPCR_A7_BSC_CPU_CLK_ON_LPM;
@@ -138,10 +138,10 @@ static void imx7_lpm_init(void)
 	val &= ~GPC_LPCR_A7_BSC_IRQ_SRC_C1;
 	val |= GPC_LPCR_A7_BSC_IRQ_SRC_A7_WUP;
 	val &= ~GPC_LPCR_A7_BSC_MASK_DSM_TRIGGER;
-	write32(val, p->gpc_va_base + GPC_LPCR_A7_BSC);
+	io_write32(p->gpc_va_base + GPC_LPCR_A7_BSC, val);
 
 	/* Program A7 advanced power control register */
-	val = read32(p->gpc_va_base + GPC_LPCR_A7_AD);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_A7_AD);
 	val &= ~GPC_LPCR_A7_AD_L2_PGE;
 	val &= ~GPC_LPCR_A7_AD_EN_PLAT_PDN;
 	val &= ~GPC_LPCR_A7_AD_EN_C0_PDN;
@@ -152,45 +152,45 @@ static void imx7_lpm_init(void)
 	val &= ~GPC_LPCR_A7_AD_EN_C1_PUP;
 	val &= ~GPC_LPCR_A7_AD_EN_C1_WFI_PDN;
 	val &= ~GPC_LPCR_A7_AD_EN_C1_IRQ_PUP;
-	write32(val, p->gpc_va_base + GPC_LPCR_A7_AD);
+	io_write32(p->gpc_va_base + GPC_LPCR_A7_AD, val);
 
 	/* program M4 power control register */
-	val = read32(p->gpc_va_base + GPC_LPCR_M4);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_M4);
 	val |= GPC_LPCR_M4_MASK_DSM_TRIGGER;
-	write32(val, p->gpc_va_base + GPC_LPCR_M4);
+	io_write32(p->gpc_va_base + GPC_LPCR_M4, val);
 
 	/* set mega/fast mix in A7 domain */
-	write32(0x1, p->gpc_va_base + GPC_PGC_CPU_MAPPING);
+	io_write32(p->gpc_va_base + GPC_PGC_CPU_MAPPING, 0x1);
 
 	/* set SCU timing values from datasheet */
-	write32((0x59 << 10) | 0x5B | (0x2 << 20),
-		 p->gpc_va_base + GPC_PGC_SCU_AUXSW);
+	io_write32(p->gpc_va_base + GPC_PGC_SCU_AUXSW,
+		(0x59 << 10) | 0x5B | (0x2 << 20));
 
 	/* set C0/C1 power up timing */
-	val = read32(p->gpc_va_base + GPC_PGC_C0_PUPSCR);
+	val = io_read32(p->gpc_va_base + GPC_PGC_C0_PUPSCR);
 	val &= ~GPC_PGC_CORE_PUPSCR;
 	val |= CORE_PUPSCR_SW2ISO;
-	write32(val, p->gpc_va_base + GPC_PGC_C0_PUPSCR);
+	io_write32(p->gpc_va_base + GPC_PGC_C0_PUPSCR, val);
 
-	val = read32(p->gpc_va_base + GPC_PGC_C1_PUPSCR);
+	val = io_read32(p->gpc_va_base + GPC_PGC_C1_PUPSCR);
 	val &= ~GPC_PGC_CORE_PUPSCR;
 	val |= CORE_PUPSCR_SW2ISO;
-	write32(val, p->gpc_va_base + GPC_PGC_C1_PUPSCR);
+	io_write32(p->gpc_va_base + GPC_PGC_C1_PUPSCR, val);
 
 	/* Disable DSM, voltage standby, RBC, and oscillator powerdown */
 	val = 0;
 	val |= GPC_SLPCR_EN_A7_FASTWUP_WAIT_MODE;
-	write32(val, p->gpc_va_base + GPC_SLPCR);
+	io_write32(p->gpc_va_base + GPC_SLPCR, val);
 
 	/* disable memory low power mode */
-	val = read32(p->gpc_va_base + GPC_MLPCR);
+	val = io_read32(p->gpc_va_base + GPC_MLPCR);
 	val |= GPC_MLPCR_MEMLP_CTL_DIS;
-	write32(val, p->gpc_va_base + GPC_MLPCR);
+	io_write32(p->gpc_va_base + GPC_MLPCR, val);
 
 	val = GPC_PGC_ACK_SEL_A7_DUMMY_PUP_ACK |
 		GPC_PGC_ACK_SEL_A7_DUMMY_PDN_ACK;
 
-	write32(val, p->gpc_va_base + GPC_PGC_ACK_SEL_A7);
+	io_write32(p->gpc_va_base + GPC_PGC_ACK_SEL_A7, val);
 }
 
 static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
@@ -203,7 +203,7 @@ static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
 	imx_gpcv2_unmask_irq(GPR_IRQ);
 
 	/* Program LPCR_A7_BSC */
-	val = read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_A7_BSC);
 	val &= ~GPC_LPCR_A7_BSC_LPM0;
 	val |= lpm_flags & LPM_MODE_MASK;
 	val &= ~GPC_LPCR_A7_BSC_LPM1;
@@ -225,10 +225,10 @@ static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
 	val |= GPC_LPCR_A7_BSC_IRQ_SRC_A7_WUP;
 
 	val &= ~GPC_LPCR_A7_BSC_MASK_DSM_TRIGGER;
-	write32(val, p->gpc_va_base + GPC_LPCR_A7_BSC);
+	io_write32(p->gpc_va_base + GPC_LPCR_A7_BSC, val);
 
 	/* Program A7 advanced power control register */
-	val = read32(p->gpc_va_base + GPC_LPCR_A7_AD);
+	val = io_read32(p->gpc_va_base + GPC_LPCR_A7_AD);
 	assert((val & GPC_LPCR_A7_AD_EN_C0_WFI_PDN) == 0);
 	assert((val & GPC_LPCR_A7_AD_EN_C0_IRQ_PUP) == 0);
 	assert((val & GPC_LPCR_A7_AD_EN_C1_PUP) == 0);
@@ -246,7 +246,7 @@ static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
 				val |= GPC_LPCR_A7_AD_L2_PGE;
 		}
 
-		write32(val, p->gpc_va_base + GPC_LPCR_A7_AD);
+		io_write32(p->gpc_va_base + GPC_LPCR_A7_AD, val);
 	} else {
 		assert((lpm_flags & LPM_POWER_DOWN_L2) == 0);
 		assert((val & GPC_LPCR_A7_AD_L2_PGE) == 0);
@@ -259,23 +259,23 @@ static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
 	/* A7_SCU as LPM power down ACK, A7_C0 as LPM power up ack */
 	if (lpm_flags & LPM_POWER_DOWN_CORES) {
 		/* A7_C0, A7_C1 power down in SLOT0 */
-		write32(CORE0_A7_PDN_SLOT_CONTROL |
-			CORE1_A7_PDN_SLOT_CONTROL,
-			p->gpc_va_base + GPC_SLT0_CFG);
+		io_write32(p->gpc_va_base + GPC_SLT0_CFG,
+			CORE0_A7_PDN_SLOT_CONTROL |
+			CORE1_A7_PDN_SLOT_CONTROL);
 
 		if (lpm_flags & LPM_POWER_DOWN_SCU) {
 			/* A7_SCU power down in SLOT3 */
-			write32(SCU_PDN_SLOT_CONTROL,
-				p->gpc_va_base + GPC_SLT3_CFG);
+			io_write32(p->gpc_va_base + GPC_SLT3_CFG,
+				SCU_PDN_SLOT_CONTROL);
 
 			/* A7_SCU power up in SLOT6 */
-			write32(SCU_PUP_SLOT_CONTROL,
-				p->gpc_va_base + GPC_SLT6_CFG);
+			io_write32(p->gpc_va_base + GPC_SLT6_CFG, 
+				SCU_PUP_SLOT_CONTROL);
 		}
 
 		/* A7_C0 power up in SLOT7 */
-		write32(CORE0_A7_PUP_SLOT_CONTROL,
-			p->gpc_va_base + GPC_SLT7_CFG);
+		io_write32(p->gpc_va_base + GPC_SLT7_CFG,
+			CORE0_A7_PUP_SLOT_CONTROL);
 
 		if (lpm_flags & LPM_POWER_DOWN_SCU) {
 			val = GPC_PGC_ACK_SEL_A7_PLAT_PGC_PDN_ACK |
@@ -285,11 +285,11 @@ static void imx7_prepare_lpm(uint32_t lpm_flags, struct imx7_pm_info *p)
 				GPC_PGC_ACK_SEL_A7_C0_PGC_PDN_ACK;
 		}
 
-		write32(val, p->gpc_va_base + GPC_PGC_ACK_SEL_A7);
+		io_write32(p->gpc_va_base + GPC_PGC_ACK_SEL_A7, val);
 	} else {
-		write32(GPC_PGC_ACK_SEL_A7_DUMMY_PUP_ACK |
-			GPC_PGC_ACK_SEL_A7_DUMMY_PDN_ACK,
-			p->gpc_va_base + GPC_PGC_ACK_SEL_A7);
+		io_write32(p->gpc_va_base + GPC_PGC_ACK_SEL_A7,
+			GPC_PGC_ACK_SEL_A7_DUMMY_PUP_ACK |
+			GPC_PGC_ACK_SEL_A7_DUMMY_PDN_ACK);
 	}
 
 	/* arm PGC for power down */
@@ -315,9 +315,8 @@ static int imx7_lpm_entry(uint32_t lpm_flags)
 		val = ((uint32_t)&resume - (uint32_t)&imx7_suspend) +
 			p->pa_base + p->pm_info_size;
 
-		write32(val, p->src_va_base + SRC_GPR1_MX7 + core_idx * 8);
-		write32(p->pa_base,
-			p->src_va_base + SRC_GPR2_MX7 + core_idx * 8);
+		io_write32(p->src_va_base + SRC_GPR1_MX7 + core_idx * 8, val);
+		io_write32(p->pa_base, p->src_va_base + SRC_GPR2_MX7 + core_idx * 8);
 	}
 
 	if (lpm_flags & LPM_INITIATING_CORE)

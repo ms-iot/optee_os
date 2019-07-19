@@ -150,7 +150,7 @@ TEE_Result get_hw_unq_key_blob_hw(uint8_t *hw_key, int size)
 	if (size > KEY_BLOB_SIZE)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	key_data = memalign(64, key_sz);
+	key_data = fsl_sec_memalign(64, key_sz);
 
 	if (key_data == NULL) {
 		DMSG("Key data buffer alloc failed\n");
@@ -159,7 +159,7 @@ TEE_Result get_hw_unq_key_blob_hw(uint8_t *hw_key, int size)
 	}
 	memset(key_data, 0x00, key_sz);
 
-	in_data = memalign(64, in_sz);
+	in_data = fsl_sec_memalign(64, in_sz);
 
 	if (in_data == NULL) {
 		DMSG("In data buffer alloc failed\n");
@@ -168,7 +168,7 @@ TEE_Result get_hw_unq_key_blob_hw(uint8_t *hw_key, int size)
 	}
 	memset(in_data, 0x00, in_sz);
 
-	out_data = memalign(64, out_sz);
+	out_data = fsl_sec_memalign(64, out_sz);
 
 	if (out_data == NULL) {
 		DMSG("Out data buffer alloc failed\n");
@@ -177,7 +177,7 @@ TEE_Result get_hw_unq_key_blob_hw(uint8_t *hw_key, int size)
 	}
 	memset(out_data, 0x00, out_sz);
 
-	jobdesc = memalign(64, sizeof(struct job_descriptor));
+	jobdesc = fsl_sec_memalign(64, sizeof(struct job_descriptor));
 	if (jobdesc == NULL) {
 		DMSG("desc allocation failed\n");
 		res = TEE_ERROR_OUT_OF_MEMORY;
@@ -210,13 +210,13 @@ TEE_Result get_hw_unq_key_blob_hw(uint8_t *hw_key, int size)
 
 clean_up:
 	if (key_data != NULL)
-		free(key_data);
+		fsl_sec_free(key_data);
 	if (in_data != NULL)
-		free(in_data);
+		fsl_sec_free(in_data);
 	if (out_data != NULL)
-		free(out_data);
+		fsl_sec_free(out_data);
 	if (jobdesc != NULL)
-		free(jobdesc);
+		fsl_sec_free(jobdesc);
 	return res;
 }
 

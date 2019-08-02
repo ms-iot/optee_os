@@ -583,7 +583,7 @@ static TEE_Result capture_private_key(void)
 	void *virt;
 
 	if (!core_mmu_add_mapping(MEM_AREA_IO_NSEC, CFG_CYRES_KEY_ADDR,
-				CORE_MMU_DEVICE_SIZE))
+				CORE_MMU_PGDIR_SIZE))
 		panic("failed to map key store");
 
 	virt = phys_to_virt(CFG_CYRES_KEY_ADDR, MEM_AREA_IO_NSEC);

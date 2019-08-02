@@ -252,6 +252,7 @@ end:
 		crypto_hash_free_ctx(hash_ctx, TEE_ALG_SHA256);
 
 	return res;
+}
 #endif /* CFG_CYRES */
 
 static TEE_Result system_open_ta_binary(struct system_ctx *ctx,

@@ -282,13 +282,15 @@ static TEE_Result ta_get_hash(
 	size_t hash_len
 	)
 {
-	if (hash_len != h->shdr->hash_size)
+	struct ree_fs_ta_handle *handle = (struct ree_fs_ta_handle *)h;
+
+	if (hash_len != handle->shdr->hash_size)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (h->hash_algo != TEE_ALG_SHA256)
+	if (handle->hash_algo != TEE_ALG_SHA256)
 		return TEE_ERROR_SECURITY;
 
-	memcpy(hash, SHDR_GET_HASH(h->shdr), hash_len);
+	memcpy(hash, SHDR_GET_HASH(handle->shdr), hash_len);
 
 	return TEE_SUCCESS;
 }

@@ -49,7 +49,12 @@ struct user_ta_store_ops {
 	 * Close a TA handle. Do nothing if @h == NULL.
 	 */
 	void (*close)(struct user_ta_store_handle *h);
-#ifdef CFG_CYRES
+	/*
+	 * Get the hash of the ELF which was loaded. The hash of the TA ELF and
+	 * each of its dependencies are combined to create a fingerprint for the
+	 * TA.
+	 */
+#ifdef CFG_ATTESTATION_MEASURE
 	TEE_Result (*get_hash)(struct user_ta_store_handle *h,
 				uint8_t *hash, size_t hash_len);
 #endif

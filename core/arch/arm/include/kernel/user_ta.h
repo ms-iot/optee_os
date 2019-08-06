@@ -42,6 +42,8 @@ SLIST_HEAD(load_seg_head, load_seg);
  * @areas:		Memory areas registered by pager
  * @vfp:		State of VFP registers
  * @ctx:		Generic TA context
+ * @ta_image_sha256:	Fingerprint of the TA, based on a hash of all loaded
+ *			ELFs which make up the TA
  */
 struct user_ta_ctx {
 	uaddr_t entry_func;
@@ -61,7 +63,7 @@ struct user_ta_ctx {
 	struct vm_info *vm_info;
 	void *ta_time_offs;
 	struct tee_pager_area_head *areas;
-#ifdef CFG_CYRES
+#ifdef CFG_ATTESTATION_MEASURE
 	uint8_t ta_image_sha256[TEE_SHA256_HASH_SIZE];
 #endif
 	/*

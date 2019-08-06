@@ -198,7 +198,7 @@ static void ta_bin_close(void *ptr)
 	free(binh);
 }
 
-#ifdef CFG_CYRES
+#ifdef CFG_ATTESTATION_MEASURE
 static TEE_Result update_hash(const struct user_ta_store_ops *ta_store,
 		struct user_ta_store_handle *handle,
 		struct user_ta_ctx *utc)
@@ -253,7 +253,7 @@ end:
 
 	return res;
 }
-#endif /* CFG_CYRES */
+#endif /* CFG_ATTESTATION_MEASURE */
 
 static TEE_Result system_open_ta_binary(struct system_ctx *ctx,
 					uint32_t param_types,
@@ -308,7 +308,7 @@ static TEE_Result system_open_ta_binary(struct system_ctx *ctx,
 	if (h < 0)
 		goto err_oom;
 
-#ifdef CFG_CYRES
+#ifdef CFG_ATTESTATION_MEASURE
 	res = update_hash(binh->op, binh->h, to_user_ta_ctx(tee_ta_get_calling_session()->ctx));
 	if (res)
 		goto err;

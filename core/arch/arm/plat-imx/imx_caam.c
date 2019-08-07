@@ -11,7 +11,7 @@
 #include <platform_config.h>
 #include <stdint.h>
 
-#if defined CFG_FSL_SEC
+#if !defined(CFG_FSL_SEC)
 void init_caam(void)
 {
 	struct imx_caam_ctrl *caam = (struct imx_caam_ctrl *)(vaddr_t)CAAM_BASE;

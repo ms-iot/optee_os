@@ -18,7 +18,7 @@
 #define ptov(a) ((vaddr_t)phys_to_virt((paddr_t)(a), MEM_AREA_IO_SEC))
 #define vtop(a) ((phys_addr_t *)virt_to_phys((void *)(a)))
 
-struct camm_memalign_info {
+struct caam_memalign_info {
 	uint32_t magic;
 	void *alloc_addr;
 };
@@ -30,23 +30,23 @@ static inline void *fsl_sec_memalign(size_t alignment, size_t size)
 	size_t total_size;
 	void *alloc_ptr;
 	void *data_ptr;
-	struct camm_memalign_info *mem_info;
+	struct caam_memalign_info *mem_info;
 
-	total_size = size + sizeof(struct camm_memalign_info) + alignment;
+	total_size = size + sizeof(struct caam_memalign_info) + alignment;
 
 	alloc_ptr = malloc(total_size);
 	if (alloc_ptr == NULL)
 		return NULL;
 
 	// Leave space for the meta data
-	data_ptr = (void *)((uintptr_t)alloc_ptr + (uintptr_t)sizeof(struct camm_memalign_info));
+	data_ptr = (void *)((uintptr_t)alloc_ptr + (uintptr_t)sizeof(struct caam_memalign_info));
 	
-	// Find the next alligned address
+	// Find the next aligned address
 	if(alignment != 0)
 		data_ptr = (void *)(((uintptr_t)data_ptr + (alignment - 1)) & (~(uintptr_t)(alignment - 1)));
 
 	// Stash the actual allocation information in the struct
-	mem_info = (struct camm_memalign_info *)((uintptr_t)data_ptr - sizeof(struct camm_memalign_info));
+	mem_info = (struct caam_memalign_info *)((uintptr_t)data_ptr - sizeof(struct caam_memalign_info));
 	mem_info->magic = 0x1234;
 	mem_info->alloc_addr = alloc_ptr;
 
@@ -57,20 +57,21 @@ static inline void *fsl_sec_memalign(size_t alignment, size_t size)
 	return data_ptr;
 }
 
-static inline void fsl_sec_free(void *alligned_ptr)
+static inline void fsl_sec_free(void *aligned_ptr)
 {
-	struct camm_memalign_info *mem_info;
+	struct caam_memalign_info *mem_info;
 	void *alloc_ptr;
 
-	mem_info = (struct camm_memalign_info*)((uintptr_t)alligned_ptr - sizeof(struct camm_memalign_info));
+	mem_info = (struct caam_memalign_info*)((uintptr_t)aligned_ptr - sizeof(struct caam_memalign_info));
 	alloc_ptr = mem_info->alloc_addr;
 	if (mem_info->magic != 0x1234)
 	{
 		FMSG("Bad magic! (0x%x)", mem_info->magic);
 		panic();
 	}
-	FMSG("Freeing 0x%lx, aligned to 0x%lx", (uintptr_t)alloc_ptr, (uintptr_t)alligned_ptr);
+	FMSG("Freeing 0x%lx, aligned to 0x%lx", (uintptr_t)alloc_ptr, (uintptr_t)aligned_ptr);
 	FMSG("Meta data at 0x%lx", (uintptr_t)mem_info);
+	free(alloc_ptr);
 }
 
 #ifdef CONFIG_PHYS_64BIT

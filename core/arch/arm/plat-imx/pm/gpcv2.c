@@ -64,15 +64,15 @@ void imx_gpcv2_mask_all_irqs(void)
 {
 	vaddr_t base = gpc_base();
 
-	io_write32(~0x0, base + GPC_IMR1_CORE0_A7);
-	io_write32(~0x0, base + GPC_IMR2_CORE0_A7);
-	io_write32(~0x0, base + GPC_IMR3_CORE0_A7);
-	io_write32(~0x0, base + GPC_IMR4_CORE0_A7);
+	io_write32(base + GPC_IMR1_CORE0_A7, ~0x0);
+	io_write32(base + GPC_IMR2_CORE0_A7, ~0x0);
+	io_write32(base + GPC_IMR3_CORE0_A7, ~0x0);
+	io_write32(base + GPC_IMR4_CORE0_A7, ~0x0);
 
-	io_write32(~0x0, base + GPC_IMR1_CORE1_A7);
-	io_write32(~0x0, base + GPC_IMR2_CORE1_A7);
-	io_write32(~0x0, base + GPC_IMR3_CORE1_A7);
-	io_write32(~0x0, base + GPC_IMR4_CORE1_A7);
+	io_write32(base + GPC_IMR1_CORE1_A7, ~0x0);
+	io_write32(base + GPC_IMR2_CORE1_A7, ~0x0);
+	io_write32(base + GPC_IMR3_CORE1_A7, ~0x0);
+	io_write32(base + GPC_IMR4_CORE1_A7, ~0x0);
 }
 
 static void imx_gpcv2_mask_irq_helper(uint32_t irq, bool mask)
@@ -88,7 +88,7 @@ static void imx_gpcv2_mask_irq_helper(uint32_t irq, bool mask)
 	else
 		val &= ~irqmask;
 
-	io_write32(val, base + GPC_IMR1_CORE0_A7 + idx * 4);
+	io_write32(base + GPC_IMR1_CORE0_A7 + idx * 4, val);
 }
 
 void imx_gpcv2_mask_irq(uint32_t irq)

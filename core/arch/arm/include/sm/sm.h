@@ -7,6 +7,8 @@
 #ifndef SM_SM_H
 #define SM_SM_H
 
+#ifndef ASM
+
 #include <compiler.h>
 #include <types_ext.h>
 
@@ -107,19 +109,26 @@ void *sm_get_sp(void);
  */
 void sm_init(vaddr_t stack_pointer);
 
-#ifndef CFG_SM_PLATFORM_HANDLER
+enum sm_handler_ret {
+	SM_HANDLER_SMC_HANDLED = 0,
+	SM_HANDLER_PENDING_SMC,
+};
+
+#ifdef CFG_SM_PLATFORM_HANDLER
 /*
- * Returns false if we handled the monitor service and should now return
- * back to the non-secure state
+ * Returns whether SMC was handled from platform handler in secure monitor
+ * or if it shall reach OP-TEE core .
  */
-static inline bool sm_platform_handler(__unused struct sm_ctx *ctx)
-{
-	return true;
-}
-#else
-bool sm_platform_handler(struct sm_ctx *ctx);
+enum sm_handler_ret sm_platform_handler(struct sm_ctx *ctx);
 #endif
 
 void sm_save_unbanked_regs(struct sm_unbanked_regs *regs);
 void sm_restore_unbanked_regs(struct sm_unbanked_regs *regs);
+
+#endif /*!ASM*/
+
+/* 32 bit return value for sm_from_nsec() */
+#define SM_EXIT_TO_NON_SECURE		0
+#define SM_EXIT_TO_SECURE		1
+
 #endif /*SM_SM_H*/

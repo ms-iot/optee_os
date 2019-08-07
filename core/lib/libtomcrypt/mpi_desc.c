@@ -34,7 +34,7 @@ static struct mempool *get_mp_scratch_memory_pool(void)
 	void *data;
 
 	size = ROUNDUP(MPI_MEMPOOL_SIZE, SMALL_PAGE_SIZE);
-	data = tee_pager_alloc(size, 0);
+	data = tee_pager_alloc(size);
 	if (!data)
 		panic();
 
@@ -56,6 +56,8 @@ void init_mp_tomcrypt(void)
 	if (!p)
 		panic();
 	mbedtls_mpi_mempool = p;
+	assert(!mempool_default);
+	mempool_default = p;
 }
 
 static int init(void **a)

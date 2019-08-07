@@ -178,10 +178,8 @@ static void ckeck_gpio_bank(void *fdt, uint32_t bank, int pinctrl_node)
 
 		/* Check bank register offset matches platform assumptions */
 		cuint = fdt_getprop(fdt, pinctrl_subnode, "reg", NULL);
-		if (!cuint)
-			panic();
 		if (fdt32_to_cpu(*cuint) != stm32_get_gpio_bank_offset(bank))
-			panic();
+			continue;
 
 		/* Check bank clock matches platform assumptions */
 		cuint = fdt_getprop(fdt, pinctrl_subnode, "clocks", NULL);
@@ -347,6 +345,32 @@ int stm32_pinctrl_fdt_get_pinctrl(void *fdt, int device_node,
 	}
 
 	return (int)found;
+}
+
+int stm32_get_gpio_count(void *fdt, int pinctrl_node, unsigned int bank)
+{
+	int node = 0;
+	const fdt32_t *cuint = NULL;
+
+	fdt_for_each_subnode(node, fdt, pinctrl_node) {
+		if (!fdt_getprop(fdt, node, "gpio-controller", NULL))
+			continue;
+
+		cuint = fdt_getprop(fdt, node, "reg", NULL);
+		if (!cuint)
+			continue;
+
+		if (fdt32_to_cpu(*cuint) != stm32_get_gpio_bank_offset(bank))
+			continue;
+
+		cuint = fdt_getprop(fdt, node, "ngpios", NULL);
+		if (!cuint)
+			panic();
+
+		return (int)fdt32_to_cpu(*cuint);
+	}
+
+	return -1;
 }
 #endif /*CFG_DT*/
 

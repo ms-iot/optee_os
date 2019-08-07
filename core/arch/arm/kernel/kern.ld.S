@@ -134,7 +134,6 @@ SECTIONS
 		__rodata_end = .;
 	}
 
-	.interp : { *(.interp) }
 	.hash : { *(.hash) }
 	.dynsym : { *(.dynsym) }
 	.dynstr : { *(.dynstr) }
@@ -158,7 +157,6 @@ SECTIONS
 	.rela.bss : { *(.rela.bss) }
 	.rel.plt : { *(.rel.plt) }
 	.rela.plt : { *(.rela.plt) }
-	.init : { *(.init) } =0x9090
 	.plt : { *(.plt) }
 
 	/* .ARM.exidx is sorted, so has to go in its own output section.  */
@@ -441,7 +439,7 @@ SECTIONS
 
 	/DISCARD/ : {
 		/* Strip unnecessary stuff */
-		*(.comment .note .eh_frame)
+		*(.comment .note .eh_frame .interp)
 		/* Strip meta variables */
 		*(__keep_meta_vars*)
 	}
@@ -465,8 +463,8 @@ __vcore_unpg_rw_size = __flatmap_unpg_rw_size;
 
 #ifdef CFG_VIRTUALIZATION
 /* Nexus read-write memory */
-PROVIDE(__vcore_nex_rw_start = __flatmap_nex_rw_start);
-PROVIDE(__vcore_nex_rw_size = __flatmap_nex_rw_size);
+__vcore_nex_rw_start = __flatmap_nex_rw_start;
+__vcore_nex_rw_size = __flatmap_nex_rw_size;
 #endif
 
 #ifdef CFG_WITH_PAGER

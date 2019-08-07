@@ -13,6 +13,7 @@
 #include <keep.h>
 #include <kernel/generic_boot.h>
 #include <kernel/panic.h>
+#include <kernel/pm.h>
 #include <kernel/spinlock.h>
 #include <mm/core_memprot.h>
 #include <platform_config.h>
@@ -20,11 +21,49 @@
 #include <stdbool.h>
 #include <string.h>
 
+#ifdef CFG_DT
+#include <libfdt.h>
+#endif
+
 /*
  * Once one starts to get the resource registering state, one cannot register
  * new resources. This ensures resource state cannot change.
  */
 static bool registering_locked;
+
+/*
+ * Shared register access: upon shared resource lock
+ */
+static unsigned int shregs_lock = SPINLOCK_UNLOCK;
+
+/* Shared resource lock: assume not required if MMU is disabled */
+static uint32_t lock_stm32shregs(void)
+{
+	return may_spin_lock(&shregs_lock);
+}
+
+static void unlock_stm32shregs(uint32_t exceptions)
+{
+	may_spin_unlock(&shregs_lock, exceptions);
+}
+
+void io_mask32_stm32shregs(vaddr_t va, uint32_t value, uint32_t mask)
+{
+	uint32_t exceptions = lock_stm32shregs();
+
+	io_mask32(va, value, mask);
+
+	unlock_stm32shregs(exceptions);
+}
+
+void io_clrsetbits32_stm32shregs(vaddr_t va, uint32_t clr, uint32_t set)
+{
+	uint32_t exceptions = lock_stm32shregs();
+
+	io_clrsetbits32(va, clr, set);
+
+	unlock_stm32shregs(exceptions);
+}
 
 /*
  * Shared peripherals and resources registration
@@ -139,10 +178,40 @@ static __maybe_unused const char *shres2str_state(enum stm32mp_shres id)
 	return shres2str_state_tbl[id];
 }
 
+/* GPIOZ bank pin count depends on SoC variants */
+#ifdef CFG_DT
+/* A light count routine for unpaged context to not depend on DTB support */
+static int gpioz_nbpin = -1;
+
+static unsigned int get_gpioz_nbpin(void)
+{
+	if (gpioz_nbpin < 0)
+		panic();
+
+	return gpioz_nbpin;
+}
+
+static TEE_Result set_gpioz_nbpin_from_dt(void)
+{
+	void *fdt = get_embedded_dt();
+	int node = fdt_path_offset(fdt, "/soc/pin-controller-z");
+	int count = stm32_get_gpio_count(fdt, node, GPIO_BANK_Z);
+
+	if (count < 0 || count > STM32MP1_GPIOZ_PIN_MAX_COUNT)
+		panic();
+
+	gpioz_nbpin = count;
+
+	return TEE_SUCCESS;
+}
+/* Get GPIOZ pin count before drivers initialization, hence service_init() */
+service_init(set_gpioz_nbpin_from_dt);
+#else
 static unsigned int get_gpioz_nbpin(void)
 {
 	return STM32MP1_GPIOZ_PIN_MAX_COUNT;
 }
+#endif
 
 static void register_periph(enum stm32mp_shres id, enum shres_state state)
 {
@@ -269,7 +338,7 @@ void stm32mp_register_non_secure_periph(enum stm32mp_shres id)
 }
 
 /* Register resource by IO memory base address */
-static void register_periph_iomem(uintptr_t base, enum shres_state state)
+static void register_periph_iomem(vaddr_t base, enum shres_state state)
 {
 	enum stm32mp_shres id = STM32MP1_SHRES_COUNT;
 
@@ -343,12 +412,12 @@ static void register_periph_iomem(uintptr_t base, enum shres_state state)
 	register_periph(id, state);
 }
 
-void stm32mp_register_secure_periph_iomem(uintptr_t base)
+void stm32mp_register_secure_periph_iomem(vaddr_t base)
 {
 	register_periph_iomem(base, SHRES_SECURE);
 }
 
-void stm32mp_register_non_secure_periph_iomem(uintptr_t base)
+void stm32mp_register_non_secure_periph_iomem(vaddr_t base)
 {
 	register_periph_iomem(base, SHRES_NON_SECURE);
 }
@@ -384,13 +453,6 @@ static void lock_registering(void)
 	registering_locked = true;
 }
 
-bool stm32mp_periph_is_non_secure(enum stm32mp_shres id)
-{
-	lock_registering();
-
-	return shres_state[id] == SHRES_NON_SECURE;
-}
-
 bool stm32mp_periph_is_secure(enum stm32mp_shres id)
 {
 	lock_registering();
@@ -398,16 +460,9 @@ bool stm32mp_periph_is_secure(enum stm32mp_shres id)
 	return shres_state[id] == SHRES_SECURE;
 }
 
-bool stm32mp_periph_is_unregistered(enum stm32mp_shres id)
-{
-	lock_registering();
-
-	return shres_state[id] == SHRES_UNREGISTERED;
-}
-
 bool stm32mp_gpio_bank_is_shared(unsigned int bank)
 {
-	unsigned int non_secure = 0;
+	unsigned int not_secure = 0;
 	unsigned int pin = 0;
 
 	lock_registering();
@@ -416,16 +471,15 @@ bool stm32mp_gpio_bank_is_shared(unsigned int bank)
 		return false;
 
 	for (pin = 0; pin < get_gpioz_nbpin(); pin++)
-		if (stm32mp_periph_is_non_secure(STM32MP1_SHRES_GPIOZ(pin)) ||
-		    stm32mp_periph_is_unregistered(STM32MP1_SHRES_GPIOZ(pin)))
-			non_secure++;
+		if (!stm32mp_periph_is_secure(STM32MP1_SHRES_GPIOZ(pin)))
+			not_secure++;
 
-	return non_secure > 0 && non_secure < get_gpioz_nbpin();
+	return not_secure > 0 && not_secure < get_gpioz_nbpin();
 }
 
 bool stm32mp_gpio_bank_is_non_secure(unsigned int bank)
 {
-	unsigned int non_secure = 0;
+	unsigned int not_secure = 0;
 	unsigned int pin = 0;
 
 	lock_registering();
@@ -434,11 +488,10 @@ bool stm32mp_gpio_bank_is_non_secure(unsigned int bank)
 		return true;
 
 	for (pin = 0; pin < get_gpioz_nbpin(); pin++)
-		if (stm32mp_periph_is_non_secure(STM32MP1_SHRES_GPIOZ(pin)) ||
-		    stm32mp_periph_is_unregistered(STM32MP1_SHRES_GPIOZ(pin)))
-			non_secure++;
+		if (!stm32mp_periph_is_secure(STM32MP1_SHRES_GPIOZ(pin)))
+			not_secure++;
 
-	return non_secure > 0 && non_secure == get_gpioz_nbpin();
+	return not_secure > 0 && not_secure == get_gpioz_nbpin();
 }
 
 bool stm32mp_gpio_bank_is_secure(unsigned int bank)
@@ -550,7 +603,7 @@ bool stm32mp_clock_is_non_secure(unsigned long clock_id)
 		return true;
 	}
 
-	return stm32mp_periph_is_non_secure(shres_id);
+	return !stm32mp_periph_is_secure(shres_id);
 }
 
 static bool mckprot_resource(enum stm32mp_shres id)
@@ -570,7 +623,7 @@ static bool mckprot_resource(enum stm32mp_shres id)
 #ifdef CFG_STM32_ETZPC
 static enum etzpc_decprot_attributes shres2decprot_attr(enum stm32mp_shres id)
 {
-	if (stm32mp_periph_is_non_secure(id))
+	if (!stm32mp_periph_is_secure(id))
 		return ETZPC_DECPROT_NS_RW;
 
 	if (mckprot_resource(id))
@@ -619,6 +672,9 @@ static void check_rcc_secure_configuration(void)
 	enum stm32mp_shres id = STM32MP1_SHRES_COUNT;
 	bool have_error = false;
 
+	if (stm32mp_is_closed_device() && !secure)
+		panic();
+
 	for (id = 0; id < STM32MP1_SHRES_COUNT; id++) {
 		if  (shres_state[id] != SHRES_SECURE)
 			continue;
@@ -648,7 +704,17 @@ static void set_gpio_secure_configuration(void)
 	}
 }
 
-static TEE_Result stm32mp1_init_shres(void)
+static TEE_Result gpioz_pm(enum pm_op op, uint32_t pm_hint __unused,
+			   const struct pm_callback_handle *hdl __unused)
+{
+	if (op == PM_OP_RESUME)
+		set_gpio_secure_configuration();
+
+	return TEE_SUCCESS;
+}
+KEEP_PAGER(gpioz_pm);
+
+static TEE_Result stm32mp1_init_final_shres(void)
 {
 	enum stm32mp_shres id = STM32MP1_SHRES_COUNT;
 
@@ -657,20 +723,16 @@ static TEE_Result stm32mp1_init_shres(void)
 	for (id = (enum stm32mp_shres)0; id < STM32MP1_SHRES_COUNT; id++) {
 		uint8_t __maybe_unused *state = &shres_state[id];
 
-#if TRACE_LEVEL == TRACE_INFO
-		/* Print only the secure and shared resources */
-		if (*state == SHRES_NON_SECURE || *state == SHRES_UNREGISTERED)
-			continue;
-#endif
-
-		IMSG("stm32mp %-8s (%2u): %-14s",
+		DMSG("stm32mp %-8s (%2u): %-14s",
 		     shres2str_id(id), id, shres2str_state(*state));
 	}
 
 	set_etzpc_secure_configuration();
 	set_gpio_secure_configuration();
+	register_pm_driver_cb(gpioz_pm, NULL);
 	check_rcc_secure_configuration();
 
 	return TEE_SUCCESS;
 }
-driver_init_late(stm32mp1_init_shres);
+/* Finalize shres after drivers initialization, hence driver_init_late() */
+driver_init_late(stm32mp1_init_final_shres);

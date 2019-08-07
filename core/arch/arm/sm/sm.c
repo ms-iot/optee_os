@@ -13,7 +13,7 @@
 #include <string.h>
 #include "sm_private.h"
 
-bool sm_from_nsec(struct sm_ctx *ctx)
+uint32_t sm_from_nsec(struct sm_ctx *ctx)
 {
 	uint32_t *nsec_r0 = (uint32_t *)(&ctx->nsec.r0);
 
@@ -26,13 +26,15 @@ bool sm_from_nsec(struct sm_ctx *ctx)
 	COMPILE_TIME_ASSERT(!(offsetof(struct sm_ctx, nsec.r0) % 8));
 	COMPILE_TIME_ASSERT(!(sizeof(struct sm_ctx) % 8));
 
-	if (!sm_platform_handler(ctx))
-		return false;
+#ifdef CFG_SM_PLATFORM_HANDLER
+	if (sm_platform_handler(ctx) == SM_HANDLER_SMC_HANDLED)
+		return SM_EXIT_TO_NON_SECURE;
+#endif
 
 #ifdef CFG_PSCI_ARM32
 	if (OPTEE_SMC_OWNER_NUM(*nsec_r0) == OPTEE_SMC_OWNER_STANDARD) {
 		smc_std_handler((struct thread_smc_args *)nsec_r0, &ctx->nsec);
-		return false;	/* Return to non secure state */
+		return SM_EXIT_TO_NON_SECURE;
 	}
 #endif
 
@@ -44,5 +46,6 @@ bool sm_from_nsec(struct sm_ctx *ctx)
 		ctx->sec.mon_lr = (uint32_t)&thread_vector_table.fast_smc_entry;
 	else
 		ctx->sec.mon_lr = (uint32_t)&thread_vector_table.std_smc_entry;
-	return true;	/* return into secure state */
+
+	return SM_EXIT_TO_SECURE;
 }

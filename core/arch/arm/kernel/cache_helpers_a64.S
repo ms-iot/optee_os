@@ -8,20 +8,17 @@
 #include <arm.h>
 #include <asm.S>
 
-#define WORD_SIZE		4
-
-
 .macro  dcache_line_size  reg, tmp
 	mrs     \tmp, ctr_el0
 	ubfx    \tmp, \tmp, #CTR_DMINLINE_SHIFT, #CTR_DMINLINE_WIDTH
-	mov     \reg, #WORD_SIZE
+	mov     \reg, #CTR_WORD_SIZE
 	lsl     \reg, \reg, \tmp
 .endm
 
 .macro  icache_line_size  reg, tmp
 	mrs     \tmp, ctr_el0
 	and     \tmp, \tmp, #CTR_IMINLINE_MASK
-	mov     \reg, #WORD_SIZE
+	mov     \reg, #CTR_WORD_SIZE
 	lsl     \reg, \reg, \tmp
 .endm
 
@@ -46,7 +43,6 @@ loop_\op:
 	 * size. 'x0' = addr, 'x1' = size
 	 * ------------------------------------------
 	 */
-.section .text.dcache_cleaninv_range
 FUNC dcache_cleaninv_range , :
 	do_dcache_maintenance_by_mva civac
 END_FUNC dcache_cleaninv_range
@@ -56,7 +52,6 @@ END_FUNC dcache_cleaninv_range
 	 * 'x0' = addr, 'x1' = size
 	 * ------------------------------------------
 	 */
-.section .text.dcache_clean_range
 FUNC dcache_clean_range , :
 	do_dcache_maintenance_by_mva cvac
 END_FUNC dcache_clean_range
@@ -66,11 +61,18 @@ END_FUNC dcache_clean_range
 	 * size. 'x0' = addr, 'x1' = size
 	 * ------------------------------------------
 	 */
-.section .text.dcache_inv_range
 FUNC dcache_inv_range , :
 	do_dcache_maintenance_by_mva ivac
 END_FUNC dcache_inv_range
 
+	/* ------------------------------------------
+	 * Clean from base address till size to point of unification
+	 * 'x0' = addr, 'x1' = size
+	 * ------------------------------------------
+	 */
+FUNC dcache_clean_range_pou , :
+	do_dcache_maintenance_by_mva cvau
+END_FUNC dcache_clean_range_pou
 
 	/* ---------------------------------------------------------------
 	 * Data cache operations by set/way to the level specified
@@ -96,7 +98,6 @@ END_FUNC dcache_inv_range
 	b	do_dcsw_op
 	.endm
 
-.section .text.do_dcsw_op
 LOCAL_FUNC do_dcsw_op , :
 	cbz	x3, exit
 	adr	x14, dcsw_loop_table	// compute inner loop address
@@ -157,12 +158,10 @@ dcsw_loop_table:
 	dcsw_loop csw
 END_FUNC do_dcsw_op
 
-.section .text.dcache_op_louis
 FUNC dcache_op_louis , :
 	dcsw_op #CLIDR_LOUIS_SHIFT, #CLIDR_FIELD_WIDTH, #CSSELR_LEVEL_SHIFT
 END_FUNC dcache_op_louis
 
-.section .text.dcache_op_all
 FUNC dcache_op_all , :
 	dcsw_op #CLIDR_LOC_SHIFT, #CLIDR_FIELD_WIDTH, #CSSELR_LEVEL_SHIFT
 END_FUNC dcache_op_all
@@ -186,7 +185,6 @@ END_FUNC dcache_op_all
 	 * x0: The operation type (0-2), as defined in cache_helpers.h
 	 * ---------------------------------------------------------------
 	 */
-.section .text.dcache_op_level1
 FUNC dcache_op_level1 , :
 	dcsw_op_level #(1 << CSSELR_LEVEL_SHIFT)
 END_FUNC dcache_op_level1
@@ -198,7 +196,6 @@ END_FUNC dcache_op_level1
 	 * x0: The operation type (0-2), as defined in cache_helpers.h
 	 * ---------------------------------------------------------------
 	 */
-.section .text.dcache_op_level2
 FUNC dcache_op_level2 , :
 	dcsw_op_level #(2 << CSSELR_LEVEL_SHIFT)
 END_FUNC dcache_op_level2
@@ -210,12 +207,10 @@ END_FUNC dcache_op_level2
 	 * x0: The operation type (0-2), as defined in cache_helpers.h
 	 * ---------------------------------------------------------------
 	 */
-.section .text.dcache_op_level3
 FUNC dcache_op_level3 , :
 	dcsw_op_level #(3 << CSSELR_LEVEL_SHIFT)
 END_FUNC dcache_op_level3
 
-.section .text.icache_inv_all
 FUNC icache_inv_all , :
 	/* Invalidate Entire Instruction Cache */
 	ic	ialluis
@@ -226,7 +221,6 @@ FUNC icache_inv_all , :
 	ret
 END_FUNC icache_inv_all
 
-.section .text.icache_inv_range
 FUNC icache_inv_range , :
 	icache_line_size x2, x3
 	add	x1, x0, x1

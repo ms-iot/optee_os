@@ -16,19 +16,6 @@
 #include <malloc.h>
 #include "tee_api_private.h"
 
-/*
- * Pull in symbol __utee_mcount.
- * This symbol is implemented in assembly in its own compilation unit, and is
- * never referenced except by the linker script (in a PROVIDE() command).
- * Because the compilation units are packed into an archive (libutee.a), the
- * linker will discard the compilation units that are not explicitly
- * referenced. AFAICT this occurs *before* the linker processes the PROVIDE()
- * command, resulting in an "undefined symbol" error. We avoid this by
- * adding an explicit reference here.
- */
-extern uint8_t __utee_mcount[];
-void *_ref__utee_mcount __unused = &__utee_mcount;
-
 struct ta_session {
 	uint32_t session_id;
 	void *session_ctx;
@@ -132,6 +119,67 @@ static void ta_header_remove_session(uint32_t session_id)
 	}
 }
 
+static void to_utee_params(struct utee_params *up, uint32_t param_types,
+			   const TEE_Param params[TEE_NUM_PARAMS])
+{
+	size_t n = 0;
+
+	up->types = param_types;
+	for (n = 0; n < TEE_NUM_PARAMS; n++) {
+		switch (TEE_PARAM_TYPE_GET(param_types, n)) {
+		case TEE_PARAM_TYPE_VALUE_INPUT:
+		case TEE_PARAM_TYPE_VALUE_OUTPUT:
+		case TEE_PARAM_TYPE_VALUE_INOUT:
+			up->vals[n * 2] = params[n].value.a;
+			up->vals[n * 2 + 1] = params[n].value.b;
+			break;
+		case TEE_PARAM_TYPE_MEMREF_INPUT:
+		case TEE_PARAM_TYPE_MEMREF_OUTPUT:
+		case TEE_PARAM_TYPE_MEMREF_INOUT:
+			up->vals[n * 2] = (uintptr_t)params[n].memref.buffer;
+			up->vals[n * 2 + 1] = params[n].memref.size;
+			break;
+		default:
+			up->vals[n * 2] = 0;
+			up->vals[n * 2 + 1] = 0;
+			break;
+		}
+	}
+}
+
+static void from_utee_params(TEE_Param params[TEE_NUM_PARAMS],
+			     uint32_t *param_types,
+			     const struct utee_params *up)
+{
+	size_t n;
+	uint32_t types = up->types;
+
+	for (n = 0; n < TEE_NUM_PARAMS; n++) {
+		uintptr_t a = up->vals[n * 2];
+		uintptr_t b = up->vals[n * 2 + 1];
+
+		switch (TEE_PARAM_TYPE_GET(types, n)) {
+		case TEE_PARAM_TYPE_VALUE_INPUT:
+		case TEE_PARAM_TYPE_VALUE_OUTPUT:
+		case TEE_PARAM_TYPE_VALUE_INOUT:
+			params[n].value.a = a;
+			params[n].value.b = b;
+			break;
+		case TEE_PARAM_TYPE_MEMREF_INPUT:
+		case TEE_PARAM_TYPE_MEMREF_OUTPUT:
+		case TEE_PARAM_TYPE_MEMREF_INOUT:
+			params[n].memref.buffer = (void *)a;
+			params[n].memref.size = b;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (param_types)
+		*param_types = types;
+}
+
 static TEE_Result entry_open_session(unsigned long session_id,
 			struct utee_params *up)
 {
@@ -148,13 +196,13 @@ static TEE_Result entry_open_session(unsigned long session_id,
 	if (!session)
 		return TEE_ERROR_BAD_STATE;
 
-	__utee_to_param(params, &param_types, up);
+	from_utee_params(params, &param_types, up);
 	ta_header_save_params(param_types, params);
 
 	res = TA_OpenSessionEntryPoint(param_types, params,
 				       &session->session_ctx);
 
-	__utee_from_param(up, param_types, params);
+	to_utee_params(up, param_types, params);
 
 	if (res != TEE_SUCCESS)
 		ta_header_remove_session(session_id);
@@ -185,28 +233,20 @@ static TEE_Result entry_invoke_command(unsigned long session_id,
 	if (!session)
 		return TEE_ERROR_BAD_STATE;
 
-	__utee_to_param(params, &param_types, up);
+	from_utee_params(params, &param_types, up);
 	ta_header_save_params(param_types, params);
 
 	res = TA_InvokeCommandEntryPoint(session->session_ctx, cmd_id,
 					 param_types, params);
 
-	__utee_from_param(up, param_types, params);
+	to_utee_params(up, param_types, params);
 	return res;
 }
 
-void __noreturn __utee_entry(unsigned long func, unsigned long session_id,
+TEE_Result __utee_entry(unsigned long func, unsigned long session_id,
 			struct utee_params *up, unsigned long cmd_id)
 {
 	TEE_Result res;
-
-#if defined(ARM32) && defined(CFG_UNWIND)
-	/*
-	 * This function is the bottom of the user call stack: mark it as such
-	 * so that the unwinding code won't try to go further down.
-	 */
-	asm(".cantunwind");
-#endif
 
 	switch (func) {
 	case UTEE_ENTRY_FUNC_OPEN_SESSION:
@@ -224,5 +264,6 @@ void __noreturn __utee_entry(unsigned long func, unsigned long session_id,
 		break;
 	}
 	ta_header_save_params(0, NULL);
-	utee_return(res);
+
+	return res;
 }

@@ -37,7 +37,7 @@ void *init_job_ring(uint8_t jr_mode,
 	job_ring->irq_fd = irq_id;
 
 	// Allocate mem for input and output ring
-	tmp = memalign(64, SEC_DMA_MEM_INPUT_RING_SIZE);
+	tmp = fsl_sec_memalign(64, SEC_DMA_MEM_INPUT_RING_SIZE);
 	job_ring->input_ring = vtop(tmp);
 	memset(tmp, 0, SEC_DMA_MEM_INPUT_RING_SIZE);
 	start = (unsigned long) tmp;
@@ -45,7 +45,7 @@ void *init_job_ring(uint8_t jr_mode,
 	cache_operation(TEE_CACHEFLUSH, (void *) start, (size_t)(end - start));
 
 	// Allocate memory for output ring
-	tmp = memalign(64, SEC_DMA_MEM_OUTPUT_RING_SIZE);
+	tmp = fsl_sec_memalign(64, SEC_DMA_MEM_OUTPUT_RING_SIZE);
 	job_ring->output_ring = (struct sec_outring_entry *)vtop(tmp);
 	memset(tmp, 0, SEC_DMA_MEM_OUTPUT_RING_SIZE);
 	start = (unsigned long) tmp;

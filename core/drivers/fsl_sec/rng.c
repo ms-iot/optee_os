@@ -111,7 +111,7 @@ static int instantiate_rng(void)
 	static struct job_descriptor *jobdesc;
 
 	if (!jobdesc) {
-		jobdesc = memalign(64, sizeof(struct job_descriptor));
+		jobdesc = fsl_sec_memalign(64, sizeof(struct job_descriptor));
 		if (!jobdesc) {
 			DMSG("desc allocation failed\n");
 			return -1;
@@ -130,7 +130,7 @@ static int instantiate_rng(void)
 		ret = -1;
 	}
 
-	free(jobdesc);
+	fsl_sec_free(jobdesc);
 	return ret;
 }
 
@@ -215,7 +215,7 @@ int hw_rng_instantiate(void)
 
 	cpu_spin_lock(&rng_lock);
 	if (rng_jobdesc == NULL) {
-		rng_jobdesc = memalign(STACK_ALIGNMENT,
+		rng_jobdesc = fsl_sec_memalign(STACK_ALIGNMENT,
 				sizeof(struct job_descriptor));
 		if (rng_jobdesc == NULL) {
 			DMSG("Failed to allocate rng_jobdesc");
@@ -225,7 +225,7 @@ int hw_rng_instantiate(void)
 	}
 
 	if (rng_buf == NULL) {
-		rng_buf = memalign(STACK_ALIGNMENT, RNGBUF_SIZE);
+		rng_buf = fsl_sec_memalign(STACK_ALIGNMENT, RNGBUF_SIZE);
 		if (rng_buf == NULL) {
 			DMSG("Failed to allocate rng_buf");
 			cpu_spin_unlock(&rng_lock);

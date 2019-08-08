@@ -41,14 +41,20 @@ WARNS ?= 3
 # so assertions are disabled.
 CFG_TEE_CORE_DEBUG ?= y
 
-# Log levels for the TEE core and user-mode TAs
-# Defines which messages are displayed on the secure console
+# Log levels for the TEE core. Defines which core messages are displayed
+# on the secure console. Disabling core log (level set to 0) also disables
+# logs from the TAs.
 # 0: none
 # 1: error
 # 2: error + warning
 # 3: error + warning + debug
 # 4: error + warning + debug + flow
 CFG_TEE_CORE_LOG_LEVEL ?= 1
+
+# TA log level
+# If user-mode library libutils.a is built with CFG_TEE_TA_LOG_LEVEL=0,
+# TA tracing is disabled regardless of the value of CFG_TEE_TA_LOG_LEVEL
+# when the TA is built.
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
 # TA enablement
@@ -68,6 +74,9 @@ CFG_TEE_CORE_TA_TRACE ?= y
 #   $ make CFG_TEE_CORE_MALLOC_DEBUG=y CFG_TEE_CORE_LOG_LEVEL=3
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
 CFG_TEE_TA_MALLOC_DEBUG ?= n
+# Prints an error message and dumps the stack on failed memory allocations
+# using malloc() and friends.
+CFG_CORE_DUMP_OOM ?= $(CFG_TEE_CORE_MALLOC_DEBUG)
 
 # Mask to select which messages are prefixed with long debugging information
 # (severity, core ID, thread ID, component name, function name, line number)
@@ -107,7 +116,7 @@ endif
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 3
-CFG_OPTEE_REVISION_MINOR ?= 3
+CFG_OPTEE_REVISION_MINOR ?= 6
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -178,10 +187,53 @@ endif
 # Enable support for dynamically loaded user TAs
 CFG_WITH_USER_TA ?= y
 
+# Choosing the architecture(s) of user-mode libraries (used by TAs)
+#
+# Platforms may define a list of supported architectures for user-mode code
+# by setting $(supported-ta-targets). Valid values are "ta_arm32", "ta_arm64",
+# "ta_arm32 ta_arm64" and "ta_arm64 ta_arm32".
+# $(supported-ta-targets) defaults to "ta_arm32" when the TEE core is 32-bits,
+# and "ta_arm32 ta_arm64" when it is 64-bits (that is, when CFG_ARM64_core=y).
+# The first entry in $(supported-ta-targets) has a special role, see
+# CFG_USER_TA_TARGET_<ta-name> below.
+#
+# CFG_USER_TA_TARGETS may be defined to restrict $(supported-ta-targets) or
+# change the order of the values.
+#
+# The list of TA architectures is ultimately stored in $(ta-targets).
+
+# CFG_USER_TA_TARGET_<ta-name> (for example, CFG_USER_TA_TARGET_avb), if
+# defined, selects the unique TA architecture mode for building the in-tree TA
+# <ta-name>. Can be either ta_arm32 or ta_arm64.
+# By default, in-tree TAs are built using the first architecture specified in
+# $(ta-targets).
+
+# Address Space Layout Randomization for user-mode Trusted Applications
+#
+# When this flag is enabled, the ELF loader will introduce a random offset
+# when mapping the application in user space. ASLR makes the exploitation of
+# memory corruption vulnerabilities more difficult.
+CFG_TA_ASLR ?= n
+
+# How much ASLR may shift the base address (in pages). The base address is
+# randomly shifted by an integer number of pages comprised between these two
+# values. Bigger ranges are more secure because they make the addresses harder
+# to guess at the expense of using more memory for the page tables.
+CFG_TA_ASLR_MIN_OFFSET_PAGES ?= 0
+CFG_TA_ASLR_MAX_OFFSET_PAGES ?= 128
+
 # Load user TAs from the REE filesystem via tee-supplicant
-# There is currently no other alternative, but you may want to disable this in
-# case you implement your own TA store
 CFG_REE_FS_TA ?= y
+
+# Pre-authentication of TA binaries loaded from the REE filesystem
+#
+# - If CFG_REE_FS_TA_BUFFERED=y: load TA binary into a temporary buffer in the
+#   "Secure DDR" pool, check the signature, then process the file only if it is
+#   valid.
+# - If disabled: hash the binaries as they are being processed and verify the
+#   signature as a last step.
+CFG_REE_FS_TA_BUFFERED ?= $(CFG_REE_FS_TA)
+$(eval $(call cfg-depends-all,CFG_REE_FS_TA_BUFFERED,CFG_REE_FS_TA))
 
 # Support for loading user TAs from a special section in the TEE binary.
 # Such TAs are available even before tee-supplicant is available (hence their
@@ -213,15 +265,20 @@ ifeq ($(CFG_EARLY_TA),y)
 $(call force,CFG_ZLIB,y)
 endif
 
-# Support for dynamically linked user TAs
-CFG_TA_DYNLINK ?= y
-
 # Enable paging, requires SRAM, can't be enabled by default
 CFG_WITH_PAGER ?= n
 
+# Runtime lock dependency checker: ensures that a proper locking hierarchy is
+# used in the TEE core when acquiring and releasing mutexes. Any violation will
+# cause a panic as soon as the invalid locking condition is detected. If
+# CFG_UNWIND is enabled, the algorithm records the call stacks when locks are
+# taken, and prints them when a potential deadlock is found.
+# Expect a significant performance impact when enabling this.
+CFG_LOCKDEP ?= n
+
 # BestFit algorithm in bget reduces the fragmentation of the heap when running
-# with the pager enabled.
-CFG_CORE_BGET_BESTFIT ?= $(CFG_WITH_PAGER)
+# with the pager enabled or lockdep
+CFG_CORE_BGET_BESTFIT ?= $(call cfg-one-enabled, CFG_WITH_PAGER CFG_LOCKDEP)
 
 # Use the pager for user TAs
 CFG_PAGED_USER_TA ?= $(CFG_WITH_PAGER)
@@ -236,15 +293,40 @@ CFG_CORE_SANITIZE_UNDEFINED ?= n
 CFG_CORE_SANITIZE_KADDRESS ?= n
 
 # Device Tree support
-# When enabled, the TEE _start function expects to find the address of a
-# Device Tree Blob (DTB) in register r2. The DT parsing code relies on
-# libfdt.  Currently only used to add the optee node and a reserved-memory
-# node for shared memory.
+#
+# When CFG_DT is enabled core embeds the FDT library (libfdt) allowing
+# device tree blob (DTB) parsing from the core.
+#
+# When CFG_DT is enabled, the TEE _start function expects to find
+# the address of a DTB in register X2/R2 provided by the early boot stage
+# or value 0 if boot stage provides no DTB.
+#
+# When CFG_EMBED_DTB is enabled, CFG_EMBED_DTB_SOURCE_FILE shall define the
+# relative path of a DTS file located in core/arch/$(ARCH)/dts.
+# The DTS file is compiled into a DTB file which content is embedded in a
+# read-only section of the core.
+ifneq ($(strip $(CFG_EMBED_DTB_SOURCE_FILE)),)
+CFG_EMBED_DTB ?= y
+endif
+ifeq ($(CFG_EMBED_DTB),y)
+$(call force,CFG_DT,y)
+endif
+CFG_EMBED_DTB ?= n
 CFG_DT ?= n
 
 # Maximum size of the Device Tree Blob, has to be large enough to allow
 # editing of the supplied DTB.
 CFG_DTB_MAX_SIZE ?= 0x10000
+
+# Device Tree Overlay support.
+# This define enables support for an OP-TEE provided DTB overlay.
+# One of two modes is supported in this case:
+# 1. Append OP-TEE nodes to an existing DTB overlay located at CFG_DT_ADDR or
+#    passed in arg2
+# 2. Generate a new DTB overlay at CFG_DT_ADDR
+# A subsequent boot stage must then merge the generated overlay DTB into a main
+# DTB using the standard fdt_overlay_apply() method.
+CFG_EXTERNAL_DTB_OVERLAY ?= n
 
 # Enable core self tests and related pseudo TAs
 CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
@@ -257,6 +339,10 @@ CFG_BOOT_SECONDARY_REQUEST ?= n
 # Default heap size for Core, 64 kB
 CFG_CORE_HEAP_SIZE ?= 65536
 
+# Default size of nexus heap. 16 kB. Used only if CFG_VIRTUALIZATION
+# is enabled
+CFG_CORE_NEX_HEAP_SIZE ?= 16384
+
 # TA profiling.
 # When this option is enabled, OP-TEE can execute Trusted Applications
 # instrumented with GCC's -pg flag and will output profiling information
@@ -264,14 +350,44 @@ CFG_CORE_HEAP_SIZE ?= 65536
 # tee-supplicant)
 CFG_TA_GPROF_SUPPORT ?= n
 
-# Enable to compile user TA libraries with profiling (-pg).
-# Depends on CFG_TA_GPROF_SUPPORT.
-CFG_ULIBS_GPROF ?= n
+# TA function tracing.
+# When this option is enabled, OP-TEE can execute Trusted Applications
+# instrumented with GCC's -pg flag and will output function tracing
+# information in ftrace.out format to /tmp/ftrace-<ta_uuid>.out (path is
+# defined in tee-supplicant)
+CFG_TA_FTRACE_SUPPORT ?= n
 
-ifeq ($(CFG_ULIBS_GPROF),y)
-ifneq ($(CFG_TA_GPROF_SUPPORT),y)
+# Enable to compile user TA libraries with profiling (-pg).
+# Depends on CFG_TA_GPROF_SUPPORT or CFG_TA_FTRACE_SUPPORT.
+CFG_ULIBS_MCOUNT ?= n
+
+ifeq ($(CFG_ULIBS_MCOUNT),y)
+ifeq (,$(filter y,$(CFG_TA_GPROF_SUPPORT) $(CFG_TA_FTRACE_SUPPORT)))
 $(error Cannot instrument user libraries if user mode profiling is disabled)
 endif
+endif
+
+# Build libutee, libutils, libmpa/libmbedtls as shared libraries.
+# - Static libraries are still generated when this is enabled, but TAs will use
+# the shared libraries unless explicitly linked with the -static flag.
+# - Shared libraries are made of two files: for example, libutee is
+#   libutee.so and 527f1a47-b92c-4a74-95bd-72f19f4a6f74.ta. The '.so' file
+#   is a totally standard shared object, and should be used to link against.
+#   The '.ta' file is a signed version of the '.so' and should be installed
+#   in the same way as TAs so that they can be found at runtime.
+CFG_ULIBS_SHARED ?= n
+
+ifeq (yy,$(CFG_TA_GPROF_SUPPORT)$(CFG_ULIBS_SHARED))
+# FIXME:
+# TA profiling with gprof does not work well with shared libraries (not limited
+# to CFG_ULIBS_SHARED=y actually), because the total .text size is not known at
+# link time. The symptom is an error trace when the TA starts (and no gprof
+# output is produced):
+#  E/TA: __utee_gprof_init:159 gprof: could not allocate profiling buffer
+# The allocation of the profiling buffer should probably be done at runtime
+# via a new syscall/PTA call instead of having it pre-allocated in .bss by the
+# linker.
+$(error CFG_TA_GPROF_SUPPORT and CFG_ULIBS_SHARED are currently incompatible)
 endif
 
 # CFG_GP_SOCKETS
@@ -296,18 +412,23 @@ $(eval $(call cfg-depends-all,CFG_SECSTOR_TA_MGMT_PTA,CFG_SECSTOR_TA))
 # GlobalPlatform Core API (for example, re-seeding RNG entropy pool etc.)
 CFG_SYSTEM_PTA ?= y
 
+# Enable the pseudo TA for enumeration of TEE based devices for the normal
+# world OS.
+CFG_DEVICE_ENUM_PTA ?= y
+
 # Define the number of cores per cluster used in calculating core position.
 # The cluster number is shifted by this value and added to the core ID,
 # so its value represents log2(cores/cluster).
 # Default is 2**(2) = 4 cores per cluster.
 CFG_CORE_CLUSTER_SHIFT ?= 2
 
-# Do not report to NW that dynamic shared memory (shared memory outside
-# predefined region) is enabled.
-# Note that you can disable this feature for debug purposes. OP-TEE will not
-# report to Normal World that it support dynamic SHM. But, nevertheles it
-# will accept dynamic SHM buffers.
-CFG_DYN_SHM_CAP ?= y
+# Enable support for dynamic shared memory (shared memory anywhere in
+# non-secure memory).
+CFG_CORE_DYN_SHM ?= y
+
+# Enable support for reserved shared memory (shared memory in a carved out
+# memory area).
+CFG_CORE_RESERVED_SHM ?= y
 
 # Enables support for larger physical addresses, that is, it will define
 # paddr_t as a 64-bit type.
@@ -332,3 +453,36 @@ CFG_TA_MBEDTLS ?= y
 # Compile the TA library mbedTLS with self test functions, the functions
 # need to be called to test anything
 CFG_TA_MBEDTLS_SELF_TEST ?= y
+
+# By default use tomcrypt as the main crypto lib providing an implementation
+# for the API in <crypto/crypto.h>
+# CFG_CRYPTOLIB_NAME is used as libname and
+# CFG_CRYPTOLIB_DIR is used as libdir when compiling the library
+#
+# It's also possible to configure to use mbedtls instead of tomcrypt.
+# Then the variables should be assigned as "CFG_CRYPTOLIB_NAME=mbedtls" and
+# "CFG_CRYPTOLIB_DIR=lib/libmbedtls" respectively.
+CFG_CRYPTOLIB_NAME ?= tomcrypt
+CFG_CRYPTOLIB_DIR ?= core/lib/libtomcrypt
+
+# Enable TEE_ALG_RSASSA_PKCS1_V1_5 algorithm for signing with PKCS#1 v1.5 EMSA
+# without ASN.1 around the hash.
+ifeq ($(CFG_CRYPTOLIB_NAME),tomcrypt)
+CFG_CRYPTO_RSASSA_NA1 ?= y
+CFG_CORE_MBEDTLS_MPI ?= y
+endif
+
+# Enable virtualization support. OP-TEE will not work without compatible
+# hypervisor if this option is enabled.
+CFG_VIRTUALIZATION ?= n
+
+ifeq ($(CFG_VIRTUALIZATION),y)
+$(call force,CFG_CORE_RODATA_NOEXEC,y)
+$(call force,CFG_CORE_RWDATA_NOEXEC,y)
+
+# Default number of virtual guests
+CFG_VIRT_GUEST_COUNT ?= 2
+endif
+
+# Enables backwards compatible derivation of RPMB and SSK keys
+CFG_CORE_HUK_SUBKEY_COMPAT ?= y

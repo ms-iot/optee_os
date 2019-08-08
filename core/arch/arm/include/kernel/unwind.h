@@ -55,8 +55,7 @@ struct unwind_state_arm32 {
  * @stack, @stack_size: the bottom of the stack and its size, respectively.
  */
 bool unwind_stack_arm32(struct unwind_state_arm32 *state, vaddr_t exidx,
-			size_t exidx_sz, bool kernel_stack, vaddr_t stack,
-			size_t stack_size);
+			size_t exidx_sz, vaddr_t stack, size_t stack_size);
 
 #ifdef ARM64
 /* The state of the unwind process (64-bit mode) */
@@ -67,10 +66,10 @@ struct unwind_state_arm64 {
 };
 
 /*
- * Unwind a 64-bit user or kernel stack.
+ * Unwind a 64-bit kernel stack.
  * @stack, @stack_size: the bottom of the stack and its size, respectively.
  */
-bool unwind_stack_arm64(struct unwind_state_arm64 *state, bool kernel_stack,
+bool unwind_stack_arm64(struct unwind_state_arm64 *state,
 			vaddr_t stack, size_t stack_size);
 #endif /*ARM64*/
 
@@ -78,10 +77,10 @@ bool unwind_stack_arm64(struct unwind_state_arm64 *state, bool kernel_stack,
 
 #ifdef ARM64
 void print_stack_arm64(int level, struct unwind_state_arm64 *state,
-		       bool kernel_stack, vaddr_t stack, size_t stack_size);
+		       vaddr_t stack, size_t stack_size);
 #endif
 void print_stack_arm32(int level, struct unwind_state_arm32 *state,
-		       vaddr_t exidx, size_t exidx_sz, bool kernel_stack,
+		       vaddr_t exidx, size_t exidx_sz,
 		       vaddr_t stack, size_t stack_size);
 void print_kernel_stack(int level);
 
@@ -100,7 +99,6 @@ static inline void print_stack_arm32(int level __unused,
 				     struct unwind_state_arm32 *state __unused,
 				     uaddr_t exidx __unused,
 				     size_t exidx_sz __unused,
-				     bool kernel_stack __unused,
 				     vaddr_t stack __unused,
 				     size_t stack_size __unused)
 {
@@ -113,12 +111,18 @@ static inline void print_kernel_stack(int level __unused)
 
 #ifdef CFG_UNWIND
 TEE_Result relocate_exidx(void *exidx, size_t exidx_sz, int32_t offset);
+/* Get current call stack as an array allocated on the heap */
+vaddr_t *unw_get_kernel_stack(void);
 #else
 static inline TEE_Result relocate_exidx(void *exidx __unused,
 					size_t exidx_sz __unused,
 					int32_t offset __unused)
 {
 	return TEE_ERROR_NOT_SUPPORTED;
+}
+static inline void *unw_get_kernel_stack(void)
+{
+	return NULL;
 }
 #endif /* CFG_UNWIND  */
 

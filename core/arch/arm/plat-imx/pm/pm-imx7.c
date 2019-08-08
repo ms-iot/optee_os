@@ -123,7 +123,7 @@ int pm_imx7_iram_tbl_init(void)
 	map.pa = ROUNDDOWN(IRAM_S_BASE, CORE_MMU_PGDIR_SIZE);
 	map.va = (vaddr_t)phys_to_virt(map.pa, MEM_AREA_TEE_COHERENT);
 	map.region_size = CORE_MMU_PGDIR_SIZE;
-	map.size = CORE_MMU_DEVICE_SIZE;
+	map.size = CORE_MMU_PGDIR_SIZE;
 	map.type = MEM_AREA_TEE_COHERENT;
 	map.attr = TEE_MATTR_VALID_BLOCK | TEE_MATTR_PRWX | TEE_MATTR_SECURE;
 	map_memarea_sections(&map, (uint32_t *)iram_tbl_virt_addr);
@@ -131,7 +131,7 @@ int pm_imx7_iram_tbl_init(void)
 	map.pa = GIC_BASE;
 	map.va = (vaddr_t)phys_to_virt((paddr_t)GIC_BASE, MEM_AREA_IO_SEC);
 	map.region_size = CORE_MMU_PGDIR_SIZE;
-	map.size = CORE_MMU_DEVICE_SIZE;
+	map.size = CORE_MMU_PGDIR_SIZE;
 	map.type = MEM_AREA_TEE_COHERENT;
 	map.attr = TEE_MATTR_VALID_BLOCK | TEE_MATTR_PRW | TEE_MATTR_SECURE;
 	map_memarea_sections(&map, (uint32_t *)iram_tbl_virt_addr);
@@ -180,7 +180,7 @@ int imx7_suspend_init(void)
 	p->gic_pa_base = GIC_BASE;
 
 	/* TODO:lpsr disabled now */
-	write32(0, p->lpsr_va_base);
+	io_write32(p->lpsr_va_base, 0);
 
 	p->ddr_type = imx_get_ddr_type();
 	switch (p->ddr_type) {
@@ -200,8 +200,8 @@ int imx7_suspend_init(void)
 	for (i = 0; i < p->ddrc_num; i++) {
 		p->ddrc_val[i][0] = ddrc_offset_array[i][0];
 		if (ddrc_offset_array[i][1] == READ_DATA_FROM_HARDWARE)
-			p->ddrc_val[i][1] = read32(p->ddrc_va_base +
-						   ddrc_offset_array[i][0]);
+			p->ddrc_val[i][1] = io_read32(p->ddrc_va_base +
+						      ddrc_offset_array[i][0]);
 		else
 			p->ddrc_val[i][1] = ddrc_offset_array[i][1];
 
@@ -214,8 +214,8 @@ int imx7_suspend_init(void)
 		p->ddrc_phy_val[i][0] = ddrc_phy_offset_array[i][0];
 		if (ddrc_phy_offset_array[i][1] == READ_DATA_FROM_HARDWARE)
 			p->ddrc_phy_val[i][1] =
-				read32(p->ddrc_phy_va_base +
-				       ddrc_phy_offset_array[i][0]);
+				io_read32(p->ddrc_phy_va_base +
+					  ddrc_phy_offset_array[i][0]);
 		else
 			p->ddrc_phy_val[i][1] = ddrc_phy_offset_array[i][1];
 	}

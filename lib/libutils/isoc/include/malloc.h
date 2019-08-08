@@ -8,8 +8,6 @@
 #include <stddef.h>
 #include <types_ext.h>
 
-extern unsigned int __malloc_spinlock;
-
 void free(void *ptr);
 
 #ifdef ENABLE_MDBG
@@ -17,8 +15,6 @@ void free(void *ptr);
 void *mdbg_malloc(const char *fname, int lineno, size_t size);
 void *mdbg_calloc(const char *fname, int lineno, size_t nmemb, size_t size);
 void *mdbg_realloc(const char *fname, int lineno, void *ptr, size_t size);
-void *mdbg_memalign(const char *fname, int lineno, size_t alignment,
-		size_t size);
 
 void mdbg_check(int bufdump);
 
@@ -27,15 +23,12 @@ void mdbg_check(int bufdump);
 		mdbg_calloc(__FILE__, __LINE__, (nmemb), (size))
 #define realloc(ptr, size) \
 		mdbg_realloc(__FILE__, __LINE__, (ptr), (size))
-#define memalign(alignment, size) \
-		mdbg_memalign(__FILE__, __LINE__, (alignment), (size))
 
 #else
 
 void *malloc(size_t size);
 void *calloc(size_t nmemb, size_t size);
 void *realloc(void *ptr, size_t size);
-void *memalign(size_t alignment, size_t size);
 
 #define mdbg_check(x)        do { } while (0)
 
@@ -82,5 +75,56 @@ struct malloc_stats {
 void malloc_get_stats(struct malloc_stats *stats);
 void malloc_reset_stats(void);
 #endif /* CFG_WITH_STATS */
+
+
+#ifdef CFG_VIRTUALIZATION
+
+void nex_free(void *ptr);
+
+#ifdef ENABLE_MDBG
+
+void *nex_mdbg_malloc(const char *fname, int lineno, size_t size);
+void *nex_mdbg_calloc(const char *fname, int lineno, size_t nmemb, size_t size);
+void *nex_mdbg_realloc(const char *fname, int lineno, void *ptr, size_t size);
+
+void nex_mdbg_check(int bufdump);
+
+#define nex_malloc(size)	nex_mdbg_malloc(__FILE__, __LINE__, (size))
+#define nex_calloc(nmemb, size) \
+		nex_mdbg_calloc(__FILE__, __LINE__, (nmemb), (size))
+#define nex_realloc(ptr, size) \
+		nex_mdbg_realloc(__FILE__, __LINE__, (ptr), (size))
+
+#else /* ENABLE_MDBG */
+
+void *nex_malloc(size_t size);
+void *nex_calloc(size_t nmemb, size_t size);
+void *nex_realloc(void *ptr, size_t size);
+
+#define nex_mdbg_check(x)        do { } while (0)
+
+#endif /* ENABLE_MDBG */
+
+bool nex_malloc_buffer_is_within_alloced(void *buf, size_t len);
+bool nex_malloc_buffer_overlaps_heap(void *buf, size_t len);
+void nex_malloc_add_pool(void *buf, size_t len);
+
+#ifdef CFG_WITH_STATS
+/*
+ * Get/reset allocation statistics
+ */
+
+void nex_malloc_get_stats(struct malloc_stats *stats);
+void nex_malloc_reset_stats(void);
+
+#endif	/* CFG_WITH_STATS */
+#else  /* CFG_VIRTUALIZATION */
+
+#define nex_free(ptr) free(ptr)
+#define nex_malloc(size) malloc(size)
+#define nex_calloc(nmemb, size) calloc(nmemb, size)
+#define nex_realloc(ptr, size) realloc(ptr, size)
+
+#endif	/* CFG_VIRTUALIZATION */
 
 #endif /* MALLOC_H */

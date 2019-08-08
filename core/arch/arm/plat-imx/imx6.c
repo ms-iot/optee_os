@@ -26,10 +26,12 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include <imx.h>
 
 #include <compiler.h>
 #include <drivers/gic.h>
 #include <io.h>
+#include <imx_caam.h>
 #include <kernel/generic_boot.h>
 #include <kernel/misc.h>
 #include <kernel/tz_ssvce_pl310.h>
@@ -37,7 +39,7 @@
 #include <mm/core_mmu.h>
 #include <platform_config.h>
 
-register_phys_mem(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_DEVICE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, SRC_BASE, CORE_MMU_PGDIR_SIZE);
 
 void plat_cpu_reset_late(void)
 {
@@ -49,21 +51,20 @@ void plat_cpu_reset_late(void)
 #if defined(CFG_BOOT_SYNC_CPU)
 		pa = virt_to_phys((void *)TEE_TEXT_VA_START);
 		/* set secondary entry address and release core */
-		write32(pa, SRC_BASE + SRC_GPR1 + 8);
-		write32(pa, SRC_BASE + SRC_GPR1 + 16);
-		write32(pa, SRC_BASE + SRC_GPR1 + 24);
+		io_write32(SRC_BASE + SRC_GPR1 + 8, pa);
+		io_write32(SRC_BASE + SRC_GPR1 + 16, pa);
+		io_write32(SRC_BASE + SRC_GPR1 + 24, pa);
 
-		write32(SRC_SCR_CPU_ENABLE_ALL, SRC_BASE + SRC_SCR);
+		io_write32(SRC_BASE + SRC_SCR, SRC_SCR_CPU_ENABLE_ALL);
 #endif
 
 		/* SCU config */
-		write32(SCU_INV_CTRL_INIT, SCU_BASE + SCU_INV_SEC);
-		write32(SCU_SAC_CTRL_INIT, SCU_BASE + SCU_SAC);
-		write32(SCU_NSAC_CTRL_INIT, SCU_BASE + SCU_NSAC);
+		io_write32(SCU_BASE + SCU_INV_SEC, SCU_INV_CTRL_INIT);
+		io_write32(SCU_BASE + SCU_SAC, SCU_SAC_CTRL_INIT);
+		io_write32(SCU_BASE + SCU_NSAC, SCU_NSAC_CTRL_INIT);
 
 		/* SCU enable */
-		write32(read32(SCU_BASE + SCU_CTRL) | 0x1,
-			SCU_BASE + SCU_CTRL);
+		io_setbits32(SCU_BASE + SCU_CTRL, 0x1);
 
 		/* configure imx6 CSU */
 
@@ -71,12 +72,14 @@ void plat_cpu_reset_late(void)
 		for (addr = CSU_BASE + CSU_CSL_START;
 			 addr != CSU_BASE + CSU_CSL_END;
 			 addr += 4)
-			write32(CSU_ACCESS_ALL, addr);
+			io_write32(addr, CSU_ACCESS_ALL);
 
 		/* lock the settings */
 		for (addr = CSU_BASE + CSU_CSL_START;
-			 addr != CSU_BASE + CSU_CSL_END;
-			 addr += 4)
-			write32(read32(addr) | CSU_SETTING_LOCK, addr);
+		     addr != CSU_BASE + CSU_CSL_END;
+		     addr += 4)
+			io_setbits32(addr, CSU_SETTING_LOCK);
+		imx_configure_tzasc();
+		init_caam();
 	}
 }

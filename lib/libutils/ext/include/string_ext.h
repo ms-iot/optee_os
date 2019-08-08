@@ -21,14 +21,35 @@
 size_t strlcpy(char *dst, const char *src, size_t size);
 size_t strlcat(char *dst, const char *src, size_t size);
 
+/* A constant-time version of memcmp() */
+int consttime_memcmp(const void *p1, const void *p2, size_t nb);
+
+/* Deprecated. For backward compatibility. */
+static inline int buf_compare_ct(const void *s1, const void *s2, size_t n)
+{
+	return consttime_memcmp(s1, s2, n);
+}
+
+/* Variant of strdup() that uses nex_malloc() instead of malloc() */
+char *nex_strdup(const char *s);
+
 /*
- * This memory compare function will compare two buffers in a constant time.
+ * Like memset(s, 0, count) but prevents the compiler from optimizing the call
+ * away. Such "dead store elimination" optimizations typically occur when
+ * clearing a *local* variable that is not used after it is cleared; but
+ * link-time optimization (LTO) can also trigger code elimination in other
+ * circumstances. See "Dead Store Elimination (Still) Considered Harmful" [1]
+ * for details and examples (and note that the Cland compiler enables LTO by
+ * default!).
  *
- * Note that this function will not have same kind of return values as the
- * traditional libc memcmp which return either less than or greater than zero
- * depending on which string that is lexically greater. This function will
- * return 0 if it is a match, otherwise it will return a non-zero value.
+ * [1] https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-yang.pdf
+ *
+ * Practically speaking:
+ *
+ * - Use memzero_explicit() to *clear* (as opposed to initialize) *sensitive*
+ *   data (such as keys, passwords, cryptographic state);
+ * - Otherwise, use memset().
  */
-int buf_compare_ct(const void *s1, const void *s2, size_t n);
+void memzero_explicit(void *s, size_t count);
 
 #endif /* STRING_EXT_H */

@@ -12,20 +12,18 @@
 #include <mm/core_memprot.h>
 #include <mm/mobj.h>
 #include <mm/tee_mmu.h>
-#include <optee_msg_supplicant.h>
+#include <optee_rpc_cmd.h>
 #include <pta_gprof.h>
 #include <string.h>
 
 static TEE_Result gprof_send_rpc(TEE_UUID *uuid, void *buf, size_t len,
 				 uint32_t *id)
 {
-	struct optee_msg_param params[3];
 	struct mobj *mobj;
 	TEE_Result res = TEE_ERROR_GENERIC;
-	uint64_t c = 0;
 	char *va;
 
-	mobj = thread_rpc_alloc_payload(sizeof(*uuid) + len, &c);
+	mobj = thread_rpc_alloc_payload(sizeof(*uuid) + len);
 	if (!mobj)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
@@ -36,22 +34,19 @@ static TEE_Result gprof_send_rpc(TEE_UUID *uuid, void *buf, size_t len,
 	memcpy(va, uuid, sizeof(*uuid));
 	memcpy(va + sizeof(*uuid), buf, len);
 
-	memset(params, 0, sizeof(params));
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INOUT;
-	params[0].u.value.a = *id;
+	struct thread_param params[3] = {
+		[0] = THREAD_PARAM_VALUE(INOUT, *id, 0, 0),
+		[1] = THREAD_PARAM_MEMREF(IN, mobj, 0, sizeof(*uuid)),
+		[2] = THREAD_PARAM_MEMREF(IN, mobj, sizeof(*uuid), len),
+	};
 
-	msg_param_init_memparam(params + 1, mobj, 0, sizeof(*uuid), c,
-				MSG_PARAM_MEM_DIR_IN);
-	msg_param_init_memparam(params + 2, mobj, sizeof(*uuid), len, c,
-				MSG_PARAM_MEM_DIR_IN);
-
-	res = thread_rpc_cmd(OPTEE_MSG_RPC_CMD_GPROF, 3, params);
+	res = thread_rpc_cmd(OPTEE_RPC_CMD_GPROF, 3, params);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
 	*id = (uint32_t)params[0].u.value.a;
 exit:
-	thread_rpc_free_payload(c, mobj);
+	thread_rpc_free_payload(mobj);
 	return res;
 }
 
@@ -82,7 +77,6 @@ static TEE_Result gprof_start_pc_sampling(struct tee_ta_session *s,
 	struct sample_buf *sbuf;
 	uint32_t offset;
 	uint32_t scale;
-	TEE_Result res;
 	uint32_t len;
 	uaddr_t buf;
 
@@ -94,12 +88,6 @@ static TEE_Result gprof_start_pc_sampling(struct tee_ta_session *s,
 	offset = params[1].value.a;
 	scale = params[1].value.b;
 
-	res = tee_mmu_check_access_rights(to_user_ta_ctx(s->ctx),
-					  TEE_MEMORY_ACCESS_WRITE |
-					  TEE_MEMORY_ACCESS_ANY_OWNER,
-					  buf, len);
-	if (res != TEE_SUCCESS)
-		return res;
 	sbuf = calloc(1, sizeof(*sbuf));
 	if (!sbuf)
 		return TEE_ERROR_OUT_OF_MEMORY;

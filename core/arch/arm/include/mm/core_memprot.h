@@ -91,4 +91,22 @@ paddr_t virt_to_phys(void *va);
  */
 vaddr_t core_mmu_get_va(paddr_t pa, enum teecore_memtypes type);
 
+/* Return true if @va relates to a unpaged section else false */
+bool is_unpaged(void *va);
+
+struct io_pa_va {
+	paddr_t pa;
+	vaddr_t va;
+};
+
+/*
+ * Helper function to return a physical or virtual address for a device,
+ * depending on whether the MMU is enabled or not
+ * io_pa_or_va() uses secure mapped IO memory if found or fallback to
+ * non-secure mapped IO memory.
+ */
+vaddr_t io_pa_or_va_secure(struct io_pa_va *p);
+vaddr_t io_pa_or_va_nsec(struct io_pa_va *p);
+vaddr_t io_pa_or_va(struct io_pa_va *p);
+
 #endif /* CORE_MEMPROT_H */

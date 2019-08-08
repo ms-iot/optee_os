@@ -35,11 +35,8 @@ $(call force,CFG_PL011,y)
 $(call force,CFG_PM_STUBS,y)
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 
-ta-targets = ta_arm32
-
 ifeq ($(CFG_ARM64_core),y)
 $(call force,CFG_WITH_LPAE,y)
-ta-targets += ta_arm64
 else
 $(call force,CFG_ARM32_core,y)
 endif
@@ -90,11 +87,9 @@ endif
 $(call force,CFG_BOOT_SECONDARY_REQUEST,y)
 $(call force,CFG_PSCI_ARM32,y)
 $(call force,CFG_DT,y)
-# SE API is only supported by QEMU Virt platform
-CFG_SE_API ?= y
-CFG_SE_API_SELF_TEST ?= y
-CFG_PCSC_PASSTHRU_READER_DRV ?= n
 CFG_TA_RPC ?= y
+CFG_DTB_MAX_SIZE ?= 0x100000
+CFG_TA_ASLR ?= y
 endif
 
 ifeq ($(PLATFORM_FLAVOR),qemu_armv8a)
@@ -110,4 +105,5 @@ CFG_SHMEM_SIZE  ?= 0x00200000
 CFG_TEE_SDP_MEM_SIZE ?= 0x00400000
 $(call force,CFG_DT,y)
 CFG_TA_RPC ?= y
+CFG_DTB_MAX_SIZE ?= 0x100000
 endif

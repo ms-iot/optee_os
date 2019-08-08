@@ -66,7 +66,6 @@ struct thread_user_mode_rec {
 #ifdef CFG_WITH_VFP
 struct thread_vfp_state {
 	bool ns_saved;
-	bool ns_force_save; /* Save to reg even if VFP was not enabled */
 	bool sec_saved;
 	bool sec_lazy_saved;
 	struct vfp_state ns;
@@ -91,9 +90,7 @@ struct thread_ctx {
 	struct thread_vfp_state vfp_state;
 #endif
 	void *rpc_arg;
-	uint64_t rpc_carg;
 	struct mobj *rpc_mobj;
-	struct mutex_head mutexes;
 	struct thread_specific_data tsd;
 };
 #endif /*ASM*/

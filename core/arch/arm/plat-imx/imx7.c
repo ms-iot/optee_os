@@ -9,6 +9,7 @@
 #include <console.h>
 #include <drivers/imx_uart.h>
 #include <drivers/tzc380.h>
+#include <imx_caam.h>
 #include <io.h>
 #include <kernel/generic_boot.h>
 #include <kernel/panic.h>
@@ -28,7 +29,6 @@
 void plat_cpu_reset_late(void)
 {
 	uintptr_t addr;
-	uint32_t val;
 
 	if (get_core_pos() != 0)
 		return;
@@ -38,29 +38,31 @@ void plat_cpu_reset_late(void)
 	 * TODO: fine tune the permissions
 	 */
 	for (addr = CSU_CSL_START; addr != CSU_CSL_END; addr += 4)
-		write32(CSU_ACCESS_ALL, core_mmu_get_va(addr, MEM_AREA_IO_SEC));
+		io_write32(core_mmu_get_va(addr, MEM_AREA_IO_SEC),
+			   CSU_ACCESS_ALL);
 
 	dsb();
 	/* Protect OCRAM_S */
-	write32(0x003300FF, core_mmu_get_va(CSU_CSL_59, MEM_AREA_IO_SEC));
+	io_write32(core_mmu_get_va(CSU_CSL_59, MEM_AREA_IO_SEC), 0x003300FF);
 	/* Proect TZASC */
-	write32(0x00FF0033, core_mmu_get_va(CSU_CSL_28, MEM_AREA_IO_SEC));
+	io_write32(core_mmu_get_va(CSU_CSL_28, MEM_AREA_IO_SEC), 0x00FF0033);
 	/*
 	 * Proect CSU
 	 * Note: Ater this settings, CSU seems still can be read,
 	 * in non-secure world but can not be written.
 	 */
-	write32(0x00FF0033, core_mmu_get_va(CSU_CSL_15, MEM_AREA_IO_SEC));
+	io_write32(core_mmu_get_va(CSU_CSL_15, MEM_AREA_IO_SEC), 0x00FF0033);
 	/*
 	 * Protect SRC
-	 * write32(0x003300FF, core_mmu_get_va(CSU_CSL_12, MEM_AREA_IO_SEC));
+	 * io_write32(core_mmu_get_va(CSU_CSL_12, MEM_AREA_IO_SEC), 0x003300FF);
 	 */
 	dsb();
 
 	/* lock the settings */
-	for (addr = CSU_CSL_START; addr != CSU_CSL_END; addr += 4) {
-		val = read32(core_mmu_get_va(addr, MEM_AREA_IO_SEC));
-		write32(val | CSU_SETTING_LOCK,
-			core_mmu_get_va(addr, MEM_AREA_IO_SEC));
-	}
+	for (addr = CSU_CSL_START; addr != CSU_CSL_END; addr += 4)
+		io_setbits32(core_mmu_get_va(addr, MEM_AREA_IO_SEC),
+			     CSU_SETTING_LOCK);
+
+	/* Set CAAM job-ring permissions to non-secure by default */
+	init_caam();
 }

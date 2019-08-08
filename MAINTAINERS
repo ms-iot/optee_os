@@ -56,6 +56,12 @@ R:	Akshay Bhat <akshay.bhat@timesys.com> [@nodeax]
 S:	Maintained
 F:	core/arch/arm/plat-sam/
 
+Broadcom ns3
+R:	Sandeep Tripathy <sandeep.tripathy@broadcom.com> [@sandeepbrcm]
+L:	Broadcom <bcm-optee-feedback-list.pdl@broadcom.com>
+S:	Maintained
+F:	core/arch/arm/plat-bcm/
+
 HiSilicon D02
 R:	Linaro <op-tee@linaro.org>
 S:	Maintained
@@ -68,8 +74,14 @@ F:	core/arch/arm/plat-hikey/
 
 HiSilicon Poplar (Hi3798C V200)
 R:	Linaro <op-tee@linaro.org>
+R:	Igor Opaniuk <igor.opaniuk@gmail.com> [@igoropaniuk]
 S:	Maintained
 F:	core/arch/arm/plat-poplar/
+
+Hisilicon Hi3519AV100 family
+R:	Jerome Forissier <jerome.forissier@linaro.org> [@jforissier]
+S:	Maintained
+F:	core/arch/arm/plat-hisilicon
 
 Marvell Armada 70x0, Armada 80x0, Armada 3700
 R:	Tao Lu <taolu@marvell.com> [@taovcu]
@@ -80,9 +92,8 @@ MediaTek MT8173 EVB
 S:	Orphan
 F:	core/arch/arm/plat-mediatek/
 
-NXP LS1021A, LS1043A-RDB, LS1046A-RDB, LS1012A-RDB, LS1012A-FRWY, LS1088A-RDB, LS2088A-RDB
-R:	Vinitha V Pillai <vinitha.pillai@nxp.com> [@nxa27423]
-R:	Pankaj Gupta <pankaj.gupta@nxp.com>
+NXP LS1021A, LS1043A-RDB, LS1046A-RDB, LS1012A-RDB, LS1012A-FRWY, LS1088A-RDB, LS2088A-RDB, LX2160A-RDB
+R:	Pankaj Gupta <pankaj.gupta@nxp.com> [@pangupta]
 S:	Maintained
 F:	core/arch/arm/plat-ls/
 
@@ -137,7 +148,7 @@ R:	Etienne Carriere <etienne.carriere@st.com>
 S:	Maintained
 F:	core/arch/arm/plat-stm32mp1/
 
-Texas Instruments AM43xx, AM57xx, DRA7xx, AM65x
+Texas Instruments AM43xx, AM57xx, DRA7xx, AM65x, J721E
 R:	Andrew F. Davis <afd@ti.com>
 S:	Maintained
 F:	core/arch/arm/plat-ti/
@@ -153,13 +164,17 @@ Xilinx Zynq UltraScale+ MPSOC
 S:	Orphan
 F:	core/arch/arm/plat-zynqmp/
 
+Virtualization support
+R:	Volodymyr Babchuk <vlad.babchuk@gmail.com>
+S:	Maintained
+F:	core/arch/arm/kernel/virtualization.c
+
 THE REST
-M:	Jerome Forissier <jerome.forissier@linaro.org> [@jforissier]
+M:	Joakim Bech <joakim.bech@linaro.org> [@jbech-linaro]
 M:	Jens Wiklander <jens.wiklander@linaro.org> [@jenswi-linaro]
+M:	Jerome Forissier <jerome.forissier@linaro.org> [@jforissier]
 M:	Linaro <op-tee@linaro.org>
 R:	Etienne Carriere <etienne.carriere@linaro.org> [@etienne-lms]
-R:	Igor Opaniuk <igor.opaniuk@linaro.org> [@igoropaniuk]
-R:	Joakim Bech <joakim.bech@linaro.org> [@jbech-linaro]
 R:	Victor Chong <victor.chong@linaro.org> [@vchong]
 L:	tee-dev@lists.linaro.org
 S:	Maintained

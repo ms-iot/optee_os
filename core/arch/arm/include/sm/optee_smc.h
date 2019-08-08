@@ -269,6 +269,8 @@
 #define OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM	(1 << 0)
 /* Secure world can communicate via previously unregistered shared memory */
 #define OPTEE_SMC_SEC_CAP_UNREGISTERED_SHM	(1 << 1)
+/* Secure world is built with virtualization support */
+#define OPTEE_SMC_SEC_CAP_VIRTUALIZATION	(1 << 2)
 
 /*
  * Secure world supports commands "register/unregister shared memory",
@@ -421,6 +423,31 @@
 #define OPTEE_SMC_FUNCID_VM_DESTROYED	14
 #define OPTEE_SMC_VM_DESTROYED \
 	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_VM_DESTROYED)
+
+/*
+ * Query OP-TEE about number of supported threads
+ *
+ * Normal World OS or Hypervisor issues this call to find out how many
+ * threads OP-TEE supports. That is how many standard calls can be issued
+ * in parallel before OP-TEE will return OPTEE_SMC_RETURN_ETHREAD_LIMIT.
+ *
+ * Call requests usage:
+ * a0	SMC Function ID, OPTEE_SMC_GET_THREAD_COUNT
+ * a1-6 Not used
+ * a7	Hypervisor Client ID register
+ *
+ * Normal return register usage:
+ * a0	OPTEE_SMC_RETURN_OK
+ * a1	Number of threads
+ * a2-7 Preserved
+ *
+ * Error return:
+ * a0	OPTEE_SMC_RETURN_UNKNOWN_FUNCTION   Requested call is not implemented
+ * a1-7	Preserved
+ */
+#define OPTEE_SMC_FUNCID_GET_THREAD_COUNT	15
+#define OPTEE_SMC_GET_THREAD_COUNT \
+	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_GET_THREAD_COUNT)
 
 /*
  * Resume from RPC (for example after processing a foreign interrupt)

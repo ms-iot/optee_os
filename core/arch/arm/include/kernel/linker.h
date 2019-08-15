@@ -5,11 +5,8 @@
 #ifndef __KERNEL_LINKER_H
 #define __KERNEL_LINKER_H
 
-#include <initcall.h>
 #include <kernel/dt.h>
 #include <kernel/early_ta.h>
-#include <kernel/pseudo_ta.h>
-#include <mm/core_mmu.h>
 #include <types_ext.h>
 
 /*
@@ -26,24 +23,14 @@ extern const uint8_t __exidx_end[];
 extern const uint8_t __extab_start[];
 extern const uint8_t __extab_end[];
 
-extern const struct pseudo_ta_head __start_ta_head_section;
-extern const struct pseudo_ta_head __stop_ta_head_section;
-
-extern const struct core_mmu_phys_mem __start_phys_sdp_mem_section;
-extern const struct core_mmu_phys_mem __end_phys_sdp_mem_section;
-extern const struct core_mmu_phys_mem __start_phys_mem_map_section;
-extern const struct core_mmu_phys_mem __end_phys_mem_map_section;
-extern const struct core_mmu_phys_mem __start_phys_nsec_ddr_section;
-extern const struct core_mmu_phys_mem __end_phys_nsec_ddr_section;
-extern const struct core_mmu_phys_mem __start_phys_ddr_overall_section;
-extern const struct core_mmu_phys_mem __end_phys_ddr_overall_section;
-
 #define VCORE_UNPG_RX_PA	((unsigned long)__vcore_unpg_rx_start)
 #define VCORE_UNPG_RX_SZ	((size_t)__vcore_unpg_rx_size)
 #define VCORE_UNPG_RO_PA	((unsigned long)__vcore_unpg_ro_start)
 #define VCORE_UNPG_RO_SZ	((size_t)__vcore_unpg_ro_size)
 #define VCORE_UNPG_RW_PA	((unsigned long)__vcore_unpg_rw_start)
 #define VCORE_UNPG_RW_SZ	((size_t)__vcore_unpg_rw_size)
+#define VCORE_NEX_RW_PA	((unsigned long)__vcore_nex_rw_start)
+#define VCORE_NEX_RW_SZ	((size_t)__vcore_nex_rw_size)
 #define VCORE_INIT_RX_PA	((unsigned long)__vcore_init_rx_start)
 #define VCORE_INIT_RX_SZ	((size_t)__vcore_init_rx_size)
 #define VCORE_INIT_RO_PA	((unsigned long)__vcore_init_ro_start)
@@ -54,6 +41,8 @@ extern const uint8_t __vcore_unpg_ro_start[];
 extern const uint8_t __vcore_unpg_ro_size[];
 extern const uint8_t __vcore_unpg_rw_start[];
 extern const uint8_t __vcore_unpg_rw_size[];
+extern const uint8_t __vcore_nex_rw_start[];
+extern const uint8_t __vcore_nex_rw_size[];
 extern const uint8_t __vcore_init_rx_start[];
 extern const uint8_t __vcore_init_rx_size[];
 extern const uint8_t __vcore_init_ro_start[];
@@ -61,9 +50,6 @@ extern const uint8_t __vcore_init_ro_size[];
 
 extern const uint8_t __text_start[];
 extern const uint8_t __end[];
-
-extern const initcall_t __initcall_start;
-extern const initcall_t __initcall_end;
 
 extern uint8_t __data_start[];
 extern const uint8_t __data_end[];
@@ -84,6 +70,9 @@ extern uint8_t __heap1_start[];
 extern const uint8_t __heap1_end[];
 extern uint8_t __heap2_start[];
 extern const uint8_t __heap2_end[];
+
+extern uint8_t __nex_heap_start[];
+extern const uint8_t __nex_heap_end[];
 
 extern const uint8_t __pageable_part_start[];
 extern const uint8_t __pageable_part_end[];

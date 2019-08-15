@@ -8,6 +8,7 @@ $(call force,CFG_PM_STUBS,y)
 
 include core/arch/arm/cpu/cortex-armv8-0.mk
 $(call force,CFG_TEE_CORE_NB_CORE,24)
+CFG_NUM_THREADS ?= 8
 CFG_TZDRAM_START ?= 0xfc000000
 CFG_TZDRAM_SIZE ?= 0x03c00000
 CFG_SHMEM_START ?= 0xffc00000
@@ -17,7 +18,7 @@ $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
 
 $(call force,CFG_WITH_LPAE,y)
 $(call force,CFG_ARM64_core,y)
-ta-targets = ta_arm64
+supported-ta-targets = ta_arm64
 
 CFG_CRYPTO_SIZE_OPTIMIZATION ?= n
 CFG_WITH_STACK_CANARIES ?= y

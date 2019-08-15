@@ -20,6 +20,7 @@
 #include <malloc.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
+#include <mm/fobj.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
@@ -74,7 +75,12 @@ KEEP_PAGER(sem_cpu_sync);
 #endif
 
 #ifdef CFG_DT
-static void *dt_blob_addr;
+struct dt_descriptor {
+	void *blob;
+	int frag_id;
+};
+
+static struct dt_descriptor external_dt __nex_bss;
 #endif
 
 #ifdef CFG_SECONDARY_INIT_CNTFRQ
@@ -238,7 +244,6 @@ static void init_asan(void)
 	 * Add access to areas that aren't opened automatically by a
 	 * constructor.
 	 */
-	asan_tag_access(&__initcall_start, &__initcall_end);
 	asan_tag_access(&__ctor_list, &__ctor_end);
 	asan_tag_access(__rodata_start, __rodata_end);
 #ifdef CFG_WITH_PAGER
@@ -327,12 +332,16 @@ static void init_runtime(unsigned long pageable_part)
 {
 	size_t n;
 	size_t init_size = (size_t)__init_size;
-	size_t pageable_size = __pageable_end - __pageable_start;
+	size_t pageable_start = (size_t)__pageable_start;
+	size_t pageable_end = (size_t)__pageable_end;
+	size_t pageable_size = pageable_end - pageable_start;
+	size_t tzsram_end = TZSRAM_BASE + TZSRAM_SIZE;
 	size_t hash_size = (pageable_size / SMALL_PAGE_SIZE) *
 			   TEE_SHA256_HASH_SIZE;
-	tee_mm_entry_t *mm;
-	uint8_t *paged_store;
-	uint8_t *hashes;
+	tee_mm_entry_t *mm = NULL;
+	struct fobj *fobj = NULL;
+	uint8_t *paged_store = NULL;
+	uint8_t *hashes = NULL;
 
 	assert(pageable_size % SMALL_PAGE_SIZE == 0);
 	assert(hash_size == (size_t)__tmp_hashes_size);
@@ -342,8 +351,6 @@ static void init_runtime(unsigned long pageable_part)
 	 * in MEM_AREA_TEE_RAM
 	 */
 	tee_pager_early_init();
-
-	thread_init_boot_thread();
 
 	init_asan();
 
@@ -433,13 +440,19 @@ static void init_runtime(unsigned long pageable_part)
 	mm = tee_mm_alloc2(&tee_mm_vcore, (vaddr_t)__pageable_start,
 			   pageable_size);
 	assert(mm);
-	tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
-				TEE_MATTR_PRX, paged_store, hashes);
+	fobj = fobj_ro_paged_alloc(tee_mm_get_bytes(mm) / SMALL_PAGE_SIZE,
+				   hashes, paged_store);
+	assert(fobj);
+	tee_pager_add_core_area(tee_mm_get_smem(mm), PAGER_AREA_TYPE_RO, fobj);
+	fobj_put(fobj);
 
-	tee_pager_add_pages((vaddr_t)__pageable_start,
-			init_size / SMALL_PAGE_SIZE, false);
-	tee_pager_add_pages((vaddr_t)__pageable_start + init_size,
-			(pageable_size - init_size) / SMALL_PAGE_SIZE, true);
+	tee_pager_add_pages(pageable_start, init_size / SMALL_PAGE_SIZE, false);
+	tee_pager_add_pages(pageable_start + init_size,
+			    (pageable_size - init_size) / SMALL_PAGE_SIZE,
+			    true);
+	if (pageable_end < tzsram_end)
+		tee_pager_add_pages(pageable_end, (tzsram_end - pageable_end) /
+						   SMALL_PAGE_SIZE, true);
 
 	/*
 	 * There may be physical pages in TZSRAM before the core load address.
@@ -457,61 +470,169 @@ static void init_runtime(unsigned long pageable_part)
 
 static void init_runtime(unsigned long pageable_part __unused)
 {
-	thread_init_boot_thread();
-
 	init_asan();
-	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
 
 	/*
-	 * Initialized at this stage in the pager version of this function
-	 * above
+	 * By default whole OP-TEE uses malloc, so we need to initialize
+	 * it early. But, when virtualization is enabled, malloc is used
+	 * only by TEE runtime, so malloc should be initialized later, for
+	 * every virtual partition separately. Core code uses nex_malloc
+	 * instead.
 	 */
-	teecore_init_ta_ram();
+#ifdef CFG_VIRTUALIZATION
+	nex_malloc_add_pool(__nex_heap_start, __nex_heap_end -
+					      __nex_heap_start);
+#else
+	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
+#endif
+
 	IMSG_RAW("\n");
 }
 #endif
 
-#ifdef CFG_DT
-void *get_dt_blob(void)
+void *get_dt(void)
+{
+	void *fdt = get_embedded_dt();
+
+	if (!fdt)
+		fdt = get_external_dt();
+
+	return fdt;
+}
+
+#if defined(CFG_EMBED_DTB)
+void *get_embedded_dt(void)
+{
+	static bool checked;
+
+	assert(cpu_mmu_enabled());
+
+	if (!checked) {
+		IMSG("Embedded DTB found");
+
+		if (fdt_check_header(embedded_secure_dtb))
+			panic("Invalid embedded DTB");
+
+		checked = true;
+	}
+
+	return embedded_secure_dtb;
+}
+#else
+void *get_embedded_dt(void)
+{
+	return NULL;
+}
+#endif /*CFG_EMBED_DTB*/
+
+#if defined(CFG_DT)
+void *get_external_dt(void)
 {
 	assert(cpu_mmu_enabled());
-	return dt_blob_addr;
+	return external_dt.blob;
 }
 
-static void reset_dt_references(void)
+static void release_external_dt(void)
 {
-	/* dt no more reached, reset pointer to invalid */
-	dt_blob_addr = NULL;
+	/* External DTB no more reached, reset pointer to invalid */
+	external_dt.blob = NULL;
 }
 
-static int add_optee_dt_node(void *fdt)
+#ifdef CFG_EXTERNAL_DTB_OVERLAY
+static int add_dt_overlay_fragment(struct dt_descriptor *dt, int ioffs)
+{
+	char frag[32];
+	int offs;
+	int ret;
+
+	snprintf(frag, sizeof(frag), "fragment@%d", dt->frag_id);
+	offs = fdt_add_subnode(dt->blob, ioffs, frag);
+	if (offs < 0)
+		return offs;
+
+	dt->frag_id += 1;
+
+	ret = fdt_setprop_string(dt->blob, offs, "target-path", "/");
+	if (ret < 0)
+		return -1;
+
+	return fdt_add_subnode(dt->blob, offs, "__overlay__");
+}
+
+static int init_dt_overlay(struct dt_descriptor *dt, int __maybe_unused dt_size)
+{
+	int fragment;
+	int ret;
+
+	ret = fdt_check_header(dt->blob);
+	if (!ret) {
+		fdt_for_each_subnode(fragment, dt->blob, 0)
+			dt->frag_id += 1;
+		return ret;
+	}
+
+#ifdef CFG_DT_ADDR
+	return fdt_create_empty_tree(dt->blob, dt_size);
+#else
+	return -1;
+#endif
+}
+#else
+static int add_dt_overlay_fragment(struct dt_descriptor *dt __unused, int offs)
+{
+	return offs;
+}
+
+static int init_dt_overlay(struct dt_descriptor *dt __unused,
+			   int dt_size __unused)
+{
+	return 0;
+}
+#endif /* CFG_EXTERNAL_DTB_OVERLAY */
+
+static int add_dt_path_subnode(struct dt_descriptor *dt, const char *path,
+			       const char *subnode)
+{
+	int offs;
+
+	offs = fdt_path_offset(dt->blob, path);
+	if (offs < 0)
+		return -1;
+	offs = add_dt_overlay_fragment(dt, offs);
+	if (offs < 0)
+		return -1;
+	offs = fdt_add_subnode(dt->blob, offs, subnode);
+	if (offs < 0)
+		return -1;
+	return offs;
+}
+
+static int add_optee_dt_node(struct dt_descriptor *dt)
 {
 	int offs;
 	int ret;
 
-	if (fdt_path_offset(fdt, "/firmware/optee") >= 0) {
-		DMSG("OP-TEE Device Tree node already exists!\n");
+	if (fdt_path_offset(dt->blob, "/firmware/optee") >= 0) {
+		DMSG("OP-TEE Device Tree node already exists!");
 		return 0;
 	}
 
-	offs = fdt_path_offset(fdt, "/firmware");
+	offs = fdt_path_offset(dt->blob, "/firmware");
 	if (offs < 0) {
-		offs = fdt_path_offset(fdt, "/");
-		if (offs < 0)
-			return -1;
-		offs = fdt_add_subnode(fdt, offs, "firmware");
+		offs = add_dt_path_subnode(dt, "/", "firmware");
 		if (offs < 0)
 			return -1;
 	}
 
-	offs = fdt_add_subnode(fdt, offs, "optee");
+	offs = fdt_add_subnode(dt->blob, offs, "optee");
 	if (offs < 0)
 		return -1;
 
-	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
+	ret = fdt_setprop_string(dt->blob, offs, "compatible",
+				 "linaro,optee-tz");
 	if (ret < 0)
 		return -1;
-	ret = fdt_setprop_string(fdt, offs, "method", "smc");
+	ret = fdt_setprop_string(dt->blob, offs, "method", "smc");
 	if (ret < 0)
 		return -1;
 	return 0;
@@ -523,50 +644,48 @@ static int append_psci_compatible(void *fdt, int offs, const char *str)
 	return fdt_appendprop(fdt, offs, "compatible", str, strlen(str) + 1);
 }
 
-static int dt_add_psci_node(void *fdt)
+static int dt_add_psci_node(struct dt_descriptor *dt)
 {
 	int offs;
 
-	if (fdt_path_offset(fdt, "/psci") >= 0) {
-		DMSG("PSCI Device Tree node already exists!\n");
+	if (fdt_path_offset(dt->blob, "/psci") >= 0) {
+		DMSG("PSCI Device Tree node already exists!");
 		return 0;
 	}
 
-	offs = fdt_path_offset(fdt, "/");
+	offs = add_dt_path_subnode(dt, "/", "psci");
 	if (offs < 0)
 		return -1;
-	offs = fdt_add_subnode(fdt, offs, "psci");
-	if (offs < 0)
+	if (append_psci_compatible(dt->blob, offs, "arm,psci-1.0"))
 		return -1;
-	if (append_psci_compatible(fdt, offs, "arm,psci-1.0"))
+	if (append_psci_compatible(dt->blob, offs, "arm,psci-0.2"))
 		return -1;
-	if (append_psci_compatible(fdt, offs, "arm,psci-0.2"))
+	if (append_psci_compatible(dt->blob, offs, "arm,psci"))
 		return -1;
-	if (append_psci_compatible(fdt, offs, "arm,psci"))
+	if (fdt_setprop_string(dt->blob, offs, "method", "smc"))
 		return -1;
-	if (fdt_setprop_string(fdt, offs, "method", "smc"))
+	if (fdt_setprop_u32(dt->blob, offs, "cpu_suspend", PSCI_CPU_SUSPEND))
 		return -1;
-	if (fdt_setprop_u32(fdt, offs, "cpu_suspend", PSCI_CPU_SUSPEND))
+	if (fdt_setprop_u32(dt->blob, offs, "cpu_off", PSCI_CPU_OFF))
 		return -1;
-	if (fdt_setprop_u32(fdt, offs, "cpu_off", PSCI_CPU_OFF))
+	if (fdt_setprop_u32(dt->blob, offs, "cpu_on", PSCI_CPU_ON))
 		return -1;
-	if (fdt_setprop_u32(fdt, offs, "cpu_on", PSCI_CPU_ON))
+	if (fdt_setprop_u32(dt->blob, offs, "sys_poweroff", PSCI_SYSTEM_OFF))
 		return -1;
-	if (fdt_setprop_u32(fdt, offs, "sys_poweroff", PSCI_SYSTEM_OFF))
-		return -1;
-	if (fdt_setprop_u32(fdt, offs, "sys_reset", PSCI_SYSTEM_RESET))
+	if (fdt_setprop_u32(dt->blob, offs, "sys_reset", PSCI_SYSTEM_RESET))
 		return -1;
 	return 0;
 }
 
-static int check_node_compat_prefix(void *fdt, int offs, const char *prefix)
+static int check_node_compat_prefix(struct dt_descriptor *dt, int offs,
+				    const char *prefix)
 {
 	const size_t prefix_len = strlen(prefix);
 	size_t l;
 	int plen;
 	const char *prop;
 
-	prop = fdt_getprop(fdt, offs, "compatible", &plen);
+	prop = fdt_getprop(dt->blob, offs, "compatible", &plen);
 	if (!prop)
 		return -1;
 
@@ -582,19 +701,19 @@ static int check_node_compat_prefix(void *fdt, int offs, const char *prefix)
 	return -1;
 }
 
-static int dt_add_psci_cpu_enable_methods(void *fdt)
+static int dt_add_psci_cpu_enable_methods(struct dt_descriptor *dt)
 {
 	int offs = 0;
 
 	while (1) {
-		offs = fdt_next_node(fdt, offs, NULL);
+		offs = fdt_next_node(dt->blob, offs, NULL);
 		if (offs < 0)
 			break;
-		if (fdt_getprop(fdt, offs, "enable-method", NULL))
+		if (fdt_getprop(dt->blob, offs, "enable-method", NULL))
 			continue; /* already set */
-		if (check_node_compat_prefix(fdt, offs, "arm,cortex-a"))
+		if (check_node_compat_prefix(dt, offs, "arm,cortex-a"))
 			continue; /* no compatible */
-		if (fdt_setprop_string(fdt, offs, "enable-method", "psci"))
+		if (fdt_setprop_string(dt->blob, offs, "enable-method", "psci"))
 			return -1;
 		/* Need to restart scanning as offsets may have changed */
 		offs = 0;
@@ -602,14 +721,14 @@ static int dt_add_psci_cpu_enable_methods(void *fdt)
 	return 0;
 }
 
-static int config_psci(void *fdt)
+static int config_psci(struct dt_descriptor *dt)
 {
-	if (dt_add_psci_node(fdt))
+	if (dt_add_psci_node(dt))
 		return -1;
-	return dt_add_psci_cpu_enable_methods(fdt);
+	return dt_add_psci_cpu_enable_methods(dt);
 }
 #else
-static int config_psci(void *fdt __unused)
+static int config_psci(struct dt_descriptor *dt __unused)
 {
 	return 0;
 }
@@ -628,10 +747,72 @@ static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
 	}
 }
 
+static int add_res_mem_dt_node(struct dt_descriptor *dt, const char *name,
+			       paddr_t pa, size_t size)
+{
+	int offs = 0;
+	int ret = 0;
+	int addr_size = -1;
+	int len_size = -1;
+	bool found = true;
+	char subnode_name[80] = { 0 };
+
+	offs = fdt_path_offset(dt->blob, "/reserved-memory");
+
+	if (offs < 0) {
+		found = false;
+		offs = 0;
+	}
+
+	len_size = fdt_size_cells(dt->blob, offs);
+	if (len_size < 0)
+		return -1;
+	addr_size = fdt_address_cells(dt->blob, offs);
+	if (addr_size < 0)
+		return -1;
+
+	if (!found) {
+		offs = add_dt_path_subnode(dt, "/", "reserved-memory");
+		if (offs < 0)
+			return -1;
+		ret = fdt_setprop_cell(dt->blob, offs, "#address-cells",
+				       addr_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop_cell(dt->blob, offs, "#size-cells", len_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(dt->blob, offs, "ranges", NULL, 0);
+		if (ret < 0)
+			return -1;
+	}
+
+	snprintf(subnode_name, sizeof(subnode_name),
+		 "%s@0x%" PRIxPA, name, pa);
+	offs = fdt_add_subnode(dt->blob, offs, subnode_name);
+	if (offs >= 0) {
+		uint32_t data[FDT_MAX_NCELLS * 2];
+
+		set_dt_val(data, addr_size, pa);
+		set_dt_val(data + addr_size, len_size, size);
+		ret = fdt_setprop(dt->blob, offs, "reg", data,
+				  sizeof(uint32_t) * (addr_size + len_size));
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(dt->blob, offs, "no-map", NULL, 0);
+		if (ret < 0)
+			return -1;
+	} else {
+		return -1;
+	}
+	return 0;
+}
+
+#ifdef CFG_CORE_DYN_SHM
 static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
 				       uint32_t cell_size)
 {
-	uint64_t rv;
+	uint64_t rv = 0;
 
 	if (cell_size == 1) {
 		uint32_t v;
@@ -650,72 +831,16 @@ static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
 	return rv;
 }
 
-static int add_res_mem_dt_node(void *fdt, const char *name, paddr_t pa,
-			       size_t size)
-{
-	int offs;
-	int ret;
-	int addr_size = 2;
-	int len_size = 2;
-	char subnode_name[80];
-
-	offs = fdt_path_offset(fdt, "/reserved-memory");
-	if (offs >= 0) {
-		addr_size = fdt_address_cells(fdt, offs);
-		if (addr_size < 0)
-			return -1;
-		len_size = fdt_size_cells(fdt, offs);
-		if (len_size < 0)
-			return -1;
-	} else {
-		offs = fdt_path_offset(fdt, "/");
-		if (offs < 0)
-			return -1;
-		offs = fdt_add_subnode(fdt, offs, "reserved-memory");
-		if (offs < 0)
-			return -1;
-		ret = fdt_setprop_cell(fdt, offs, "#address-cells", addr_size);
-		if (ret < 0)
-			return -1;
-		ret = fdt_setprop_cell(fdt, offs, "#size-cells", len_size);
-		if (ret < 0)
-			return -1;
-		ret = fdt_setprop(fdt, offs, "ranges", NULL, 0);
-		if (ret < 0)
-			return -1;
-	}
-
-	snprintf(subnode_name, sizeof(subnode_name),
-		 "%s@0x%" PRIxPA, name, pa);
-	offs = fdt_add_subnode(fdt, offs, subnode_name);
-	if (offs >= 0) {
-		uint32_t data[FDT_MAX_NCELLS * 2];
-
-		set_dt_val(data, addr_size, pa);
-		set_dt_val(data + addr_size, len_size, size);
-		ret = fdt_setprop(fdt, offs, "reg", data,
-				  sizeof(uint32_t) * (addr_size + len_size));
-		if (ret < 0)
-			return -1;
-		ret = fdt_setprop(fdt, offs, "no-map", NULL, 0);
-		if (ret < 0)
-			return -1;
-	} else {
-		return -1;
-	}
-	return 0;
-}
-
 static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 {
-	int offs;
-	int addr_size;
-	int len_size;
-	size_t prop_len;
-	const uint8_t *prop;
-	size_t prop_offs;
-	size_t n;
-	struct core_mmu_phys_mem *mem;
+	int offs = 0;
+	int addr_size = 0;
+	int len_size = 0;
+	size_t prop_len = 0;
+	const uint8_t *prop = NULL;
+	size_t prop_offs = 0;
+	size_t n = 0;
+	struct core_mmu_phys_mem *mem = NULL;
 
 	offs = fdt_subnode_offset(fdt, 0, "memory");
 	if (offs < 0)
@@ -747,7 +872,7 @@ static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 		return NULL;
 
 	*nelems = n;
-	mem = calloc(n, sizeof(*mem));
+	mem = nex_calloc(n, sizeof(*mem));
 	if (!mem)
 		panic();
 
@@ -761,29 +886,32 @@ static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 
 	return mem;
 }
+#endif /*CFG_CORE_DYN_SHM*/
 
-static int mark_static_shm_as_reserved(void *fdt)
+#ifdef CFG_CORE_RESERVED_SHM
+static int mark_static_shm_as_reserved(struct dt_descriptor *dt)
 {
 	vaddr_t shm_start;
 	vaddr_t shm_end;
 
 	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &shm_start, &shm_end);
 	if (shm_start != shm_end)
-		return add_res_mem_dt_node(fdt, "optee",
+		return add_res_mem_dt_node(dt, "optee_shm",
 					   virt_to_phys((void *)shm_start),
 					   shm_end - shm_start);
 
 	DMSG("No SHM configured");
 	return -1;
 }
+#endif /*CFG_CORE_RESERVED_SHM*/
 
-static void init_fdt(unsigned long phys_fdt)
+static void init_external_dt(unsigned long phys_dt)
 {
+	struct dt_descriptor *dt = &external_dt;
 	void *fdt;
 	int ret;
 
-	if (!phys_fdt) {
-		EMSG("Device Tree missing");
+	if (!phys_dt) {
 		/*
 		 * No need to panic as we're not using the DT in OP-TEE
 		 * yet, we're only adding some nodes for normal world use.
@@ -792,82 +920,104 @@ static void init_fdt(unsigned long phys_fdt)
 		 * initialize devices based on DT we'll likely panic
 		 * instead of returning here.
 		 */
+		IMSG("No non-secure external DT");
 		return;
 	}
 
-	if (!core_mmu_add_mapping(MEM_AREA_IO_NSEC, phys_fdt, CFG_DTB_MAX_SIZE))
-		panic("failed to map fdt");
+	if (!core_mmu_add_mapping(MEM_AREA_IO_NSEC, phys_dt, CFG_DTB_MAX_SIZE))
+		panic("Failed to map external DTB");
 
-	fdt = phys_to_virt(phys_fdt, MEM_AREA_IO_NSEC);
+	fdt = phys_to_virt(phys_dt, MEM_AREA_IO_NSEC);
 	if (!fdt)
 		panic();
+
+	dt->blob = fdt;
+
+	ret = init_dt_overlay(dt, CFG_DTB_MAX_SIZE);
+	if (ret < 0) {
+		EMSG("Device Tree Overlay init fail @ 0x%" PRIxPA ": error %d",
+		     phys_dt, ret);
+		panic();
+	}
 
 	ret = fdt_open_into(fdt, fdt, CFG_DTB_MAX_SIZE);
 	if (ret < 0) {
 		EMSG("Invalid Device Tree at 0x%" PRIxPA ": error %d",
-		     phys_fdt, ret);
+		     phys_dt, ret);
 		panic();
 	}
 
-	dt_blob_addr = fdt;
+	IMSG("Non-secure external DT found");
 }
 
-static void update_fdt(void)
+static int mark_tzdram_as_reserved(struct dt_descriptor *dt)
 {
-	void *fdt = get_dt_blob();
+	return add_res_mem_dt_node(dt, "optee_core", CFG_TZDRAM_START,
+				   CFG_TZDRAM_SIZE);
+}
+
+static void update_external_dt(void)
+{
+	struct dt_descriptor *dt = &external_dt;
 	int ret;
 
-	if (!fdt)
+	if (!dt->blob)
 		return;
 
-	if (add_optee_dt_node(fdt))
+	if (add_optee_dt_node(dt))
 		panic("Failed to add OP-TEE Device Tree node");
 
-	if (config_psci(fdt))
+	if (config_psci(dt))
 		panic("Failed to config PSCI");
 
-	if (mark_static_shm_as_reserved(fdt))
+#ifdef CFG_CORE_RESERVED_SHM
+	if (mark_static_shm_as_reserved(dt))
 		panic("Failed to config non-secure memory");
+#endif
 
-	ret = fdt_pack(fdt);
+	if (mark_tzdram_as_reserved(dt))
+		panic("Failed to config secure memory");
+
+	ret = fdt_pack(dt->blob);
 	if (ret < 0) {
 		EMSG("Failed to pack Device Tree at 0x%" PRIxPA ": error %d",
-		     virt_to_phys(fdt), ret);
+		     virt_to_phys(dt->blob), ret);
 		panic();
 	}
 }
-
-#else
-static void init_fdt(unsigned long phys_fdt __unused)
-{
-}
-
-static void update_fdt(void)
-{
-}
-
-static void reset_dt_references(void)
-{
-}
-
-void *get_dt_blob(void)
+#else /*CFG_DT*/
+void *get_external_dt(void)
 {
 	return NULL;
 }
 
+static void release_external_dt(void)
+{
+}
+
+static void init_external_dt(unsigned long phys_dt __unused)
+{
+}
+
+static void update_external_dt(void)
+{
+}
+
+#ifdef CFG_CORE_DYN_SHM
 static struct core_mmu_phys_mem *get_memory(void *fdt __unused,
-					     size_t *nelems __unused)
+					    size_t *nelems __unused)
 {
 	return NULL;
 }
-
+#endif /*CFG_CORE_DYN_SHM*/
 #endif /*!CFG_DT*/
 
+#ifdef CFG_CORE_DYN_SHM
 static void discover_nsec_memory(void)
 {
 	struct core_mmu_phys_mem *mem;
 	size_t nelems;
-	void *fdt = get_dt_blob();
+	void *fdt = get_external_dt();
 
 	if (fdt) {
 		mem = get_memory(fdt, &nelems);
@@ -879,20 +1029,39 @@ static void discover_nsec_memory(void)
 		DMSG("No non-secure memory found in FDT");
 	}
 
-	nelems = (&__end_phys_ddr_overall_section -
-		  &__start_phys_ddr_overall_section);
+	nelems = phys_ddr_overall_end - phys_ddr_overall_begin;
 	if (!nelems)
 		return;
 
 	/* Platform cannot define nsec_ddr && overall_ddr */
-	assert(&__start_phys_nsec_ddr_section == &__end_phys_nsec_ddr_section);
+	assert(phys_nsec_ddr_begin == phys_nsec_ddr_end);
 
-	mem = calloc(nelems, sizeof(*mem));
+	mem = nex_calloc(nelems, sizeof(*mem));
 	if (!mem)
 		panic();
 
-	memcpy(mem, &__start_phys_ddr_overall_section, sizeof(*mem) * nelems);
+	memcpy(mem, phys_ddr_overall_begin, sizeof(*mem) * nelems);
 	core_mmu_set_discovered_nsec_ddr(mem, nelems);
+}
+#else /*CFG_CORE_DYN_SHM*/
+static void discover_nsec_memory(void)
+{
+}
+#endif /*!CFG_CORE_DYN_SHM*/
+
+void init_tee_runtime(void)
+{
+#ifdef CFG_VIRTUALIZATION
+	/* We need to initialize pool for every virtual guest partition */
+	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
+#endif
+
+#ifndef CFG_WITH_PAGER
+	/* Pager initializes TA RAM early */
+	teecore_init_ta_ram();
+#endif
+	if (init_teecore() != TEE_SUCCESS)
+		panic();
 }
 
 static void init_primary_helper(unsigned long pageable_part,
@@ -910,22 +1079,30 @@ static void init_primary_helper(unsigned long pageable_part,
 	init_vfp_sec();
 	init_runtime(pageable_part);
 
+#ifndef CFG_VIRTUALIZATION
+	thread_init_boot_thread();
+#endif
 	thread_init_primary(generic_boot_get_handlers());
 	thread_init_per_cpu();
 	init_sec_mon(nsec_entry);
-	init_fdt(fdt);
-	update_fdt();
-	configure_console_from_dt();
+	init_external_dt(fdt);
 	discover_nsec_memory();
+	update_external_dt();
+	configure_console_from_dt();
 
 	IMSG("OP-TEE version: %s", core_v_str);
 
 	main_init_gic();
 	init_vfp_nsec();
-	if (init_teecore() != TEE_SUCCESS)
-		panic();
-	reset_dt_references();
-	DMSG("Primary CPU switching to normal world boot\n");
+#ifndef CFG_VIRTUALIZATION
+	init_tee_runtime();
+#endif
+	release_external_dt();
+#ifdef CFG_VIRTUALIZATION
+	IMSG("Initializing virtualization support");
+	core_mmu_init_virtualization();
+#endif
+	DMSG("Primary CPU switching to normal world boot");
 }
 
 /* What this function is using is needed each time another CPU is started */
@@ -949,7 +1126,7 @@ static void init_secondary_helper(unsigned long nsec_entry)
 	init_vfp_sec();
 	init_vfp_nsec();
 
-	DMSG("Secondary CPU Switching to normal world boot\n");
+	DMSG("Secondary CPU Switching to normal world boot");
 }
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)

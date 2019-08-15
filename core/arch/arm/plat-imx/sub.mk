@@ -1,7 +1,7 @@
 global-incdirs-y += .
-srcs-y += main.c imx-common.c
+srcs-y += main.c
 
-srcs-$(CFG_MX6)$(CFG_MX7) += mmdc.c
+srcs-$(CFG_MX6)$(CFG_MX7) += mmdc.c imx-common.c imx_caam.c
 
 srcs-$(CFG_PL310) += imx_pl310.c
 ifeq ($(CFG_PSCI_ARM32),y)
@@ -23,3 +23,6 @@ endif
 srcs-$(CFG_MX7) += imx7.c a7_plat_init.S
 
 subdirs-$(CFG_PSCI_ARM32) += pm
+
+srcs-$(CFG_WITH_USER_TA) += vendor_props.c
+subdirs-y += drivers

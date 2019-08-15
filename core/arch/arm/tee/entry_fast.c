@@ -9,9 +9,11 @@
 #include <sm/optee_smc.h>
 #include <kernel/generic_boot.h>
 #include <kernel/tee_l2cc_mutex.h>
+#include <kernel/virtualization.h>
 #include <kernel/misc.h>
 #include <mm/core_mmu.h>
 
+#ifdef CFG_CORE_RESERVED_SHM
 static void tee_entry_get_shm_config(struct thread_smc_args *args)
 {
 	args->a0 = OPTEE_SMC_RETURN_OK;
@@ -20,6 +22,7 @@ static void tee_entry_get_shm_config(struct thread_smc_args *args)
 	/* Should this be TEESMC cache attributes instead? */
 	args->a3 = core_mmu_is_shm_cached();
 }
+#endif
 
 static void tee_entry_fastcall_l2cc_mutex(struct thread_smc_args *args)
 {
@@ -81,15 +84,21 @@ static void tee_entry_exchange_capabilities(struct thread_smc_args *args)
 	}
 
 	args->a0 = OPTEE_SMC_RETURN_OK;
-	args->a1 = OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM;
+	args->a1 = 0;
+#ifdef CFG_CORE_RESERVED_SHM
+	args->a1 |= OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM;
+#endif
+#ifdef CFG_VIRTUALIZATION
+	args->a1 |= OPTEE_SMC_SEC_CAP_VIRTUALIZATION;
+#endif
 
-#if defined(CFG_DYN_SHM_CAP)
+#if defined(CFG_CORE_DYN_SHM)
 	dyn_shm_en = core_mmu_nsec_ddr_is_defined();
 	if (dyn_shm_en)
 		args->a1 |= OPTEE_SMC_SEC_CAP_DYNAMIC_SHM;
 #endif
 
-	IMSG("Dynamic shared memory is %sabled", dyn_shm_en ? "en" : "dis");
+	DMSG("Dynamic shared memory is %sabled", dyn_shm_en ? "en" : "dis");
 }
 
 static void tee_entry_disable_shm_cache(struct thread_smc_args *args)
@@ -131,6 +140,40 @@ static void tee_entry_boot_secondary(struct thread_smc_args *args)
 #endif
 }
 
+static void tee_entry_get_thread_count(struct thread_smc_args *args)
+{
+	args->a0 = OPTEE_SMC_RETURN_OK;
+	args->a1 = CFG_NUM_THREADS;
+}
+
+#if defined(CFG_VIRTUALIZATION)
+static void tee_entry_vm_created(struct thread_smc_args *args)
+{
+	uint16_t guest_id = args->a1;
+
+	/* Only hypervisor can issue this request */
+	if (args->a7 != HYP_CLNT_ID) {
+		args->a0 = OPTEE_SMC_RETURN_ENOTAVAIL;
+		return;
+	}
+
+	args->a0 = virt_guest_created(guest_id);
+}
+
+static void tee_entry_vm_destroyed(struct thread_smc_args *args)
+{
+	uint16_t guest_id = args->a1;
+
+	/* Only hypervisor can issue this request */
+	if (args->a7 != HYP_CLNT_ID) {
+		args->a0 = OPTEE_SMC_RETURN_ENOTAVAIL;
+		return;
+	}
+
+	args->a0 = virt_guest_destroyed(guest_id);
+}
+#endif
+
 void tee_entry_fast(struct thread_smc_args *args)
 {
 	switch (args->a0) {
@@ -153,9 +196,11 @@ void tee_entry_fast(struct thread_smc_args *args)
 		break;
 
 	/* OP-TEE specific SMC functions */
+#ifdef CFG_CORE_RESERVED_SHM
 	case OPTEE_SMC_GET_SHM_CONFIG:
 		tee_entry_get_shm_config(args);
 		break;
+#endif
 	case OPTEE_SMC_L2CC_MUTEX:
 		tee_entry_fastcall_l2cc_mutex(args);
 		break;
@@ -171,6 +216,18 @@ void tee_entry_fast(struct thread_smc_args *args)
 	case OPTEE_SMC_BOOT_SECONDARY:
 		tee_entry_boot_secondary(args);
 		break;
+	case OPTEE_SMC_GET_THREAD_COUNT:
+		tee_entry_get_thread_count(args);
+		break;
+
+#if defined(CFG_VIRTUALIZATION)
+	case OPTEE_SMC_VM_CREATED:
+		tee_entry_vm_created(args);
+		break;
+	case OPTEE_SMC_VM_DESTROYED:
+		tee_entry_vm_destroyed(args);
+		break;
+#endif
 
 	default:
 		args->a0 = OPTEE_SMC_RETURN_UNKNOWN_FUNCTION;
@@ -185,7 +242,13 @@ size_t tee_entry_generic_get_api_call_count(void)
 	 * target has additional calls it will call this function and
 	 * add the number of calls the target has added.
 	 */
-	return 9;
+	size_t ret = 12;
+
+#if defined(CFG_VIRTUALIZATION)
+	ret += 2;
+#endif
+
+	return ret;
 }
 
 void __weak tee_entry_get_api_call_count(struct thread_smc_args *args)

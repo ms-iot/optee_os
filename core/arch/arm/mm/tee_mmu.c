@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <kernel/panic.h>
 #include <kernel/spinlock.h>
+#include <kernel/virtualization.h>
 #include <kernel/tee_common.h>
 #include <kernel/tee_misc.h>
 #include <kernel/tlb_helpers.h>
@@ -44,18 +45,20 @@
 
 static vaddr_t select_va_in_range(vaddr_t prev_end, uint32_t prev_attr,
 				  vaddr_t next_begin, uint32_t next_attr,
-				  const struct vm_region *reg)
+				  const struct vm_region *reg,
+				  size_t pad_begin, size_t pad_end)
 {
 	size_t granul;
-	const uint32_t a = TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT;
+	const uint32_t a = TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT |
+			    TEE_MATTR_SHAREABLE;
 	size_t pad;
 	vaddr_t begin_va;
 	vaddr_t end_va;
 
 	/*
 	 * Insert an unmapped entry to separate regions with differing
-	 * TEE_MATTR_EPHEMERAL TEE_MATTR_PERMANENT bits as they never are
-	 * to be contiguous with another region.
+	 * TEE_MATTR_EPHEMERAL, TEE_MATTR_PERMANENT or TEE_MATTR_SHAREABLE
+	 * bits as they never are to be contiguous with another region.
 	 */
 	if (prev_attr && (prev_attr & a) != (reg->attr & a))
 		pad = SMALL_PAGE_SIZE;
@@ -67,7 +70,7 @@ static vaddr_t select_va_in_range(vaddr_t prev_end, uint32_t prev_attr,
 	if ((prev_attr & TEE_MATTR_SECURE) != (reg->attr & TEE_MATTR_SECURE))
 		granul = CORE_MMU_PGDIR_SIZE;
 #endif
-	begin_va = ROUNDUP(prev_end + pad, granul);
+	begin_va = ROUNDUP(prev_end + pad_begin + pad, granul);
 	if (reg->va) {
 		if (reg->va < begin_va)
 			return 0;
@@ -84,7 +87,7 @@ static vaddr_t select_va_in_range(vaddr_t prev_end, uint32_t prev_attr,
 	if ((next_attr & TEE_MATTR_SECURE) != (reg->attr & TEE_MATTR_SECURE))
 		granul = CORE_MMU_PGDIR_SIZE;
 #endif
-	end_va = ROUNDUP(begin_va + reg->size + pad, granul);
+	end_va = ROUNDUP(begin_va + reg->size + pad_end + pad, granul);
 
 	if (end_va <= next_begin) {
 		assert(!reg->va || reg->va == begin_va);
@@ -92,70 +95,6 @@ static vaddr_t select_va_in_range(vaddr_t prev_end, uint32_t prev_attr,
 	}
 
 	return 0;
-}
-
-static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg)
-{
-	struct vm_region *r;
-	struct vm_region *prev_r;
-	vaddr_t va_range_base;
-	size_t va_range_size;
-	vaddr_t va;
-
-	core_mmu_get_user_va_range(&va_range_base, &va_range_size);
-
-	/* Check alignment, it has to be at least SMALL_PAGE based */
-	if ((reg->va | reg->size) & SMALL_PAGE_MASK)
-		return TEE_ERROR_ACCESS_CONFLICT;
-
-	/* Check that the mobj is defined for the entire range */
-	if ((reg->offset + reg->size) >
-	     ROUNDUP(reg->mobj->size, SMALL_PAGE_SIZE))
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	prev_r = NULL;
-	TAILQ_FOREACH(r, &vmi->regions, link) {
-		if (TAILQ_FIRST(&vmi->regions) == r) {
-			va = select_va_in_range(va_range_base, 0,
-						r->va, r->attr, reg);
-			if (va) {
-				reg->va = va;
-				TAILQ_INSERT_HEAD(&vmi->regions, reg, link);
-				return TEE_SUCCESS;
-			}
-		} else {
-			va = select_va_in_range(prev_r->va + prev_r->size,
-						prev_r->attr, r->va, r->attr,
-						reg);
-			if (va) {
-				reg->va = va;
-				TAILQ_INSERT_BEFORE(r, reg, link);
-				return TEE_SUCCESS;
-			}
-		}
-		prev_r = r;
-	}
-
-	r = TAILQ_LAST(&vmi->regions, vm_region_head);
-	if (r) {
-		va = select_va_in_range(r->va + r->size, r->attr,
-					va_range_base + va_range_size, 0, reg);
-		if (va) {
-			reg->va = va;
-			TAILQ_INSERT_TAIL(&vmi->regions, reg, link);
-			return TEE_SUCCESS;
-		}
-	} else {
-		va = select_va_in_range(va_range_base, 0,
-					va_range_base + va_range_size, 0, reg);
-		if (va) {
-			reg->va = va;
-			TAILQ_INSERT_HEAD(&vmi->regions, reg, link);
-			return TEE_SUCCESS;
-		}
-	}
-
-	return TEE_ERROR_ACCESS_CONFLICT;
 }
 
 static size_t get_num_req_pgts(struct user_ta_ctx *utc, vaddr_t *begin,
@@ -184,14 +123,141 @@ static size_t get_num_req_pgts(struct user_ta_ctx *utc, vaddr_t *begin,
 	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
 }
 
-TEE_Result vm_map(struct user_ta_ctx *utc, vaddr_t *va, size_t len,
-		  uint32_t prot, struct mobj *mobj, size_t offs)
+static TEE_Result alloc_pgt(struct user_ta_ctx *utc)
+{
+	struct thread_specific_data *tsd __maybe_unused;
+	vaddr_t b;
+	vaddr_t e;
+	size_t ntbl;
+
+	ntbl = get_num_req_pgts(utc, &b, &e);
+	if (!pgt_check_avail(ntbl)) {
+		EMSG("%zu page tables not available", ntbl);
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+#ifdef CFG_PAGED_USER_TA
+	tsd = thread_get_tsd();
+	if (&utc->ctx == tsd->ctx) {
+		/*
+		 * The supplied utc is the current active utc, allocate the
+		 * page tables too as the pager needs to use them soon.
+		 */
+		pgt_alloc(&tsd->pgt_cache, &utc->ctx, b, e - 1);
+	}
+#endif
+
+	return TEE_SUCCESS;
+}
+
+static void maybe_free_pgt(struct user_ta_ctx *utc, struct vm_region *r)
+{
+	struct thread_specific_data *tsd = NULL;
+	struct pgt_cache *pgt_cache = NULL;
+	vaddr_t begin = ROUNDDOWN(r->va, CORE_MMU_PGDIR_SIZE);
+	vaddr_t last = ROUNDUP(r->va + r->size, CORE_MMU_PGDIR_SIZE);
+	struct vm_region *r2 = NULL;
+
+	r2 = TAILQ_NEXT(r, link);
+	if (r2)
+		last = MIN(last, ROUNDDOWN(r2->va, CORE_MMU_PGDIR_SIZE));
+
+	r2 = TAILQ_PREV(r, vm_region_head, link);
+	if (r2)
+		begin = MAX(begin,
+			    ROUNDUP(r2->va + r2->size, CORE_MMU_PGDIR_SIZE));
+
+	/* If there's no unused page tables, there's nothing left to do */
+	if (begin >= last)
+		return;
+
+	tsd = thread_get_tsd();
+	if (&utc->ctx == tsd->ctx)
+		pgt_cache = &tsd->pgt_cache;
+
+	pgt_flush_ctx_range(pgt_cache, &utc->ctx, r->va, r->va + r->size);
+}
+
+static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg,
+				  size_t pad_begin, size_t pad_end)
+{
+	struct vm_region *r = NULL;
+	struct vm_region *prev_r = NULL;
+	vaddr_t va_range_base = 0;
+	size_t va_range_size = 0;
+	vaddr_t va = 0;
+	size_t offs_plus_size = 0;
+
+	core_mmu_get_user_va_range(&va_range_base, &va_range_size);
+
+	/* Check alignment, it has to be at least SMALL_PAGE based */
+	if ((reg->va | reg->size | pad_begin | pad_end) & SMALL_PAGE_MASK)
+		return TEE_ERROR_ACCESS_CONFLICT;
+
+	/* Check that the mobj is defined for the entire range */
+	if (ADD_OVERFLOW(reg->offset, reg->size, &offs_plus_size))
+		return TEE_ERROR_BAD_PARAMETERS;
+	if (offs_plus_size > ROUNDUP(reg->mobj->size, SMALL_PAGE_SIZE))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	prev_r = NULL;
+	TAILQ_FOREACH(r, &vmi->regions, link) {
+		if (TAILQ_FIRST(&vmi->regions) == r) {
+			va = select_va_in_range(va_range_base, 0,
+						r->va, r->attr, reg,
+						pad_begin, pad_end);
+			if (va) {
+				reg->va = va;
+				TAILQ_INSERT_HEAD(&vmi->regions, reg, link);
+				return TEE_SUCCESS;
+			}
+		} else {
+			va = select_va_in_range(prev_r->va + prev_r->size,
+						prev_r->attr, r->va, r->attr,
+						reg, pad_begin, pad_end);
+			if (va) {
+				reg->va = va;
+				TAILQ_INSERT_BEFORE(r, reg, link);
+				return TEE_SUCCESS;
+			}
+		}
+		prev_r = r;
+	}
+
+	r = TAILQ_LAST(&vmi->regions, vm_region_head);
+	if (r) {
+		va = select_va_in_range(r->va + r->size, r->attr,
+					va_range_base + va_range_size, 0, reg,
+					pad_begin, pad_end);
+		if (va) {
+			reg->va = va;
+			TAILQ_INSERT_TAIL(&vmi->regions, reg, link);
+			return TEE_SUCCESS;
+		}
+	} else {
+		va = select_va_in_range(va_range_base, 0,
+					va_range_base + va_range_size, 0, reg,
+					pad_begin, pad_end);
+		if (va) {
+			reg->va = va;
+			TAILQ_INSERT_HEAD(&vmi->regions, reg, link);
+			return TEE_SUCCESS;
+		}
+	}
+
+	return TEE_ERROR_ACCESS_CONFLICT;
+}
+
+TEE_Result vm_map_pad(struct user_ta_ctx *utc, vaddr_t *va, size_t len,
+		      uint32_t prot, struct mobj *mobj, size_t offs,
+		      size_t pad_begin, size_t pad_end)
 {
 	TEE_Result res;
 	struct vm_region *reg = calloc(1, sizeof(*reg));
 	uint32_t attr = 0;
 	const uint32_t prot_mask = TEE_MATTR_PROT_MASK | TEE_MATTR_PERMANENT |
-				   TEE_MATTR_EPHEMERAL;
+				   TEE_MATTR_EPHEMERAL | TEE_MATTR_SHAREABLE |
+				   TEE_MATTR_LDELF;
 
 	if (!reg)
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -219,21 +285,26 @@ TEE_Result vm_map(struct user_ta_ctx *utc, vaddr_t *va, size_t len,
 	reg->size = ROUNDUP(len, SMALL_PAGE_SIZE);
 	reg->attr = attr | prot;
 
-	res = umap_add_region(utc->vm_info, reg);
+	res = umap_add_region(utc->vm_info, reg, pad_begin, pad_end);
 	if (res)
 		goto err_free_reg;
 
-	if (!pgt_check_avail(get_num_req_pgts(utc, NULL, NULL))) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
+	res = alloc_pgt(utc);
+	if (res)
 		goto err_rem_reg;
-	}
 
-	if (!(reg->attr & (TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT)) &&
-	    mobj_is_paged(mobj)) {
-		if (!tee_pager_add_uta_area(utc, reg->va, reg->size)) {
+	if (!(reg->attr & TEE_MATTR_PERMANENT) && mobj_is_paged(mobj)) {
+		struct fobj *fobj = mobj_get_fobj(mobj);
+
+		if (!fobj) {
 			res = TEE_ERROR_GENERIC;
 			goto err_rem_reg;
 		}
+
+		res = tee_pager_add_uta_area(utc, reg->va, fobj, prot);
+		fobj_put(fobj);
+		if (res)
+			goto err_rem_reg;
 	}
 
 	/*
@@ -254,32 +325,17 @@ err_free_reg:
 	return res;
 }
 
-TEE_Result vm_set_prot(struct user_ta_ctx *utc, vaddr_t va, size_t len,
-		       uint32_t prot)
+static TEE_Result find_exact_vm_region(struct user_ta_ctx *utc, vaddr_t va,
+				       size_t len, struct vm_region **r_ret)
 {
-	struct vm_region *r;
+	struct vm_region *r = NULL;
 
-	/*
-	 * To keep thing simple: specified va and len has to match exactly
-	 * with an already registered region.
-	 */
 	TAILQ_FOREACH(r, &utc->vm_info->regions, link) {
 		if (core_is_buffer_intersect(r->va, r->size, va, len)) {
 			if (r->va != va || r->size != len)
 				return TEE_ERROR_BAD_PARAMETERS;
-			if (mobj_is_paged(r->mobj)) {
-				if (!tee_pager_set_uta_area_attr(utc, va, len,
-								 prot))
-					return TEE_ERROR_GENERIC;
-			} else if ((prot & TEE_MATTR_UX) &&
-				   (r->attr & (TEE_MATTR_UW | TEE_MATTR_PW))) {
-				cache_op_inner(DCACHE_AREA_CLEAN,
-					       (void *)va, len);
-				cache_op_inner(ICACHE_AREA_INVALIDATE,
-					       (void *)va, len);
-			}
-			r->attr &= ~TEE_MATTR_PROT_MASK;
-			r->attr |= prot & TEE_MATTR_PROT_MASK;
+
+			*r_ret = r;
 			return TEE_SUCCESS;
 		}
 	}
@@ -287,6 +343,81 @@ TEE_Result vm_set_prot(struct user_ta_ctx *utc, vaddr_t va, size_t len,
 	return TEE_ERROR_ITEM_NOT_FOUND;
 }
 
+TEE_Result vm_set_prot(struct user_ta_ctx *utc, vaddr_t va, size_t len,
+		       uint32_t prot)
+{
+	TEE_Result res = TEE_SUCCESS;
+	struct vm_region *r = NULL;
+	bool was_writeable = false;
+
+	assert(thread_get_tsd()->ctx == &utc->ctx);
+
+	/*
+	 * To keep thing simple: specified va and len have to match exactly
+	 * with an already registered region.
+	 */
+	res = find_exact_vm_region(utc, va, len, &r);
+	if (res)
+		return res;
+
+	if ((r->attr & TEE_MATTR_PROT_MASK) == prot)
+		return TEE_SUCCESS;
+
+	was_writeable = r->attr & (TEE_MATTR_UW | TEE_MATTR_PW);
+
+	r->attr &= ~TEE_MATTR_PROT_MASK;
+	r->attr |= prot & TEE_MATTR_PROT_MASK;
+
+	if (mobj_is_paged(r->mobj)) {
+		if (!tee_pager_set_uta_area_attr(utc, va, len,
+						 prot))
+			return TEE_ERROR_GENERIC;
+	} else if ((prot & TEE_MATTR_UX) && was_writeable) {
+		/* Synchronize changes to translation tables */
+		tee_mmu_set_ctx(&utc->ctx);
+
+		cache_op_inner(DCACHE_AREA_CLEAN,
+			       (void *)va, len);
+		cache_op_inner(ICACHE_INVALIDATE, NULL, 0);
+	}
+
+	return TEE_SUCCESS;
+}
+
+static void umap_remove_region(struct vm_info *vmi, struct vm_region *reg)
+{
+	TAILQ_REMOVE(&vmi->regions, reg, link);
+	free(reg);
+}
+
+TEE_Result vm_unmap(struct user_ta_ctx *utc, vaddr_t va, size_t len)
+{
+	TEE_Result res = TEE_SUCCESS;
+	struct vm_region *r = NULL;
+
+	assert(thread_get_tsd()->ctx == &utc->ctx);
+
+	/*
+	 * To keep thing simple: specified va and len has to match exactly
+	 * with an already registered region.
+	 */
+	res = find_exact_vm_region(utc, va, ROUNDUP(len, SMALL_PAGE_SIZE), &r);
+	if (res)
+		return res;
+
+	if (mobj_is_paged(r->mobj))
+		tee_pager_rem_uta_region(utc, r->va, r->size);
+	maybe_free_pgt(utc, r);
+	umap_remove_region(utc->vm_info, r);
+
+	/*
+	 * Synchronize change to translation tables. Even though the pager
+	 * case unmaps immediately we may still free a translation table.
+	 */
+	tee_mmu_set_ctx(&utc->ctx);
+
+	return TEE_SUCCESS;
+}
 
 static TEE_Result map_kinit(struct user_ta_ctx *utc __maybe_unused)
 {
@@ -336,58 +467,27 @@ TEE_Result vm_info_init(struct user_ta_ctx *utc)
 	return res;
 }
 
-static TEE_Result alloc_pgt(struct user_ta_ctx *utc)
-{
-	struct thread_specific_data *tsd __maybe_unused;
-	vaddr_t b;
-	vaddr_t e;
-	size_t ntbl;
-
-	ntbl = get_num_req_pgts(utc, &b, &e);
-	if (!pgt_check_avail(ntbl)) {
-		EMSG("%zu page tables not available", ntbl);
-		return TEE_ERROR_OUT_OF_MEMORY;
-	}
-
-#ifdef CFG_PAGED_USER_TA
-	tsd = thread_get_tsd();
-	if (&utc->ctx == tsd->ctx) {
-		/*
-		 * The supplied utc is the current active utc, allocate the
-		 * page tables too as the pager needs to use them soon.
-		 */
-		pgt_alloc(&tsd->pgt_cache, &utc->ctx, b, e - 1);
-	}
-#endif
-
-	return TEE_SUCCESS;
-}
-
-static void free_pgt(struct user_ta_ctx *utc, vaddr_t base, size_t size)
-{
-	struct thread_specific_data *tsd = thread_get_tsd();
-	struct pgt_cache *pgt_cache = NULL;
-
-	if (&utc->ctx == tsd->ctx)
-		pgt_cache = &tsd->pgt_cache;
-
-	pgt_flush_ctx_range(pgt_cache, &utc->ctx, base, base + size);
-}
-
-static void umap_remove_region(struct vm_info *vmi, struct vm_region *reg)
-{
-	TAILQ_REMOVE(&vmi->regions, reg, link);
-	free(reg);
-}
-
-static void clear_param_map(struct user_ta_ctx *utc)
+void tee_mmu_clean_param(struct user_ta_ctx *utc)
 {
 	struct vm_region *next_r;
 	struct vm_region *r;
 
-	TAILQ_FOREACH_SAFE(r, &utc->vm_info->regions, link, next_r)
-		if (r->attr & TEE_MATTR_EPHEMERAL)
+	TAILQ_FOREACH_SAFE(r, &utc->vm_info->regions, link, next_r) {
+		if (r->attr & TEE_MATTR_EPHEMERAL) {
+			if (mobj_is_paged(r->mobj))
+				tee_pager_rem_uta_region(utc, r->va, r->size);
+			maybe_free_pgt(utc, r);
 			umap_remove_region(utc->vm_info, r);
+		}
+	}
+}
+
+static void check_param_map_empty(struct user_ta_ctx *utc __maybe_unused)
+{
+	struct vm_region *r = NULL;
+
+	TAILQ_FOREACH(r, &utc->vm_info->regions, link)
+		assert(!(r->attr & TEE_MATTR_EPHEMERAL));
 }
 
 static TEE_Result param_mem_to_user_va(struct user_ta_ctx *utc,
@@ -502,18 +602,17 @@ TEE_Result tee_mmu_map_param(struct user_ta_ctx *utc,
 	if (mem[0].size)
 		m++;
 
-	/* Clear all the param entries as they can hold old information */
-	clear_param_map(utc);
+	check_param_map_empty(utc);
 
 	for (n = 0; n < m; n++) {
 		vaddr_t va = 0;
 		const uint32_t prot = TEE_MATTR_PRW | TEE_MATTR_URW |
-				      TEE_MATTR_EPHEMERAL;
+				      TEE_MATTR_EPHEMERAL | TEE_MATTR_SHAREABLE;
 
 		res = vm_map(utc, &va, mem[n].size, prot, mem[n].mobj,
 			     mem[n].offs);
 		if (res)
-			return res;
+			goto out;
 	}
 
 	for (n = 0; n < TEE_NUM_PARAMS; n++) {
@@ -528,10 +627,15 @@ TEE_Result tee_mmu_map_param(struct user_ta_ctx *utc,
 
 		res = param_mem_to_user_va(utc, &param->u[n].mem, param_va + n);
 		if (res != TEE_SUCCESS)
-			return res;
+			goto out;
 	}
 
-	return alloc_pgt(utc);
+	res = alloc_pgt(utc);
+out:
+	if (res)
+		tee_mmu_clean_param(utc);
+
+	return res;
 }
 
 TEE_Result tee_mmu_add_rwmem(struct user_ta_ctx *utc, struct mobj *mobj,
@@ -552,7 +656,7 @@ TEE_Result tee_mmu_add_rwmem(struct user_ta_ctx *utc, struct mobj *mobj,
 	else
 		reg->attr = 0;
 
-	res = umap_add_region(utc->vm_info, reg);
+	res = umap_add_region(utc->vm_info, reg, 0, 0);
 	if (res) {
 		free(reg);
 		return res;
@@ -569,12 +673,14 @@ TEE_Result tee_mmu_add_rwmem(struct user_ta_ctx *utc, struct mobj *mobj,
 
 void tee_mmu_rem_rwmem(struct user_ta_ctx *utc, struct mobj *mobj, vaddr_t va)
 {
-	struct vm_region *reg;
+	struct vm_region *r;
 
-	TAILQ_FOREACH(reg, &utc->vm_info->regions, link) {
-		if (reg->mobj == mobj && reg->va == va) {
-			free_pgt(utc, reg->va, reg->size);
-			umap_remove_region(utc->vm_info, reg);
+	TAILQ_FOREACH(r, &utc->vm_info->regions, link) {
+		if (r->mobj == mobj && r->va == va) {
+			if (mobj_is_paged(r->mobj))
+				tee_pager_rem_uta_region(utc, r->va, r->size);
+			maybe_free_pgt(utc, r);
+			umap_remove_region(utc->vm_info, r);
 			return;
 		}
 	}
@@ -601,9 +707,11 @@ bool tee_mmu_is_vbuf_inside_ta_private(const struct user_ta_ctx *utc,
 				  const void *va, size_t size)
 {
 	struct vm_region *r;
+	uint32_t nonpriv_attrs = TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT |
+				 TEE_MATTR_SHAREABLE;
 
 	TAILQ_FOREACH(r, &utc->vm_info->regions, link) {
-		if (r->attr & (TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT))
+		if (r->attr & nonpriv_attrs)
 			continue;
 		if (core_is_buffer_inside(va, size, r->va, r->size))
 			return true;
@@ -617,9 +725,11 @@ bool tee_mmu_is_vbuf_intersect_ta_private(const struct user_ta_ctx *utc,
 					  const void *va, size_t size)
 {
 	struct vm_region *r;
+	uint32_t nonpriv_attrs = TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT |
+				 TEE_MATTR_SHAREABLE;
 
 	TAILQ_FOREACH(r, &utc->vm_info->regions, link) {
-		if (r->attr & (TEE_MATTR_EPHEMERAL | TEE_MATTR_PERMANENT))
+		if (r->attr & nonpriv_attrs)
 			continue;
 		if (core_is_buffer_intersect(va, size, r->va, r->size))
 			return true;
@@ -758,10 +868,11 @@ TEE_Result tee_mmu_check_access_rights(const struct user_ta_ctx *utc,
 				       size_t len)
 {
 	uaddr_t a;
+	uaddr_t end_addr = 0;
 	size_t addr_incr = MIN(CORE_MMU_USER_CODE_SIZE,
 			       CORE_MMU_USER_PARAM_SIZE);
 
-	if (ADD_OVERFLOW(uaddr, len, &a))
+	if (ADD_OVERFLOW(uaddr, len, &end_addr))
 		return TEE_ERROR_ACCESS_DENIED;
 
 	if ((flags & TEE_MEMORY_ACCESS_NONSECURE) &&
@@ -776,7 +887,7 @@ TEE_Result tee_mmu_check_access_rights(const struct user_ta_ctx *utc,
 	   !tee_mmu_is_vbuf_inside_ta_private(utc, (void *)uaddr, len))
 		return TEE_ERROR_ACCESS_DENIED;
 
-	for (a = uaddr; a < (uaddr + len); a += addr_incr) {
+	for (a = ROUNDDOWN(uaddr, addr_incr); a < end_addr; a += addr_incr) {
 		uint32_t attr;
 		TEE_Result res;
 
@@ -814,9 +925,9 @@ void tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 	 *
 	 * Save translation tables in a cache if it's a user TA.
 	 */
-	pgt_free(&tsd->pgt_cache, tsd->ctx && is_user_ta_ctx(tsd->ctx));
+	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
 
-	if (ctx && is_user_ta_ctx(ctx)) {
+	if (is_user_ta_ctx(ctx)) {
 		struct core_mmu_user_map map;
 		struct user_ta_ctx *utc = to_user_ta_ctx(ctx);
 
@@ -841,7 +952,11 @@ void teecore_init_ta_ram(void)
 
 	/* get virtual addr/size of RAM where TA are loaded/executedNSec
 	 * shared mem allcated from teecore */
+#ifndef CFG_VIRTUALIZATION
 	core_mmu_get_mem_by_type(MEM_AREA_TA_RAM, &s, &e);
+#else
+	virt_get_ta_ram(&s, &e);
+#endif
 	ps = virt_to_phys((void *)s);
 	pe = virt_to_phys((void *)(e - 1)) + 1;
 
@@ -862,6 +977,7 @@ void teecore_init_ta_ram(void)
 		    TEE_MM_POOL_NO_FLAGS);
 }
 
+#ifdef CFG_CORE_RESERVED_SHM
 void teecore_init_pub_ram(void)
 {
 	vaddr_t s;
@@ -887,6 +1003,7 @@ void teecore_init_pub_ram(void)
 	default_nsec_shm_paddr = virt_to_phys((void *)s);
 	default_nsec_shm_size = e - s;
 }
+#endif /*CFG_CORE_RESERVED_SHM*/
 
 uint32_t tee_mmu_user_get_cache_attr(struct user_ta_ctx *utc, void *va)
 {

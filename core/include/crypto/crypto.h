@@ -256,6 +256,17 @@ TEE_Result crypto_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 		size_t data_size);
 
+/*
+ * Computes a SHA-512/256 hash, vetted conditioner as per NIST.SP.800-90B.
+ * It doesn't require crypto_init() to be called in advance and has as few
+ * dependencies as possible.
+ *
+ * This function could be used inside interrupt context where the crypto
+ * library can't be used due to mutex handling.
+ */
+TEE_Result hash_sha512_256_compute(uint8_t *digest, const uint8_t *data,
+		size_t data_size);
+
 #define CRYPTO_RNG_SRC_IS_QUICK(sid) (!!((sid) & 1))
 
 /*
@@ -305,9 +316,27 @@ void crypto_rng_add_event(enum crypto_rng_src sid, unsigned int *pnum,
  */
 TEE_Result crypto_rng_read(void *buf, size_t len);
 
+/*
+ * crypto_aes_expand_enc_key() - Expand an AES key
+ * @key:	AES key buffer
+ * @key_len:	Size of the the @key buffer in bytes
+ * @enc_key:	Expanded AES encryption key buffer
+ * @enc_keylen: Size of the @enc_key buffer in bytes
+ * @rounds:	Number of rounds to be used during encryption
+ */
 TEE_Result crypto_aes_expand_enc_key(const void *key, size_t key_len,
-				     void *enc_key, unsigned int *rounds);
-void crypto_aes_enc_block(const void *enc_key, unsigned int rounds,
-			  const void *src, void *dst);
+				     void *enc_key, size_t enc_keylen,
+				     unsigned int *rounds);
+
+/*
+ * crypto_aes_enc_block() - Encrypt an AES block
+ * @enc_key:	Expanded AES encryption key
+ * @enc_keylen:	Size of @enc_key in bytes
+ * @rounds:	Number of rounds
+ * @src:	Source buffer of one AES block (16 bytes)
+ * @dst:	Destination buffer of one AES block (16 bytes)
+ */
+void crypto_aes_enc_block(const void *enc_key, size_t enc_keylen,
+			  unsigned int rounds, const void *src, void *dst);
 
 #endif /* __CRYPTO_CRYPTO_H */

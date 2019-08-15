@@ -15,9 +15,12 @@
 #if defined(PLATFORM_FLAVOR_hikey)
 
 #define PL011_UART0_BASE	0xF8015000
+#define PL011_UART2_BASE	0xF7112000
 #define PL011_UART3_BASE	0xF7113000
 #if (CFG_CONSOLE_UART == 3)
 #define CONSOLE_UART_BASE	PL011_UART3_BASE
+#elif (CFG_CONSOLE_UART == 2)
+#define CONSOLE_UART_BASE	PL011_UART2_BASE
 #elif (CFG_CONSOLE_UART == 0)
 #define CONSOLE_UART_BASE	PL011_UART0_BASE
 #else
@@ -118,12 +121,30 @@
 
 #elif defined(PLATFORM_FLAVOR_hikey960)
 
+/*
+ * Physical address ranges for HiKey960 RAM:
+ * 3G board: 0~3G
+ * 4G board: 0~3G 3~3.5G 8~8.5G
+ * 6G board: 0~3G 4~7G
+ */
 #if (CFG_DRAM_SIZE_GB == 3)
 #define DRAM1_SIZE_NSEC		0x80000000
 #elif (CFG_DRAM_SIZE_GB == 4)
-#define DRAM1_SIZE_NSEC		0xC0000000
+#define DRAM1_SIZE_NSEC		0xA0000000
+#define DRAM2_BASE		0x200000000
+#define DRAM2_SIZE_NSEC		0x20000000
+#elif (CFG_DRAM_SIZE_GB == 6)
+#define DRAM1_SIZE_NSEC		0x80000000
+#define DRAM2_BASE		0x100000000
+#define DRAM2_SIZE_NSEC		0xC0000000
 #else
 #error Unknown DRAM size
+#endif
+
+#if (CFG_DRAM_SIZE_GB >= 4 && defined(CFG_ARM32_core) && \
+	defined(CFG_CORE_DYN_SHM) && !defined(CFG_LARGE_PHYS_ADDR))
+#error 32-bit TEE with CFG_CORE_DYN_SHM and without CFG_LARGE_PHYS_ADDR \
+	cannot support boards with 4G RAM or more
 #endif
 
 #else /* PLATFORM_FLAVOR_hikey */

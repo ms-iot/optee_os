@@ -50,7 +50,12 @@ ifneq ($(CFG_TEE_CORE_DEBUG),y)
 cppflags$(sm)  += -DNDEBUG
 endif
 
+cppflags$(sm)	+= -Ildelf/include
 cppflags$(sm)	+= -Ilib/libutee/include
+
+ifeq ($(filter y, $(CFG_CORE_DYN_SHM) $(CFG_CORE_RESERVED_SHM)),)
+$(error error: No shared memory configured)
+endif
 
 # Tell all libraries and sub-directories (included below) that we have a
 # configuration file
@@ -83,16 +88,44 @@ libname = utils
 libdir = lib/libutils
 include mk/lib.mk
 
+# CFG_CRYPTOLIB_NAME must not be changed beyond this line
+CFG_CRYPTOLIB_NAME_$(CFG_CRYPTOLIB_NAME) := y
+
+ifeq ($(CFG_CRYPTOLIB_NAME),tomcrypt)
+ifeq ($(CFG_CORE_MBEDTLS_MPI),y)
+# We're compiling mbedtls too, but with a limited configuration which only
+# provides the MPI routines
+libname = mbedtls
+libdir = lib/libmbedtls
+include mk/lib.mk
+else
 libname = mpa
 libdir = lib/libmpa
 include mk/lib.mk
-base-prefix :=
+endif
+endif #tomcrypt
 
-CFG_CRYPTOLIB_NAME ?= tomcrypt
-CFG_CRYPTOLIB_DIR ?= core/lib/libtomcrypt
+ifeq ($(CFG_CRYPTOLIB_NAME),mbedtls)
+$(call force,CFG_CRYPTO_RSASSA_NA1,n,not supported by mbedtls)
+libname = tomcrypt
+libdir = core/lib/libtomcrypt
+base-prefix :=
+include mk/lib.mk
+base-prefix := $(sm)-
+endif
+
+ifeq ($(firstword $(subst /, ,$(CFG_CRYPTOLIB_DIR))),core)
+# If a library can be compiled for both core and user space a base-prefix
+# is needed in order to avoid conflicts in the output. However, if the
+# library resides under core then it can't be compiled to user space.
+base-prefix :=
+endif
+
 libname = $(CFG_CRYPTOLIB_NAME)
 libdir = $(CFG_CRYPTOLIB_DIR)
 include mk/lib.mk
+
+base-prefix :=
 
 ifeq ($(CFG_DT),y)
 libname = fdt

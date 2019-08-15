@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <crypto/crypto.h>
+#include <kernel/huk_subkey.h>
 #include <kernel/misc.h>
 #include <kernel/msg_param.h>
 #include <kernel/mutex.h>
@@ -16,7 +17,7 @@
 #include <mm/core_memprot.h>
 #include <mm/mobj.h>
 #include <mm/tee_mm.h>
-#include <optee_msg_supplicant.h>
+#include <optee_rpc_cmd.h>
 #include <stdlib.h>
 #include <string_ext.h>
 #include <string.h>
@@ -268,49 +269,15 @@ out:
 
 #else /* !CFG_RPMB_TESTKEY */
 
-/*
- * NOTE: We need a common API to get hw unique key and it
- * should return error when the hw unique is not a valid
- * one as stated below.
- * We need to make sure the hw unique we get is valid by:
- * 1. In case of HUK is used, checking if OTP is hidden (in
- *    which case only zeros will be returned) or not;
- * 2. In case of SSK is used, checking if SSK in OTP is
- *    write_locked (which means a valid key is provisioned)
- *    or not.
- *
- * Maybe tee_get_hw_unique_key() should be exposed as
- * generic API for getting hw unique key!
- */
-static TEE_Result tee_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
-{
-	if (!hwkey)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	return tee_otp_get_hw_unique_key(hwkey);
-}
-
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
-	TEE_Result res;
-	struct tee_hw_unique_key hwkey;
 	uint8_t message[RPMB_EMMC_CID_SIZE];
-	void *ctx = NULL;
 
-	if (!key || RPMB_KEY_MAC_SIZE != len) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto out;
-	}
+	if (!key || RPMB_KEY_MAC_SIZE != len)
+		return TEE_ERROR_BAD_PARAMETERS;
 
 	IMSG("RPMB: Using generated key");
-	res = tee_get_hw_unique_key(&hwkey);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_mac_alloc_ctx(&ctx, TEE_ALG_HMAC_SHA256);
-	if (res)
-		goto out;
 
 	/*
 	 * PRV/CRC would be changed when doing eMMC FFU
@@ -323,22 +290,8 @@ static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 	memcpy(message, rpmb_ctx->cid, RPMB_EMMC_CID_SIZE);
 	memset(message + RPMB_CID_PRV_OFFSET, 0, 1);
 	memset(message + RPMB_CID_CRC_OFFSET, 0, 1);
-	res = crypto_mac_init(ctx, TEE_ALG_HMAC_SHA256, hwkey.data,
-			      HW_UNIQUE_KEY_LENGTH);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_mac_update(ctx, TEE_ALG_HMAC_SHA256,
-				    message,
-				    RPMB_EMMC_CID_SIZE);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_mac_final(ctx, TEE_ALG_HMAC_SHA256, key, len);
-
-out:
-	crypto_mac_free_ctx(ctx, TEE_ALG_HMAC_SHA256);
-	return res;
+	return huk_subkey_derive(HUK_SUBKEY_RPMB, message, sizeof(message),
+				 key, len);
 }
 
 #endif /* !CFG_RPMB_TESTKEY */
@@ -410,9 +363,7 @@ func_exit:
 
 struct tee_rpmb_mem {
 	struct mobj *phreq_mobj;
-	uint64_t phreq_cookie;
 	struct mobj *phresp_mobj;
-	uint64_t phresp_cookie;
 	size_t req_size;
 	size_t resp_size;
 };
@@ -423,13 +374,11 @@ static void tee_rpmb_free(struct tee_rpmb_mem *mem)
 		return;
 
 	if (mem->phreq_mobj) {
-		thread_rpc_free_payload(mem->phreq_cookie, mem->phreq_mobj);
-		mem->phreq_cookie = 0;
+		thread_rpc_free_payload(mem->phreq_mobj);
 		mem->phreq_mobj = NULL;
 	}
 	if (mem->phresp_mobj) {
-		thread_rpc_free_payload(mem->phresp_cookie, mem->phresp_mobj);
-		mem->phresp_cookie = 0;
+		thread_rpc_free_payload(mem->phresp_mobj);
 		mem->phresp_mobj = NULL;
 	}
 }
@@ -447,9 +396,8 @@ static TEE_Result tee_rpmb_alloc(size_t req_size, size_t resp_size,
 
 	memset(mem, 0, sizeof(*mem));
 
-	mem->phreq_mobj = thread_rpc_alloc_payload(req_s, &mem->phreq_cookie);
-	mem->phresp_mobj =
-		thread_rpc_alloc_payload(resp_s, &mem->phresp_cookie);
+	mem->phreq_mobj = thread_rpc_alloc_payload(req_s);
+	mem->phresp_mobj = thread_rpc_alloc_payload(resp_s);
 
 	if (!mem->phreq_mobj || !mem->phresp_mobj) {
 		res = TEE_ERROR_OUT_OF_MEMORY;
@@ -474,21 +422,14 @@ out:
 
 static TEE_Result tee_rpmb_invoke(struct tee_rpmb_mem *mem)
 {
-	struct optee_msg_param params[2];
+	struct thread_param params[2] = {
+		[0] = THREAD_PARAM_MEMREF(IN, mem->phreq_mobj, 0,
+					  mem->req_size),
+		[1] = THREAD_PARAM_MEMREF(OUT, mem->phresp_mobj, 0,
+					  mem->resp_size),
+	};
 
-	memset(params, 0, sizeof(params));
-
-	if (!msg_param_init_memparam(params + 0, mem->phreq_mobj, 0,
-				     mem->req_size, mem->phreq_cookie,
-				     MSG_PARAM_MEM_DIR_IN))
-		return TEE_ERROR_BAD_STATE;
-
-	if (!msg_param_init_memparam(params + 1, mem->phresp_mobj, 0,
-				     mem->resp_size, mem->phresp_cookie,
-				     MSG_PARAM_MEM_DIR_OUT))
-		return TEE_ERROR_BAD_STATE;
-
-	return thread_rpc_cmd(OPTEE_MSG_RPC_CMD_RPMB, 2, params);
+	return thread_rpc_cmd(OPTEE_RPC_CMD_RPMB, 2, params);
 }
 
 static bool is_zero(const uint8_t *buf, size_t size)
@@ -882,9 +823,9 @@ static TEE_Result tee_rpmb_resp_unpack_verify(struct rpmb_data_frame *datafrm,
 		}
 
 #ifndef CFG_RPMB_FS_NO_MAC
-		if (buf_compare_ct(rawdata->key_mac,
-				   (datafrm + nbr_frms - 1)->key_mac,
-				   RPMB_KEY_MAC_SIZE) != 0) {
+		if (consttime_memcmp(rawdata->key_mac,
+				     (datafrm + nbr_frms - 1)->key_mac,
+				     RPMB_KEY_MAC_SIZE) != 0) {
 			DMSG("MAC mismatched:");
 #ifdef CFG_RPMB_FS_DEBUG_DATA
 			DHEXDUMP((uint8_t *)rawdata->key_mac, 32);
@@ -1023,7 +964,7 @@ static TEE_Result tee_rpmb_verify_key_sync_counter(uint16_t dev_id)
 		rpmb_ctx->wr_cnt_synced = true;
 	}
 
-	DMSG("Verify key returning 0x%x\n", res);
+	DMSG("Verify key returning 0x%x", res);
 	return res;
 }
 
@@ -1100,6 +1041,7 @@ static TEE_Result tee_rpmb_init(uint16_t dev_id)
 {
 	TEE_Result res = TEE_SUCCESS;
 	struct rpmb_dev_info dev_info;
+	uint32_t nblocks = 0;
 
 	if (!rpmb_ctx) {
 		rpmb_ctx = calloc(1, sizeof(struct tee_rpmb_ctx));
@@ -1129,8 +1071,12 @@ static TEE_Result tee_rpmb_init(uint16_t dev_id)
 			goto func_exit;
 		}
 
-		rpmb_ctx->max_blk_idx = (dev_info.rpmb_size_mult *
-					 RPMB_SIZE_SINGLE / RPMB_DATA_SIZE) - 1;
+		if (MUL_OVERFLOW(dev_info.rpmb_size_mult,
+				 RPMB_SIZE_SINGLE / RPMB_DATA_SIZE, &nblocks) ||
+		    SUB_OVERFLOW(nblocks, 1, &rpmb_ctx->max_blk_idx)) {
+			res = TEE_ERROR_BAD_PARAMETERS;
+			goto func_exit;
+		}
 
 		memcpy(rpmb_ctx->cid, dev_info.cid, RPMB_EMMC_CID_SIZE);
 
@@ -1204,6 +1150,10 @@ static TEE_Result tee_rpmb_read(uint16_t dev_id, uint32_t addr, uint8_t *data,
 	blk_idx = addr / RPMB_DATA_SIZE;
 	byte_offset = addr % RPMB_DATA_SIZE;
 
+	if (len + byte_offset + RPMB_DATA_SIZE < RPMB_DATA_SIZE) {
+		/* Overflow */
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
 	blkcnt =
 	    ROUNDUP(len + byte_offset, RPMB_DATA_SIZE) / RPMB_DATA_SIZE;
 	res = tee_rpmb_init(dev_id);
@@ -2061,8 +2011,14 @@ static TEE_Result rpmb_fs_write_primitive(struct rpmb_file_handle *fh,
 	if (fh->fat_entry.flags & FILE_IS_LAST_ENTRY)
 		panic("invalid last entry flag");
 
-	end = pos + size;
-	start_addr = fh->fat_entry.start_address + pos;
+	if (ADD_OVERFLOW(pos, size, &end)) {
+		res = TEE_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
+	if (ADD_OVERFLOW(fh->fat_entry.start_address, pos, &start_addr)) {
+		res = TEE_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
 
 	if (end <= fh->fat_entry.data_size &&
 	    tee_rpmb_write_is_atomic(CFG_RPMB_FS_DEV_ID, start_addr, size)) {

@@ -88,6 +88,15 @@ const struct ta_head ta_head __section(".ta_head") = {
 	.depr_entry = UINT64_MAX,
 };
 
+volatile struct ta_info ta_info __section(".ta_info") = {
+	.rva = 0,
+};
+
+uintptr_t tainfo_get_rva(void)
+{
+	return ta_info.rva;
+}
+
 /* Keeping the heap in bss */
 uint8_t ta_heap[TA_DATA_SIZE];
 const size_t ta_heap_size = sizeof(ta_heap);

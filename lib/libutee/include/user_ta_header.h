@@ -27,20 +27,47 @@
 
 #define TA_FLAGS_MASK			GENMASK_32(9, 0)
 
-union ta_head_func_ptr {
+struct ta_head {
+	TEE_UUID uuid;
+	uint32_t stack_size;
+	uint32_t flags;
+	uint64_t depr_entry;
+};
+
+#if defined(CFG_TA_FTRACE_SUPPORT)
+#define FTRACE_RETFUNC_DEPTH		50
+union compat_ptr {
 	uint64_t ptr64;
-	struct ta_head_func_ptr32 {
+	struct {
 		uint32_t lo;
 		uint32_t hi;
 	} ptr32;
 };
 
-struct ta_head {
-	TEE_UUID uuid;
-	uint32_t stack_size;
-	uint32_t flags;
-	union ta_head_func_ptr entry;
+struct __ftrace_info {
+	union compat_ptr buf_start;
+	union compat_ptr buf_end;
+	union compat_ptr ret_ptr;
 };
+
+struct ftrace_buf {
+	uint64_t ret_func_ptr;	/* __ftrace_return pointer */
+	uint64_t ret_stack[FTRACE_RETFUNC_DEPTH]; /* Return stack */
+	uint32_t ret_idx;	/* Return stack index */
+	uint32_t lr_idx;	/* lr index used for stack unwinding */
+	uint32_t curr_size;	/* Size of ftrace buffer */
+	uint32_t max_size;	/* Max allowed size of ftrace buffer */
+	uint32_t head_off;	/* Ftrace buffer header offset */
+	uint32_t buf_off;	/* Ftrace buffer offset */
+};
+
+/* Defined by the linker script */
+extern struct ftrace_buf __ftrace_buf_start;
+extern uint8_t __ftrace_buf_end[];
+
+unsigned long ftrace_return(void);
+void __ftrace_return(void);
+#endif
 
 #define TA_PROP_STR_SINGLE_INSTANCE	"gpd.ta.singleInstance"
 #define TA_PROP_STR_MULTI_SESSION	"gpd.ta.multiSession"

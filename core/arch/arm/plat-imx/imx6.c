@@ -31,6 +31,7 @@
 #include <compiler.h>
 #include <drivers/gic.h>
 #include <io.h>
+#include <imx_caam.h>
 #include <kernel/generic_boot.h>
 #include <kernel/misc.h>
 #include <kernel/tz_ssvce_pl310.h>
@@ -79,5 +80,6 @@ void plat_cpu_reset_late(void)
 		     addr += 4)
 			io_setbits32(addr, CSU_SETTING_LOCK);
 		imx_configure_tzasc();
+		init_caam();
 	}
 }

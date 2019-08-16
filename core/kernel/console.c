@@ -56,26 +56,19 @@ static int find_chosen_node(void *fdt)
 	return offset;
 }
 
-TEE_Result get_console_node_from_dt(void **fdt_out, int *offs_out,
-				    const char **path_out,
-				    const char **params_out)
+TEE_Result get_console_node_from_dt(void *fdt, int *offs_out,
+				    char **path_out, char **params_out)
 {
 	const struct fdt_property *prop;
 	const char *uart;
 	const char *parms = NULL;
-	void *fdt;
 	int offs;
 	char *stdout_data;
 	char *p;
 	TEE_Result rc = TEE_ERROR_GENERIC;
 
 	/* Probe console from secure DT and fallback to non-secure DT */
-	fdt = get_embedded_dt();
 	offs = find_chosen_node(fdt);
-	if (offs < 0) {
-		fdt = get_external_dt();
-		offs = find_chosen_node(fdt);
-	}
 	if (offs < 0) {
 		DMSG("No console directive from DTB");
 		return TEE_ERROR_ITEM_NOT_FOUND;
@@ -109,14 +102,12 @@ TEE_Result get_console_node_from_dt(void **fdt_out, int *offs_out,
 	}
 	offs = fdt_path_offset(fdt, uart);
 	if (offs >= 0) {
-		if (fdt_out)
-			*fdt_out = fdt;
 		if (offs_out)
 			*offs_out = offs;
 		if (params_out)
-			*params_out = parms;
+			*params_out = parms ? nex_strdup(parms) : NULL;
 		if (path_out)
-			*path_out = uart;
+			*path_out = uart ? nex_strdup(uart) : NULL;
 
 		rc = TEE_SUCCESS;
 	}
@@ -131,25 +122,26 @@ void configure_console_from_dt(void)
 	const struct dt_driver *dt_drv;
 	const struct serial_driver *sdrv;
 	struct serial_chip *dev;
-	const char *uart;
-	const char *parms;
+	char *uart = NULL;
+	char *parms = NULL;
 	void *fdt;
 	int offs;
 
-	if (get_console_node_from_dt(&fdt, &offs, &uart, &parms))
+	fdt = get_external_dt();
+	if (get_console_node_from_dt(fdt, &offs, &uart, &parms))
 		return;
 
 	dt_drv = dt_find_compatible_driver(fdt, offs);
 	if (!dt_drv)
-		return;
+		goto out;
 
 	sdrv = (const struct serial_driver *)dt_drv->driver;
 	if (!sdrv)
-		return;
+		goto out;
 
 	dev = sdrv->dev_alloc();
 	if (!dev)
-		return;
+		goto out;
 
 	/*
 	 * If the console is the same as the early console, dev_init() might
@@ -158,11 +150,14 @@ void configure_console_from_dt(void)
 	console_flush();
 	if (sdrv->dev_init(dev, fdt, offs, parms) < 0) {
 		sdrv->dev_free(dev);
-		return;
+		goto out;
 	}
 
 	IMSG("Switching console to device: %s", uart);
 	register_serial_console(dev);
+out:
+	nex_free(uart);
+	nex_free(parms);
 }
 
 #endif /* CFG_DT */

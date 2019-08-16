@@ -151,10 +151,11 @@
 #define I2C_ICR_ALERTCF			BIT(13)
 
 /* Max data size for a single I2C transfer */
-#define MAX_NBYTE_SIZE		255U
+#define MAX_NBYTE_SIZE			255U
 
-#define I2C_NSEC_PER_SEC	1000000000L
-#define I2C_TIMEOUT_BUSY_MS		25U
+#define I2C_NSEC_PER_SEC		1000000000L
+#define I2C_TIMEOUT_BUSY_MS		25
+#define I2C_TIMEOUT_BUSY_US		(I2C_TIMEOUT_BUSY_MS * 1000)
 
 #define CR2_RESET_MASK			(I2C_CR2_SADD | I2C_CR2_HEAD10R | \
 					 I2C_CR2_NBYTES | I2C_CR2_RELOAD | \
@@ -234,28 +235,11 @@ struct i2c_timing_s {
 	bool is_saved;
 };
 
-/*
- * I2C specification values as per version 6.0, 4th of April 2014 [1],
- * table 10 page 48: Characteristics of the SDA and SCL bus lines for
- * Standard, Fast, and Fast-mode Plus I2C-bus devices.
- *
- * [1] https://www.nxp.com/docs/en/user-guide/UM10204.pdf
- */
-enum i2c_speed_e {
-	I2C_SPEED_STANDARD,	/* 100 kHz */
-	I2C_SPEED_FAST,		/* 400 kHz */
-	I2C_SPEED_FAST_PLUS,	/* 1 MHz   */
-};
-
-#define STANDARD_RATE				100000
-#define FAST_RATE				400000
-#define FAST_PLUS_RATE				1000000
-
 static const struct i2c_spec_s i2c_specs[] = {
 	[I2C_SPEED_STANDARD] = {
-		.rate = STANDARD_RATE,
-		.rate_min = (STANDARD_RATE * 80) / 100,
-		.rate_max = (STANDARD_RATE * 120) / 100,
+		.rate = I2C_STANDARD_RATE,
+		.rate_min = (I2C_STANDARD_RATE * 80) / 100,
+		.rate_max = (I2C_STANDARD_RATE * 120) / 100,
 		.fall_max = 300,
 		.rise_max = 1000,
 		.hddat_min = 0,
@@ -265,9 +249,9 @@ static const struct i2c_spec_s i2c_specs[] = {
 		.h_min = 4000,
 	},
 	[I2C_SPEED_FAST] = {
-		.rate = FAST_RATE,
-		.rate_min = (FAST_RATE * 80) / 100,
-		.rate_max = (FAST_RATE * 120) / 100,
+		.rate = I2C_FAST_RATE,
+		.rate_min = (I2C_FAST_RATE * 80) / 100,
+		.rate_max = (I2C_FAST_RATE * 120) / 100,
 		.fall_max = 300,
 		.rise_max = 300,
 		.hddat_min = 0,
@@ -277,9 +261,9 @@ static const struct i2c_spec_s i2c_specs[] = {
 		.h_min = 600,
 	},
 	[I2C_SPEED_FAST_PLUS] = {
-		.rate = FAST_PLUS_RATE,
-		.rate_min = (FAST_PLUS_RATE * 80) / 100,
-		.rate_max = (FAST_PLUS_RATE * 120) / 100,
+		.rate = I2C_FAST_PLUS_RATE,
+		.rate_min = (I2C_FAST_PLUS_RATE * 80) / 100,
+		.rate_max = (I2C_FAST_PLUS_RATE * 120) / 100,
 		.fall_max = 100,
 		.rise_max = 120,
 		.hddat_min = 0,
@@ -308,7 +292,7 @@ struct i2c_request {
 
 static vaddr_t get_base(struct i2c_handle_s *hi2c)
 {
-	return io_pa_or_va(&hi2c->base);
+	return io_pa_or_va_secure(&hi2c->base);
 }
 
 static void notif_i2c_timeout(struct i2c_handle_s *hi2c)
@@ -654,11 +638,13 @@ int stm32_i2c_get_setup_from_fdt(void *fdt, int node,
 {
 	const fdt32_t *cuint = NULL;
 	struct dt_node_info info = { .status = 0 };
+	int count = 0;
 
 	/* Default STM32 specific configs caller may need to overwrite */
 	memset(init, 0, sizeof(*init));
 
 	_fdt_fill_device_info(fdt, &info, node);
+	init->dt_status = info.status;
 	init->pbase = info.reg;
 	init->clock = info.clock;
 	assert(info.reg != DT_INFO_INVALID_REG &&
@@ -679,13 +665,13 @@ int stm32_i2c_get_setup_from_fdt(void *fdt, int node,
 	cuint = fdt_getprop(fdt, node, "clock-frequency", NULL);
 	if (cuint) {
 		switch (fdt32_to_cpu(*cuint)) {
-		case STANDARD_RATE:
+		case I2C_STANDARD_RATE:
 			init->speed_mode = I2C_SPEED_STANDARD;
 			break;
-		case FAST_RATE:
+		case I2C_FAST_RATE:
 			init->speed_mode = I2C_SPEED_FAST;
 			break;
-		case FAST_PLUS_RATE:
+		case I2C_FAST_PLUS_RATE:
 			init->speed_mode = I2C_SPEED_FAST_PLUS;
 			break;
 		default:
@@ -725,6 +711,7 @@ int stm32_i2c_init(struct i2c_handle_s *hi2c,
 	vaddr_t base = 0;
 	uint32_t val = 0;
 
+	hi2c->dt_status = init_data->dt_status;
 	hi2c->base.pa = init_data->pbase;
 	hi2c->clock = init_data->clock;
 
@@ -901,7 +888,7 @@ static int i2c_wait_txis(struct i2c_handle_s *hi2c, uint64_t timeout_ref)
 /* Wait STOPF bit is 1 in I2C_ISR register */
 static int i2c_wait_stop(struct i2c_handle_s *hi2c, uint64_t timeout_ref)
 {
-	while (timeout_elapsed(timeout_ref)) {
+	while (!timeout_elapsed(timeout_ref)) {
 		if (io_read32(get_base(hi2c) + I2C_ISR) & I2C_ISR_STOPF)
 			break;
 
@@ -1165,6 +1152,81 @@ int stm32_i2c_master_transmit(struct i2c_handle_s *hi2c, uint32_t dev_addr,
 	};
 
 	return i2c_write(hi2c, &request, p_data, size);
+}
+
+int stm32_i2c_read_write_membyte(struct i2c_handle_s *hi2c, uint16_t dev_addr,
+				 unsigned int mem_addr, uint8_t *p_data,
+				 bool write)
+{
+	uint64_t timeout_ref = 0;
+	uintptr_t base = get_base(hi2c);
+	int rc = -1;
+	uint8_t *p_buff = p_data;
+	uint32_t event_mask = 0;
+
+	if (hi2c->i2c_state != I2C_STATE_READY || !p_data)
+		return -1;
+
+	stm32_clock_enable(hi2c->clock);
+
+	timeout_ref = timeout_init_us(I2C_TIMEOUT_BUSY_US);
+	if (wait_isr_event(hi2c, I2C_ISR_BUSY, 0, timeout_ref))
+		goto bail;
+
+	hi2c->i2c_state = write ? I2C_STATE_BUSY_TX : I2C_STATE_BUSY_RX;
+	hi2c->i2c_err = I2C_ERROR_NONE;
+
+	i2c_transfer_config(hi2c, dev_addr, I2C_MEMADD_SIZE_8BIT,
+			    write ? I2C_RELOAD_MODE : I2C_SOFTEND_MODE,
+			    I2C_GENERATE_START_WRITE);
+
+	timeout_ref = timeout_init_us(I2C_TIMEOUT_BUSY_US);
+	if (i2c_wait_txis(hi2c, timeout_ref))
+		goto bail;
+
+	io_write8(base + I2C_TXDR, mem_addr);
+
+	if (write)
+		event_mask = I2C_ISR_TCR;
+	else
+		event_mask = I2C_ISR_TC;
+
+	timeout_ref = timeout_init_us(I2C_TIMEOUT_BUSY_US);
+	if (wait_isr_event(hi2c, event_mask, 1, timeout_ref))
+		goto bail;
+
+	i2c_transfer_config(hi2c, dev_addr, I2C_MEMADD_SIZE_8BIT,
+			    I2C_AUTOEND_MODE,
+			    write ? I2C_NO_STARTSTOP : I2C_GENERATE_START_READ);
+
+	timeout_ref = timeout_init_us(I2C_TIMEOUT_BUSY_US);
+	if (write) {
+		if (i2c_wait_txis(hi2c, timeout_ref))
+			goto bail;
+
+		io_write8(base + I2C_TXDR, *p_buff);
+	} else {
+		if (wait_isr_event(hi2c, I2C_ISR_RXNE, 1, timeout_ref))
+			goto bail;
+
+		*p_buff = io_read8(base + I2C_RXDR);
+	}
+
+	timeout_ref = timeout_init_us(I2C_TIMEOUT_BUSY_US);
+	if (i2c_wait_stop(hi2c, timeout_ref))
+		goto bail;
+
+	io_write32(base + I2C_ICR, I2C_ISR_STOPF);
+	io_clrbits32(base + I2C_CR2, CR2_RESET_MASK);
+
+	hi2c->i2c_state = I2C_STATE_READY;
+
+	rc = 0;
+
+bail:
+	stm32_clock_disable(hi2c->clock);
+
+	return rc;
 }
 
 /*

@@ -20,6 +20,7 @@
 #include <malloc.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
+#include <mm/fobj.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
@@ -331,12 +332,16 @@ static void init_runtime(unsigned long pageable_part)
 {
 	size_t n;
 	size_t init_size = (size_t)__init_size;
-	size_t pageable_size = __pageable_end - __pageable_start;
+	size_t pageable_start = (size_t)__pageable_start;
+	size_t pageable_end = (size_t)__pageable_end;
+	size_t pageable_size = pageable_end - pageable_start;
+	size_t tzsram_end = TZSRAM_BASE + TZSRAM_SIZE;
 	size_t hash_size = (pageable_size / SMALL_PAGE_SIZE) *
 			   TEE_SHA256_HASH_SIZE;
-	tee_mm_entry_t *mm;
-	uint8_t *paged_store;
-	uint8_t *hashes;
+	tee_mm_entry_t *mm = NULL;
+	struct fobj *fobj = NULL;
+	uint8_t *paged_store = NULL;
+	uint8_t *hashes = NULL;
 
 	assert(pageable_size % SMALL_PAGE_SIZE == 0);
 	assert(hash_size == (size_t)__tmp_hashes_size);
@@ -435,13 +440,19 @@ static void init_runtime(unsigned long pageable_part)
 	mm = tee_mm_alloc2(&tee_mm_vcore, (vaddr_t)__pageable_start,
 			   pageable_size);
 	assert(mm);
-	tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
-				TEE_MATTR_PRX, paged_store, hashes);
+	fobj = fobj_ro_paged_alloc(tee_mm_get_bytes(mm) / SMALL_PAGE_SIZE,
+				   hashes, paged_store);
+	assert(fobj);
+	tee_pager_add_core_area(tee_mm_get_smem(mm), PAGER_AREA_TYPE_RO, fobj);
+	fobj_put(fobj);
 
-	tee_pager_add_pages((vaddr_t)__pageable_start,
-			init_size / SMALL_PAGE_SIZE, false);
-	tee_pager_add_pages((vaddr_t)__pageable_start + init_size,
-			(pageable_size - init_size) / SMALL_PAGE_SIZE, true);
+	tee_pager_add_pages(pageable_start, init_size / SMALL_PAGE_SIZE, false);
+	tee_pager_add_pages(pageable_start + init_size,
+			    (pageable_size - init_size) / SMALL_PAGE_SIZE,
+			    true);
+	if (pageable_end < tzsram_end)
+		tee_pager_add_pages(pageable_end, (tzsram_end - pageable_end) /
+						   SMALL_PAGE_SIZE, true);
 
 	/*
 	 * There may be physical pages in TZSRAM before the core load address.
@@ -497,13 +508,14 @@ void *get_embedded_dt(void)
 	assert(cpu_mmu_enabled());
 
 	if (!checked) {
+		IMSG("Embedded DTB found");
+
 		if (fdt_check_header(embedded_secure_dtb))
 			panic("Invalid embedded DTB");
 
 		checked = true;
 	}
 
-	IMSG("Embedded DTB found");
 	return embedded_secure_dtb;
 }
 #else
@@ -735,28 +747,6 @@ static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
 	}
 }
 
-static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
-				       uint32_t cell_size)
-{
-	uint64_t rv;
-
-	if (cell_size == 1) {
-		uint32_t v;
-
-		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
-		*offs += sizeof(v);
-		rv = fdt32_to_cpu(v);
-	} else {
-		uint64_t v;
-
-		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
-		*offs += sizeof(v);
-		rv = fdt64_to_cpu(v);
-	}
-
-	return rv;
-}
-
 static int add_res_mem_dt_node(struct dt_descriptor *dt, const char *name,
 			       paddr_t pa, size_t size)
 {
@@ -818,16 +808,39 @@ static int add_res_mem_dt_node(struct dt_descriptor *dt, const char *name,
 	return 0;
 }
 
+#ifdef CFG_CORE_DYN_SHM
+static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
+				       uint32_t cell_size)
+{
+	uint64_t rv = 0;
+
+	if (cell_size == 1) {
+		uint32_t v;
+
+		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
+		*offs += sizeof(v);
+		rv = fdt32_to_cpu(v);
+	} else {
+		uint64_t v;
+
+		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
+		*offs += sizeof(v);
+		rv = fdt64_to_cpu(v);
+	}
+
+	return rv;
+}
+
 static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 {
-	int offs;
-	int addr_size;
-	int len_size;
-	size_t prop_len;
-	const uint8_t *prop;
-	size_t prop_offs;
-	size_t n;
-	struct core_mmu_phys_mem *mem;
+	int offs = 0;
+	int addr_size = 0;
+	int len_size = 0;
+	size_t prop_len = 0;
+	const uint8_t *prop = NULL;
+	size_t prop_offs = 0;
+	size_t n = 0;
+	struct core_mmu_phys_mem *mem = NULL;
 
 	offs = fdt_subnode_offset(fdt, 0, "memory");
 	if (offs < 0)
@@ -873,7 +886,9 @@ static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 
 	return mem;
 }
+#endif /*CFG_CORE_DYN_SHM*/
 
+#ifdef CFG_CORE_RESERVED_SHM
 static int mark_static_shm_as_reserved(struct dt_descriptor *dt)
 {
 	vaddr_t shm_start;
@@ -888,6 +903,7 @@ static int mark_static_shm_as_reserved(struct dt_descriptor *dt)
 	DMSG("No SHM configured");
 	return -1;
 }
+#endif /*CFG_CORE_RESERVED_SHM*/
 
 static void init_external_dt(unsigned long phys_dt)
 {
@@ -954,8 +970,10 @@ static void update_external_dt(void)
 	if (config_psci(dt))
 		panic("Failed to config PSCI");
 
+#ifdef CFG_CORE_RESERVED_SHM
 	if (mark_static_shm_as_reserved(dt))
 		panic("Failed to config non-secure memory");
+#endif
 
 	if (mark_tzdram_as_reserved(dt))
 		panic("Failed to config secure memory");
@@ -985,18 +1003,21 @@ static void update_external_dt(void)
 {
 }
 
+#ifdef CFG_CORE_DYN_SHM
 static struct core_mmu_phys_mem *get_memory(void *fdt __unused,
 					    size_t *nelems __unused)
 {
 	return NULL;
 }
+#endif /*CFG_CORE_DYN_SHM*/
 #endif /*!CFG_DT*/
 
+#ifdef CFG_CORE_DYN_SHM
 static void discover_nsec_memory(void)
 {
 	struct core_mmu_phys_mem *mem;
 	size_t nelems;
-	void *fdt = get_dt();
+	void *fdt = get_external_dt();
 
 	if (fdt) {
 		mem = get_memory(fdt, &nelems);
@@ -1022,6 +1043,11 @@ static void discover_nsec_memory(void)
 	memcpy(mem, phys_ddr_overall_begin, sizeof(*mem) * nelems);
 	core_mmu_set_discovered_nsec_ddr(mem, nelems);
 }
+#else /*CFG_CORE_DYN_SHM*/
+static void discover_nsec_memory(void)
+{
+}
+#endif /*!CFG_CORE_DYN_SHM*/
 
 void init_tee_runtime(void)
 {

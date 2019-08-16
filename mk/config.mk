@@ -74,6 +74,9 @@ CFG_TEE_CORE_TA_TRACE ?= y
 #   $ make CFG_TEE_CORE_MALLOC_DEBUG=y CFG_TEE_CORE_LOG_LEVEL=3
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
 CFG_TEE_TA_MALLOC_DEBUG ?= n
+# Prints an error message and dumps the stack on failed memory allocations
+# using malloc() and friends.
+CFG_CORE_DUMP_OOM ?= $(CFG_TEE_CORE_MALLOC_DEBUG)
 
 # Mask to select which messages are prefixed with long debugging information
 # (severity, core ID, thread ID, component name, function name, line number)
@@ -113,7 +116,7 @@ endif
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 3
-CFG_OPTEE_REVISION_MINOR ?= 4
+CFG_OPTEE_REVISION_MINOR ?= 6
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -262,9 +265,6 @@ ifeq ($(CFG_EARLY_TA),y)
 $(call force,CFG_ZLIB,y)
 endif
 
-# Support for dynamically linked user TAs
-CFG_TA_DYNLINK ?= y
-
 # Enable paging, requires SRAM, can't be enabled by default
 CFG_WITH_PAGER ?= n
 
@@ -350,12 +350,19 @@ CFG_CORE_NEX_HEAP_SIZE ?= 16384
 # tee-supplicant)
 CFG_TA_GPROF_SUPPORT ?= n
 
-# Enable to compile user TA libraries with profiling (-pg).
-# Depends on CFG_TA_GPROF_SUPPORT.
-CFG_ULIBS_GPROF ?= n
+# TA function tracing.
+# When this option is enabled, OP-TEE can execute Trusted Applications
+# instrumented with GCC's -pg flag and will output function tracing
+# information in ftrace.out format to /tmp/ftrace-<ta_uuid>.out (path is
+# defined in tee-supplicant)
+CFG_TA_FTRACE_SUPPORT ?= n
 
-ifeq ($(CFG_ULIBS_GPROF),y)
-ifneq ($(CFG_TA_GPROF_SUPPORT),y)
+# Enable to compile user TA libraries with profiling (-pg).
+# Depends on CFG_TA_GPROF_SUPPORT or CFG_TA_FTRACE_SUPPORT.
+CFG_ULIBS_MCOUNT ?= n
+
+ifeq ($(CFG_ULIBS_MCOUNT),y)
+ifeq (,$(filter y,$(CFG_TA_GPROF_SUPPORT) $(CFG_TA_FTRACE_SUPPORT)))
 $(error Cannot instrument user libraries if user mode profiling is disabled)
 endif
 endif
@@ -369,6 +376,19 @@ endif
 #   The '.ta' file is a signed version of the '.so' and should be installed
 #   in the same way as TAs so that they can be found at runtime.
 CFG_ULIBS_SHARED ?= n
+
+ifeq (yy,$(CFG_TA_GPROF_SUPPORT)$(CFG_ULIBS_SHARED))
+# FIXME:
+# TA profiling with gprof does not work well with shared libraries (not limited
+# to CFG_ULIBS_SHARED=y actually), because the total .text size is not known at
+# link time. The symptom is an error trace when the TA starts (and no gprof
+# output is produced):
+#  E/TA: __utee_gprof_init:159 gprof: could not allocate profiling buffer
+# The allocation of the profiling buffer should probably be done at runtime
+# via a new syscall/PTA call instead of having it pre-allocated in .bss by the
+# linker.
+$(error CFG_TA_GPROF_SUPPORT and CFG_ULIBS_SHARED are currently incompatible)
+endif
 
 # CFG_GP_SOCKETS
 # Enable Global Platform Sockets support
@@ -402,12 +422,13 @@ CFG_DEVICE_ENUM_PTA ?= y
 # Default is 2**(2) = 4 cores per cluster.
 CFG_CORE_CLUSTER_SHIFT ?= 2
 
-# Do not report to NW that dynamic shared memory (shared memory outside
-# predefined region) is enabled.
-# Note that you can disable this feature for debug purposes. OP-TEE will not
-# report to Normal World that it support dynamic SHM. But, nevertheles it
-# will accept dynamic SHM buffers.
-CFG_DYN_SHM_CAP ?= y
+# Enable support for dynamic shared memory (shared memory anywhere in
+# non-secure memory).
+CFG_CORE_DYN_SHM ?= y
+
+# Enable support for reserved shared memory (shared memory in a carved out
+# memory area).
+CFG_CORE_RESERVED_SHM ?= y
 
 # Enables support for larger physical addresses, that is, it will define
 # paddr_t as a 64-bit type.
@@ -463,3 +484,5 @@ $(call force,CFG_CORE_RWDATA_NOEXEC,y)
 CFG_VIRT_GUEST_COUNT ?= 2
 endif
 
+# Enables backwards compatible derivation of RPMB and SSK keys
+CFG_CORE_HUK_SUBKEY_COMPAT ?= y

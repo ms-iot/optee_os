@@ -31,7 +31,7 @@ static struct mempool *get_mpa_scratch_memory_pool(void)
 
 	size = ROUNDUP((LTC_MEMPOOL_U32_SIZE * sizeof(uint32_t)),
 		        SMALL_PAGE_SIZE);
-	data = tee_pager_alloc(size, 0);
+	data = tee_pager_alloc(size);
 	if (!data)
 		panic();
 
@@ -60,6 +60,8 @@ void init_mp_tomcrypt(void)
 	if (!mem.pool)
 		panic();
 	external_mem_pool = &mem;
+	assert(!mempool_default);
+	mempool_default = mem.pool;
 }
 
 static int init_mpanum(mpanum *a)

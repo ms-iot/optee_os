@@ -28,6 +28,9 @@
 #ifdef CFG_WITH_NSEC_GPIOS
 register_phys_mem_pgdir(MEM_AREA_IO_NSEC, GPIOS_NSEC_BASE, GPIOS_NSEC_SIZE);
 #endif
+register_phys_mem_pgdir(MEM_AREA_IO_NSEC, I2C4_BASE, SMALL_PAGE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_NSEC, I2C6_BASE, SMALL_PAGE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_NSEC, RNG1_BASE, SMALL_PAGE_SIZE);
 #ifdef CFG_WITH_NSEC_UARTS
 register_phys_mem_pgdir(MEM_AREA_IO_NSEC, USART1_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_NSEC, USART2_BASE, SMALL_PAGE_SIZE);
@@ -43,6 +46,8 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, BSEC_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, ETZPC_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GIC_BASE, GIC_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GPIOZ_BASE, SMALL_PAGE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, I2C4_BASE, SMALL_PAGE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, I2C6_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, PWR_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, RCC_BASE, SMALL_PAGE_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, RNG1_BASE, SMALL_PAGE_SIZE);
@@ -139,9 +144,18 @@ static TEE_Result init_console_from_dt(void)
 	struct stm32_uart_pdata *pd = NULL;
 	void *fdt = NULL;
 	int node = 0;
+	TEE_Result res = TEE_ERROR_GENERIC;
 
-	if (get_console_node_from_dt(&fdt, &node, NULL, NULL))
-		return TEE_SUCCESS;
+	fdt = get_embedded_dt();
+	res = get_console_node_from_dt(fdt, &node, NULL, NULL);
+	if (res == TEE_ERROR_ITEM_NOT_FOUND) {
+		fdt = get_external_dt();
+		res = get_console_node_from_dt(fdt, &node, NULL, NULL);
+		if (res == TEE_ERROR_ITEM_NOT_FOUND)
+			return TEE_SUCCESS;
+		if (res != TEE_SUCCESS)
+			return res;
+	}
 
 	pd = stm32_uart_init_from_dt_node(fdt, node);
 	if (!pd) {
@@ -240,14 +254,14 @@ vaddr_t get_gicc_base(void)
 {
 	struct io_pa_va base = { .pa = GIC_BASE + GICC_OFFSET };
 
-	return io_pa_or_va(&base);
+	return io_pa_or_va_secure(&base);
 }
 
 vaddr_t get_gicd_base(void)
 {
 	struct io_pa_va base = { .pa = GIC_BASE + GICD_OFFSET };
 
-	return io_pa_or_va(&base);
+	return io_pa_or_va_secure(&base);
 }
 
 void stm32mp_get_bsec_static_cfg(struct stm32_bsec_static_cfg *cfg)
@@ -257,6 +271,19 @@ void stm32mp_get_bsec_static_cfg(struct stm32_bsec_static_cfg *cfg)
 	cfg->max_id = STM32MP1_OTP_MAX_ID;
 	cfg->closed_device_id = DATA0_OTP;
 	cfg->closed_device_position = DATA0_OTP_SECURED_POS;
+}
+
+bool stm32mp_is_closed_device(void)
+{
+	uint32_t otp = 0;
+	TEE_Result result = TEE_ERROR_GENERIC;
+
+	/* Non closed_device platform expects fuse well programmed to 0 */
+	result = stm32_bsec_shadow_read_otp(&otp, DATA0_OTP);
+	if (!result && !(otp & BIT(DATA0_OTP_SECURED_POS)))
+		return false;
+
+	return true;
 }
 
 uint32_t may_spin_lock(unsigned int *lock)
@@ -279,7 +306,7 @@ static vaddr_t stm32_tamp_base(void)
 {
 	static struct io_pa_va base = { .pa = TAMP_BASE };
 
-	return io_pa_or_va(&base);
+	return io_pa_or_va_secure(&base);
 }
 
 static vaddr_t bkpreg_base(void)
@@ -297,13 +324,14 @@ vaddr_t stm32_get_gpio_bank_base(unsigned int bank)
 	static struct io_pa_va gpios_nsec_base = { .pa = GPIOS_NSEC_BASE };
 	static struct io_pa_va gpioz_base = { .pa = GPIOZ_BASE };
 
+	/* Get non-secure mapping address for GPIOZ */
 	if (bank == GPIO_BANK_Z)
-		return io_pa_or_va(&gpioz_base);
+		return io_pa_or_va_nsec(&gpioz_base);
 
 	COMPILE_TIME_ASSERT(GPIO_BANK_A == 0);
 	assert(bank <= GPIO_BANK_K);
 
-	return io_pa_or_va(&gpios_nsec_base) + (bank * GPIO_BANK_OFFSET);
+	return io_pa_or_va_nsec(&gpios_nsec_base) + (bank * GPIO_BANK_OFFSET);
 }
 
 unsigned int stm32_get_gpio_bank_offset(unsigned int bank)

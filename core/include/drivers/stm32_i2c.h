@@ -7,6 +7,7 @@
 #define __STM32_I2C_H
 
 #include <drivers/stm32_gpio.h>
+#include <kernel/dt.h>
 #include <mm/core_memprot.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,9 +15,27 @@
 #include <types_ext.h>
 
 /*
+ * I2C specification values as per version 6.0, 4th of April 2014 [1],
+ * table 10 page 48: Characteristics of the SDA and SCL bus lines for
+ * Standard, Fast, and Fast-mode Plus I2C-bus devices.
+ *
+ * [1] https://www.nxp.com/docs/en/user-guide/UM10204.pdf
+ */
+enum i2c_speed_e {
+	I2C_SPEED_STANDARD,	/* 100 kHz */
+	I2C_SPEED_FAST,		/* 400 kHz */
+	I2C_SPEED_FAST_PLUS,	/* 1 MHz   */
+};
+
+#define I2C_STANDARD_RATE	100000
+#define I2C_FAST_RATE		400000
+#define I2C_FAST_PLUS_RATE	1000000
+
+/*
  * Initialization configuration structure for the STM32 I2C bus.
  * Refer to the SoC Reference Manual for more details on configuration items.
  *
+ * @dt_status: non-secure/secure status read from DT
  * @pbase: I2C interface base address
  * @clock: I2C bus/interface clock
  * @addr_mode_10b_not_7b: True if 10bit addressing mode, otherwise 7bit mode
@@ -33,6 +52,7 @@
  * @digital_filter_coef: filter coef (below STM32_I2C_DIGITAL_FILTER_MAX)
  */
 struct stm32_i2c_init_s {
+	unsigned int dt_status;
 	paddr_t pbase;
 	unsigned int clock;
 	bool addr_mode_10b_not_7b;
@@ -86,6 +106,7 @@ struct i2c_cfg {
 /*
  * I2C bus device
  * @base: I2C SoC registers base address
+ * @dt_status: non-secure/secure status read from DT
  * @clock: clock ID
  * @i2c_state: Driver state ID I2C_STATE_*
  * @i2c_err: Last error code I2C_ERROR_*
@@ -95,6 +116,7 @@ struct i2c_cfg {
  */
 struct i2c_handle_s {
 	struct io_pa_va base;
+	unsigned int dt_status;
 	unsigned long clock;
 	enum i2c_state_e i2c_state;
 	uint32_t i2c_err;
@@ -197,6 +219,15 @@ int stm32_i2c_master_receive(struct i2c_handle_s *hi2c, uint32_t dev_addr,
 			     unsigned int timeout_ms);
 
 /*
+ * Optimized 1 byte read/write function for unpaged sequences.
+ * 8-bit addressing mode / single byte transferred / use default I2C timeout.
+ * Return 0 on success else a negative value
+ */
+int stm32_i2c_read_write_membyte(struct i2c_handle_s *hi2c, uint16_t dev_addr,
+				 unsigned int mem_addr, uint8_t *p_data,
+				 bool write);
+
+/*
  * Check link with the I2C device
  *
  * @hi2c: Reference to I2C bus handle structure
@@ -223,5 +254,13 @@ void stm32_i2c_suspend(struct i2c_handle_s *hi2c);
  * @hi2c: Reference to I2C bus handle structure
  */
 void stm32_i2c_resume(struct i2c_handle_s *hi2c);
+
+/*
+ * Return true if I2C bus is enabled for secure world only, false otherwise
+ */
+static inline bool i2c_is_secure(struct i2c_handle_s *hi2c)
+{
+	return hi2c->dt_status == DT_STATUS_OK_SEC;
+}
 
 #endif /* __STM32_I2C_H */

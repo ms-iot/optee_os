@@ -49,15 +49,15 @@ static const struct thread_handlers handlers = {
 #endif
 };
 
-static struct gic_data gic_data;
-static struct pl011_data console_data;
+static struct gic_data gic_data __nex_bss;
+static struct pl011_data console_data __nex_bss;
 
-register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
 #if defined(PLATFORM_FLAVOR_fvp)
 register_phys_mem(MEM_AREA_RAM_SEC, TZCDRAM_BASE, TZCDRAM_SIZE);
 #endif
 #if defined(PLATFORM_FLAVOR_qemu_virt)
-register_phys_mem(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_COHERENT_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_COHERENT_SIZE);
 #endif
 #ifdef DRAM0_BASE
 register_ddr(DRAM0_BASE, DRAM0_SIZE);
@@ -73,8 +73,8 @@ const struct thread_handlers *generic_boot_get_handlers(void)
 
 #ifdef GIC_BASE
 
-register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
 
 void main_init_gic(void)
 {
@@ -119,7 +119,16 @@ void console_init(void)
 	register_serial_console(&console_data.chip);
 }
 
-#ifdef IT_CONSOLE_UART
+#if defined(IT_CONSOLE_UART) && \
+	!(defined(CFG_WITH_ARM_TRUSTED_FW) && defined(CFG_ARM_GICV3))
+/*
+ * This cannot be enabled with TF-A and GICv3 because TF-A then need to
+ * assign the interrupt number of the UART to OP-TEE (S-EL1). Currently
+ * there's no way of TF-A to know which interrupts that OP-TEE will serve.
+ * If TF-A doesn't assign the interrupt we're enabling below to OP-TEE it
+ * will hang in EL3 since the interrupt will just be delivered again and
+ * again.
+ */
 static enum itr_return console_itr_cb(struct itr_handler *h __unused)
 {
 	struct serial_chip *cons = &console_data.chip;
@@ -149,7 +158,7 @@ driver_init(init_console_itr);
 #endif
 
 #ifdef CFG_TZC400
-register_phys_mem(MEM_AREA_IO_SEC, TZC400_BASE, TZC400_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, TZC400_BASE, TZC400_REG_SIZE);
 
 static TEE_Result init_tzc400(void)
 {

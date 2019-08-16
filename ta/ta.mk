@@ -22,14 +22,22 @@ ifeq ($(CFG_TEE_TA_MALLOC_DEBUG),y)
 $(sm)-platform-cppflags += -DENABLE_MDBG=1
 endif
 
+# Keep CFG_TA_DYNLINK for backwards compatibility
+$(call force,CFG_TA_DYNLINK,y)
+
 # Config variables to be explicitly exported to the dev kit conf.mk
 ta-mk-file-export-vars-$(sm) += CFG_TA_FLOAT_SUPPORT
 ta-mk-file-export-vars-$(sm) += CFG_CACHE_API
 ta-mk-file-export-vars-$(sm) += CFG_SECURE_DATA_PATH
 ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS_SELF_TEST
 ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS
+ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS_MPI
 ta-mk-file-export-vars-$(sm) += CFG_SYSTEM_PTA
 ta-mk-file-export-vars-$(sm) += CFG_TA_DYNLINK
+ta-mk-file-export-vars-$(sm) += CFG_TEE_TA_LOG_LEVEL
+ta-mk-file-export-vars-$(sm) += CFG_TA_FTRACE_SUPPORT
+ta-mk-file-export-vars-$(sm) += CFG_UNWIND
+ta-mk-file-export-vars-$(sm) += CFG_TA_MCOUNT
 
 # Expand platform flags here as $(sm) will change if we have several TA
 # targets. Platform flags should not change after inclusion of ta/ta.mk.
@@ -46,22 +54,36 @@ base-prefix := $(sm)-
 
 libname = utils
 libdir = lib/libutils
+libuuid = 71855bba-6055-4293-a63f-b0963a737360
 include mk/lib.mk
 
+CFG_TA_MBEDTLS_MPI ?= y
+ifeq ($(CFG_TA_MBEDTLS_MPI),y)
+mplib-for-utee = mbedtls
+$(call force,CFG_TA_MBEDTLS,y)
+else
+mplib-for-utee = mpa
 libname = mpa
 libdir = lib/libmpa
+libuuid = 39b498d9-1e1f-4ae0-a9e1-6d1caf8ec731
+libl = utils
 include mk/lib.mk
-
-libname = utee
-libdir = lib/libutee
-include mk/lib.mk
+endif
 
 ifeq ($(CFG_TA_MBEDTLS),y)
 libname = mbedtls
 libdir = lib/libmbedtls
+libuuid = 87bb6ae8-4b1d-49fe-9986-2b966132c309
+libl = utils
 include mk/lib.mk
 ta-mk-file-export-vars-$(sm) += CFG_TA_MBEDTLS
 endif
+
+libname = utee
+libdir = lib/libutee
+libuuid = 527f1a47-b92c-4a74-95bd-72f19f4a6f74
+libl = $(mplib-for-utee) utils
+include mk/lib.mk
 
 base-prefix :=
 
@@ -85,7 +107,7 @@ $2/$$(notdir $1): $1
 	@set -e; \
 	mkdir -p $$(dir $$@) ; \
 	$(cmd-echo-silent) '  INSTALL $$@' ; \
-	cp $$< $$@
+	cp -P $$< $$@
 
 cleanfiles += $2/$$(notdir $1)
 ta_dev_kit: $2/$$(notdir $1)

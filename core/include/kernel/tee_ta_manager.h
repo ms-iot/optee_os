@@ -56,6 +56,7 @@ struct tee_ta_ops {
 			struct tee_ta_param *param, TEE_ErrorOrigin *eo);
 	void (*enter_close_session)(struct tee_ta_session *s);
 	void (*dump_state)(struct tee_ta_ctx *ctx);
+	void (*dump_ftrace)(struct tee_ta_ctx *ctx);
 	void (*destroy)(struct tee_ta_ctx *ctx);
 	uint32_t (*get_instance_id)(struct tee_ta_ctx *ctx);
 };
@@ -83,19 +84,21 @@ struct tee_ta_ctx {
 	uint32_t panicked;	/* True if TA has panicked, written from asm */
 	uint32_t panic_code;	/* Code supplied for panic */
 	uint32_t ref_count;	/* Reference counter for multi session TA */
-	bool busy;		/* context is busy and cannot be entered */
+	bool busy;		/* Context is busy and cannot be entered */
+	bool initializing;	/* Context is initializing */
 	struct condvar busy_cv;	/* CV used when context is busy */
 };
 
 struct tee_ta_session {
 	TAILQ_ENTRY(tee_ta_session) link;
 	TAILQ_ENTRY(tee_ta_session) link_tsd;
+	uint32_t id;		/* Session handle (0 is invalid) */
 	struct tee_ta_ctx *ctx;	/* TA context */
 	TEE_Identity clnt_id;	/* Identify of client */
-	bool cancel;		/* True if TAF is cancelled */
+	bool cancel;		/* True if TA invocation is cancelled */
 	bool cancel_mask;	/* True if cancel is masked */
-	TEE_Time cancel_time;	/* Time when to cancel the TAF */
-	void *user_ctx;		/* ??? */
+	TEE_Time cancel_time;	/* Time when to cancel the TA invocation */
+	void *user_ctx;		/* Opaque session handle assigned by PTA */
 	uint32_t ref_count;	/* reference counter */
 	struct condvar refc_cv;	/* CV used to wait for ref_count to be 0 */
 	struct condvar lock_cv;	/* CV used to wait for lock */
@@ -149,12 +152,13 @@ struct tee_ta_session *tee_ta_pop_current_session(void);
 
 struct tee_ta_session *tee_ta_get_calling_session(void);
 
+struct tee_ta_session *tee_ta_find_session(uint32_t id,
+			struct tee_ta_session_head *open_sessions);
+
 struct tee_ta_session *tee_ta_get_session(uint32_t id, bool exclusive,
 			struct tee_ta_session_head *open_sessions);
 
 void tee_ta_put_session(struct tee_ta_session *sess);
-
-void tee_ta_dump_current(void);
 
 #if defined(CFG_TA_GPROF_SUPPORT)
 void tee_ta_gprof_sample_pc(vaddr_t pc);

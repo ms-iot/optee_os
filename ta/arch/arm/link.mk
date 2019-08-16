@@ -15,10 +15,23 @@ cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).ta
 cleanfiles += $(link-script-pp$(sm)) $(link-script-dep$(sm))
 
-link-ldflags  = -pie
+link-ldflags  = -e__ta_entry -pie
 link-ldflags += -T $(link-script-pp$(sm))
 link-ldflags += -Map=$(link-out-dir$(sm))/$(user-ta-uuid).map
 link-ldflags += --sort-section=alignment
+link-ldflags += -z max-page-size=4096 # OP-TEE always uses 4K alignment
+link-ldflags += --as-needed # Do not add dependency on unused shlib
+link-ldflags += $(link-ldflags$(sm))
+
+ifeq ($(CFG_TA_FTRACE_SUPPORT),y)
+$(link-out-dir$(sm))/dyn_list:
+	@$(cmd-echo-silent) '  GEN     $@'
+	$(q)mkdir -p $(dir $@)
+	$(q)echo "{__ftrace_info;};" >$@
+link-ldflags += --dynamic-list $(link-out-dir$(sm))/dyn_list
+ftracedep = $(link-out-dir$(sm))/dyn_list
+cleanfiles += $(link-out-dir$(sm))/dyn_list
+endif
 
 link-ldadd  = $(user-ta-ldadd) $(addprefix -L,$(libdirs))
 link-ldadd += --start-group $(addprefix -l,$(libnames)) --end-group
@@ -43,7 +56,8 @@ $(link-script-pp$(sm)): $(link-script$(sm)) $(conf-file) $(link-script-pp-makefi
 		$(link-script-cppflags-$(sm)) $$< > $$@
 
 $(link-out-dir$(sm))/$(user-ta-uuid).elf: $(objs) $(libdeps) \
-					  $(link-script-pp$(sm))
+					  $(link-script-pp$(sm)) \
+					  $(ftracedep)
 	@$(cmd-echo-silent) '  LD      $$@'
 	$(q)$(LD$(sm)) $(ldargs-$(user-ta-uuid).elf) -o $$@
 

@@ -24,8 +24,16 @@ cppflags$(sm)	:= $(cppflags$(ta-target)) -I$(ta-dev-kit-dir$(sm))/include
 cflags$(sm)	:= $(cflags$(ta-target))
 aflags$(sm)	:= $(aflags$(ta-target))
 
+ifeq ($(CFG_ULIBS_SHARED),y)
+# For now, do not link in-tree TAs against shared libraries
+link-ldflags$(sm) := -static
+endif
+
 libdirs  = $(ta-dev-kit-dir$(sm))/lib
-libnames = utils utee mpa
+libnames = utils utee
+ifneq ($(CFG_TA_MBEDTLS_MPI),y)
+libnames += mpa
+endif
 ifeq ($(CFG_TA_MBEDTLS),y)
 libnames += mbedtls
 endif

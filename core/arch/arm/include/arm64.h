@@ -249,6 +249,11 @@ static inline void tlbi_vaae1is(uint64_t mva)
 	asm volatile ("tlbi	vaae1is, %0" : : "r" (mva));
 }
 
+static inline void tlbi_vale1is(uint64_t mva)
+{
+	asm volatile ("tlbi	vale1is, %0" : : "r" (mva));
+}
+
 /*
  * Templates for register read/write functions based on mrs/msr
  */
@@ -305,6 +310,10 @@ DEFINE_REG_READ_FUNC_(cntfrq, uint32_t, cntfrq_el0)
 DEFINE_REG_READ_FUNC_(cntpct, uint64_t, cntpct_el0)
 DEFINE_REG_READ_FUNC_(cntkctl, uint32_t, cntkctl_el1)
 DEFINE_REG_WRITE_FUNC_(cntkctl, uint32_t, cntkctl_el1)
+DEFINE_REG_READ_FUNC_(cntps_ctl, uint32_t, cntps_ctl_el1)
+DEFINE_REG_WRITE_FUNC_(cntps_ctl, uint32_t, cntps_ctl_el1)
+DEFINE_REG_READ_FUNC_(cntps_tval, uint32_t, cntps_tval_el1)
+DEFINE_REG_WRITE_FUNC_(cntps_tval, uint32_t, cntps_tval_el1)
 
 DEFINE_REG_READ_FUNC_(pmccntr, uint64_t, pmccntr_el0)
 
@@ -327,7 +336,11 @@ DEFINE_REG_READ_FUNC_(icc_ctlr, uint32_t, S3_0_C12_C12_4)
 DEFINE_REG_WRITE_FUNC_(icc_ctlr, uint32_t, S3_0_C12_C12_4)
 DEFINE_REG_WRITE_FUNC_(icc_pmr, uint32_t, S3_0_C4_C6_0)
 DEFINE_REG_READ_FUNC_(icc_iar0, uint32_t, S3_0_c12_c8_0)
+DEFINE_REG_READ_FUNC_(icc_iar1, uint32_t, S3_0_c12_c12_0)
 DEFINE_REG_WRITE_FUNC_(icc_eoir0, uint32_t, S3_0_c12_c8_1)
+DEFINE_REG_WRITE_FUNC_(icc_eoir1, uint32_t, S3_0_c12_c12_1)
+DEFINE_REG_WRITE_FUNC_(icc_igrpen0, uint32_t, S3_0_C12_C12_6)
+DEFINE_REG_WRITE_FUNC_(icc_igrpen1, uint32_t, S3_0_C12_C12_7)
 #endif /*ASM*/
 
 #endif /*ARM64_H*/

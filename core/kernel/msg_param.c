@@ -26,11 +26,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <kernel/msg_param.h>
+#include <mm/mobj.h>
 #include <optee_msg.h>
 #include <stdio.h>
 #include <types_ext.h>
-#include <kernel/msg_param.h>
-#include <mm/mobj.h>
+#include <util.h>
 
 /**
  * msg_param_extract_pages() - extract list of pages from
@@ -115,14 +116,20 @@ struct mobj *msg_param_mobj_from_noncontig(paddr_t buf_ptr, size_t size,
 					   uint64_t shm_ref, bool map_buffer)
 {
 	struct mobj *mobj = NULL;
-	paddr_t *pages;
-	paddr_t page_offset;
-	size_t num_pages;
+	paddr_t *pages = NULL;
+	paddr_t page_offset = 0;
+	size_t num_pages = 0;
+	size_t size_plus_offs = 0;
+	size_t msize = 0;
 
 	page_offset = buf_ptr & SMALL_PAGE_MASK;
-	num_pages = (size + page_offset - 1) / SMALL_PAGE_SIZE + 1;
+	if (ADD_OVERFLOW(size, page_offset, &size_plus_offs))
+		return NULL;
+	num_pages = (size_plus_offs - 1) / SMALL_PAGE_SIZE + 1;
+	if (MUL_OVERFLOW(num_pages, sizeof(paddr_t), &msize))
+		return NULL;
 
-	pages = malloc(num_pages * sizeof(paddr_t));
+	pages = malloc(msize);
 	if (!pages)
 		return NULL;
 
@@ -139,56 +146,4 @@ struct mobj *msg_param_mobj_from_noncontig(paddr_t buf_ptr, size_t size,
 out:
 	free(pages);
 	return mobj;
-}
-
-bool msg_param_init_memparam(struct optee_msg_param *param, struct mobj *mobj,
-			     size_t offset, size_t size,
-			     uint64_t cookie, enum msg_param_mem_dir dir)
-{
-	if (mobj_matches(mobj, CORE_MEM_REG_SHM)) {
-		/* Registered SHM mobj */
-		switch (dir) {
-		case MSG_PARAM_MEM_DIR_IN:
-			param->attr = OPTEE_MSG_ATTR_TYPE_RMEM_INPUT;
-			break;
-		case MSG_PARAM_MEM_DIR_OUT:
-			param->attr = OPTEE_MSG_ATTR_TYPE_RMEM_OUTPUT;
-			break;
-		case MSG_PARAM_MEM_DIR_INOUT:
-			param->attr = OPTEE_MSG_ATTR_TYPE_RMEM_INOUT;
-			break;
-		default:
-			return false;
-		}
-
-		param->u.rmem.size = size;
-		param->u.rmem.offs = offset;
-		param->u.rmem.shm_ref = cookie;
-	} else if (mobj_matches(mobj, CORE_MEM_NSEC_SHM)) {
-		/* MOBJ from from predefined pool */
-		paddr_t pa;
-
-		if (mobj_get_pa(mobj, 0, 0, &pa) != TEE_SUCCESS)
-			return false;
-
-		switch (dir) {
-		case MSG_PARAM_MEM_DIR_IN:
-			param->attr = OPTEE_MSG_ATTR_TYPE_TMEM_INPUT;
-			break;
-		case MSG_PARAM_MEM_DIR_OUT:
-			param->attr = OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT;
-			break;
-		case MSG_PARAM_MEM_DIR_INOUT:
-			param->attr = OPTEE_MSG_ATTR_TYPE_TMEM_INOUT;
-			break;
-		default:
-			return false;
-		}
-
-		param->u.tmem.buf_ptr = pa + offset;
-		param->u.tmem.shm_ref = cookie;
-		param->u.tmem.size = size;
-	} else
-		return false;
-	return true;
 }

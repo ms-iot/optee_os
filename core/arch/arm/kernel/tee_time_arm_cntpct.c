@@ -9,7 +9,6 @@
 #include <kernel/tee_time.h>
 #include <kernel/time_source.h>
 #include <mm/core_mmu.h>
-#include <mpa.h>
 #include <stdint.h>
 #include <tee/tee_cryp_utl.h>
 #include <trace.h>
@@ -70,8 +69,7 @@ void plat_prng_add_jitter_entropy(enum crypto_rng_src sid, unsigned int *pnum)
 		}
 	}
 	if (bytes) {
-		FMSG("%s: 0x%02X\n", __func__,
-		     (int)acc & ((1 << (bytes * 8)) - 1));
+		FMSG("0x%02X", (int)acc & ((1 << (bytes * 8)) - 1));
 		crypto_rng_add_event(sid, pnum, (uint8_t *)&acc, bytes);
 	}
 }

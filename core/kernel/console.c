@@ -10,13 +10,14 @@
 #include <kernel/panic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string_ext.h>
 
 #ifdef CFG_DT
 #include <kernel/dt.h>
 #include <libfdt.h>
 #endif
 
-static struct serial_chip *serial_console;
+static struct serial_chip *serial_console __nex_bss;
 
 void __weak console_putc(int ch)
 {
@@ -42,45 +43,51 @@ void register_serial_console(struct serial_chip *chip)
 }
 
 #ifdef CFG_DT
-
-/*
- * Check if the /secure-chosen node in the DT contains an stdout-path value
- * for which we have a compatible driver. If so, switch the console to
- * this device.
- */
-void configure_console_from_dt(void)
+static int find_chosen_node(void *fdt)
 {
-	const struct dt_driver *dt_drv;
-	const struct serial_driver *sdrv;
+	if (!fdt)
+		return -1;
+
+	int offset = fdt_path_offset(fdt, "/secure-chosen");
+
+	if (offset < 0)
+		offset = fdt_path_offset(fdt, "/chosen");
+
+	return offset;
+}
+
+TEE_Result get_console_node_from_dt(void *fdt, int *offs_out,
+				    char **path_out, char **params_out)
+{
 	const struct fdt_property *prop;
-	struct serial_chip *dev;
-	char *stdout_data;
 	const char *uart;
 	const char *parms = NULL;
-	void *fdt = get_dt_blob();
 	int offs;
+	char *stdout_data;
 	char *p;
+	TEE_Result rc = TEE_ERROR_GENERIC;
 
-	if (!fdt)
-		return;
+	/* Probe console from secure DT and fallback to non-secure DT */
+	offs = find_chosen_node(fdt);
+	if (offs < 0) {
+		DMSG("No console directive from DTB");
+		return TEE_ERROR_ITEM_NOT_FOUND;
+	}
 
-	offs = fdt_path_offset(fdt, "/secure-chosen");
-	if (offs < 0)
-		return;
 	prop = fdt_get_property(fdt, offs, "stdout-path", NULL);
 	if (!prop) {
 		/*
-		 * /secure-chosen node present but no stdout-path property
-		 * means we don't want any console output
+		 * A secure-chosen or chosen node is present but defined
+		 * no stdout-path property: no console expected
 		 */
 		IMSG("Switching off console");
 		register_serial_console(NULL);
-		return;
+		return TEE_ERROR_ITEM_NOT_FOUND;
 	}
 
-	stdout_data = strdup(prop->data);
+	stdout_data = nex_strdup(prop->data);
 	if (!stdout_data)
-		return;
+		panic();
 	p = strchr(stdout_data, ':');
 	if (p) {
 		*p = '\0';
@@ -94,8 +101,35 @@ void configure_console_from_dt(void)
 		uart = stdout_data;
 	}
 	offs = fdt_path_offset(fdt, uart);
-	if (offs < 0)
-		goto out;
+	if (offs >= 0) {
+		if (offs_out)
+			*offs_out = offs;
+		if (params_out)
+			*params_out = parms ? nex_strdup(parms) : NULL;
+		if (path_out)
+			*path_out = uart ? nex_strdup(uart) : NULL;
+
+		rc = TEE_SUCCESS;
+	}
+
+	nex_free(stdout_data);
+
+	return rc;
+}
+
+void configure_console_from_dt(void)
+{
+	const struct dt_driver *dt_drv;
+	const struct serial_driver *sdrv;
+	struct serial_chip *dev;
+	char *uart = NULL;
+	char *parms = NULL;
+	void *fdt;
+	int offs;
+
+	fdt = get_external_dt();
+	if (get_console_node_from_dt(fdt, &offs, &uart, &parms))
+		return;
 
 	dt_drv = dt_find_compatible_driver(fdt, offs);
 	if (!dt_drv)
@@ -104,9 +138,11 @@ void configure_console_from_dt(void)
 	sdrv = (const struct serial_driver *)dt_drv->driver;
 	if (!sdrv)
 		goto out;
+
 	dev = sdrv->dev_alloc();
 	if (!dev)
 		goto out;
+
 	/*
 	 * If the console is the same as the early console, dev_init() might
 	 * clear pending data. Flush to avoid that.
@@ -120,7 +156,8 @@ void configure_console_from_dt(void)
 	IMSG("Switching console to device: %s", uart);
 	register_serial_console(dev);
 out:
-	free(stdout_data);
+	nex_free(uart);
+	nex_free(parms);
 }
 
 #endif /* CFG_DT */

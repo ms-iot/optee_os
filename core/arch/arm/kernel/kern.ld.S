@@ -89,14 +89,6 @@ SECTIONS
 		       .text.reset .text.reset_primary .text.unhandled_cpu \
 		       .text.__assert_flat_mapped_range))
 
-		. = ALIGN(8);
-		__initcall_start = .;
-		KEEP(*(.initcall1))
-		KEEP(*(.initcall2))
-		KEEP(*(.initcall3))
-		KEEP(*(.initcall4))
-		__initcall_end = .;
-
 #ifdef CFG_WITH_PAGER
 		*(.text)
 /* Include list of sections needed for paging */
@@ -135,38 +127,13 @@ SECTIONS
 #endif
 
 		*(.rodata .rodata.*)
-
-		/*
-		 * 8 to avoid unwanted padding between __start_ta_head_section
-		 * and the first structure in ta_head_section, in 64-bit
-		 * builds
-		 */
 		. = ALIGN(8);
-		__start_ta_head_section = . ;
-		KEEP(*(ta_head_section))
-		__stop_ta_head_section = . ;
-		. = ALIGN(8);
-		__start_phys_mem_map_section = . ;
-		KEEP(*(phys_mem_map_section))
-		__end_phys_mem_map_section = . ;
-		. = ALIGN(8);
-		__start_phys_sdp_mem_section = . ;
-		KEEP(*(phys_sdp_mem_section))
-		__end_phys_sdp_mem_section = . ;
-		. = ALIGN(8);
-		__start_phys_nsec_ddr_section = . ;
-		KEEP(*(phys_nsec_ddr_section))
-		__end_phys_nsec_ddr_section = . ;
-		. = ALIGN(8);
-		__start_phys_ddr_overall_section = . ;
-		KEEP(*(phys_ddr_overall_section))
-		__end_phys_ddr_overall_section = . ;
+		KEEP(*(SORT(.scattered_array*)));
 #endif
 		. = ALIGN(8);
 		__rodata_end = .;
 	}
 
-	.interp : { *(.interp) }
 	.hash : { *(.hash) }
 	.dynsym : { *(.dynsym) }
 	.dynstr : { *(.dynstr) }
@@ -190,7 +157,6 @@ SECTIONS
 	.rela.bss : { *(.rela.bss) }
 	.rel.plt : { *(.rel.plt) }
 	.rela.plt : { *(.rela.plt) }
-	.init : { *(.init) } =0x9090
 	.plt : { *(.plt) }
 
 	/* .ARM.exidx is sorted, so has to go in its own output section.  */
@@ -211,6 +177,51 @@ SECTIONS
 	. = ALIGN(SMALL_PAGE_SIZE);
 #endif
 	__flatmap_unpg_ro_size = . - __flatmap_unpg_ro_start;
+
+#ifdef CFG_VIRTUALIZATION
+	__flatmap_nex_rw_start = . ;
+	.nex_data : ALIGN(8) {
+		*(.nex_data .nex_data.*)
+	}
+
+	.nex_bss : ALIGN(8) {
+		__nex_bss_start = .;
+		*(.nex_bss .nex_bss.*)
+		__nex_bss_end = .;
+	}
+
+	/*
+	 * We want to keep all nexus memory in one place, because
+	 * it should be always mapped and it is easier to map one
+	 * memory region than two.
+	 * Next section are NOLOAD ones, but they are followed
+	 * by sections with data. Thus, this NOLOAD section will
+	 * be included in the resulting binary, filled with zeroes
+	 */
+	.nex_stack (NOLOAD) : {
+		__nozi_stack_start = .;
+		KEEP(*(.nozi_stack.stack_tmp .nozi_stack.stack_abt))
+		. = ALIGN(8);
+		__nozi_stack_end = .;
+	}
+
+	.nex_heap (NOLOAD) : {
+		__nex_heap_start = .;
+		. += CFG_CORE_NEX_HEAP_SIZE;
+		. = ALIGN(16 * 1024);
+		__nex_heap_end = .;
+	}
+	.nex_nozi (NOLOAD) : {
+		ASSERT(!(ABSOLUTE(.) & (16 * 1024 - 1)), "align nozi to 16kB");
+		KEEP(*(.nozi.mmu.l1 .nozi.mmu.l2))
+	}
+
+	. = ALIGN(SMALL_PAGE_SIZE);
+
+	__flatmap_nex_rw_size = . - __flatmap_nex_rw_start;
+	__flatmap_nex_rw_end = .;
+#endif
+
 	__flatmap_unpg_rw_start = .;
 
 	.data : ALIGN(8) {
@@ -257,10 +268,13 @@ SECTIONS
 #ifndef CFG_WITH_PAGER
 		. += CFG_CORE_HEAP_SIZE;
 #endif
+#ifdef CFG_WITH_LPAE
+		. = ALIGN(4 * 1024);
+#else
 		. = ALIGN(16 * 1024);
+#endif
 		__heap1_end = .;
 	}
-
 	/*
 	 * Uninitialized data that shouldn't be zero initialized at
 	 * runtime.
@@ -269,11 +283,13 @@ SECTIONS
 	 */
 	.nozi (NOLOAD) : {
 		__nozi_start = .;
-		ASSERT(!(__nozi_start & (16 * 1024 - 1)), "align nozi to 16kB");
-
 		KEEP(*(.nozi .nozi.*))
 		. = ALIGN(16);
 		__nozi_end = .;
+		/*
+		 * If virtualization is enabled, abt and tmp stacks will placed
+		 * at above .nex_stack section and thread stacks will go there
+		 */
 		__nozi_stack_start = .;
 		KEEP(*(.nozi_stack .nozi_stack.*))
 		. = ALIGN(8);
@@ -323,22 +339,10 @@ SECTIONS
 
 	.rodata_init : {
 #include <rodata_init.ld.S>
+
 		. = ALIGN(8);
-		__start_phys_mem_map_section = . ;
-		KEEP(*(phys_mem_map_section))
-		__end_phys_mem_map_section = . ;
-		. = ALIGN(8);
-		__start_phys_sdp_mem_section = . ;
-		KEEP(*(phys_sdp_mem_section))
-		__end_phys_sdp_mem_section = . ;
-		. = ALIGN(8);
-		__start_phys_nsec_ddr_section = . ;
-		KEEP(*(phys_nsec_ddr_section))
-		__end_phys_nsec_ddr_section = . ;
-		. = ALIGN(8);
-		__start_phys_ddr_overall_section = . ;
-		KEEP(*(phys_ddr_overall_section))
-		__end_phys_ddr_overall_section = . ;
+		KEEP(*(SORT(.scattered_array*)));
+
 		. = ALIGN(8);
 		__rodata_init_end = .;
 	}
@@ -363,15 +367,6 @@ SECTIONS
 		__rodata_early_ta_end = .;
 #endif
 		*(.rodata*)
-		/*
-		 * 8 to avoid unwanted padding between __start_ta_head_section
-		 * and the first structure in ta_head_section, in 64-bit
-		 * builds
-		 */
-		. = ALIGN(8);
-		__start_ta_head_section = . ;
-		KEEP(*(ta_head_section))
-		__stop_ta_head_section = . ;
 	}
 
 #ifdef CFG_CORE_RODATA_NOEXEC
@@ -444,7 +439,7 @@ SECTIONS
 
 	/DISCARD/ : {
 		/* Strip unnecessary stuff */
-		*(.comment .note .eh_frame)
+		*(.comment .note .eh_frame .interp)
 		/* Strip meta variables */
 		*(__keep_meta_vars*)
 	}
@@ -465,6 +460,12 @@ __vcore_unpg_ro_size = 0;
 /* Unpaged read-write memory */
 __vcore_unpg_rw_start = __flatmap_unpg_rw_start;
 __vcore_unpg_rw_size = __flatmap_unpg_rw_size;
+
+#ifdef CFG_VIRTUALIZATION
+/* Nexus read-write memory */
+__vcore_nex_rw_start = __flatmap_nex_rw_start;
+__vcore_nex_rw_size = __flatmap_nex_rw_size;
+#endif
 
 #ifdef CFG_WITH_PAGER
 /*

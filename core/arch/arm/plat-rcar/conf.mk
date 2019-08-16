@@ -12,19 +12,21 @@ $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 ifeq ($(PLATFORM_FLAVOR),salvator_h3)
 $(call force,CFG_TEE_CORE_NB_CORE,8)
 endif
+ifeq ($(PLATFORM_FLAVOR),salvator_h3_4x2g)
+$(call force,CFG_TEE_CORE_NB_CORE,8)
+endif
 ifeq ($(PLATFORM_FLAVOR),salvator_m3)
 $(call force,CFG_TEE_CORE_NB_CORE,4)
 endif
 
+CFG_TZDRAM_START ?= 0x44100000
+CFG_TZDRAM_SIZE	 ?= 0x03D00000
+CFG_TEE_RAM_VA_SIZE ?= 0x100000
 ifeq ($(CFG_ARM64_core),y)
 $(call force,CFG_WITH_LPAE,y)
-ta-targets += ta_arm64
+supported-ta-targets = ta_arm64
 else
 $(call force,CFG_ARM32_core,y)
-endif
-
-ifeq ($(CFG_ARM32_core),y)
-ta-targets = ta_arm32
 endif
 
 CFG_WITH_STACK_CANARIES ?= y

@@ -11,17 +11,24 @@
 #include <tee_api_types.h>
 #include <tee/tee_cryp_utl.h>
 #include <utee_defines.h>
+#include <util.h>
 
 struct shdr *shdr_alloc_and_copy(const struct shdr *img, size_t img_size)
 {
 	size_t shdr_size;
 	struct shdr *shdr;
+	vaddr_t img_va = (vaddr_t)img;
+	vaddr_t tmp = 0;
 
 	if (img_size < sizeof(struct shdr))
-		NULL;
+		return NULL;
+
 	shdr_size = SHDR_GET_SIZE(img);
 	if (img_size < shdr_size)
-		NULL;
+		return NULL;
+
+	if (ADD_OVERFLOW(img_va, shdr_size, &tmp))
+		return NULL;
 
 	shdr = malloc(shdr_size);
 	if (!shdr)

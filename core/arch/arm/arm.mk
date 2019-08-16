@@ -89,7 +89,9 @@ platform-aflags-generic ?= -pipe
 
 arm32-platform-cflags-no-hard-float ?= -mfloat-abi=soft
 arm32-platform-cflags-hard-float ?= -mfloat-abi=hard -funsafe-math-optimizations
-arm32-platform-cflags-generic ?= -mthumb -mthumb-interwork \
+arm32-platform-cflags-generic-thumb ?= -mthumb -mthumb-interwork \
+			-fno-short-enums -fno-common -mno-unaligned-access
+arm32-platform-cflags-generic-arm ?= -marm -fno-omit-frame-pointer -mapcs \
 			-fno-short-enums -fno-common -mno-unaligned-access
 arm32-platform-aflags-no-hard-float ?=
 
@@ -138,9 +140,23 @@ core-platform-cflags += $(arm32-platform-cflags-no-hard-float)
 ifeq ($(CFG_UNWIND),y)
 core-platform-cflags += -funwind-tables
 endif
-core-platform-cflags += $(arm32-platform-cflags-generic)
+core-platform-cflags += $(arm32-platform-cflags-generic-thumb)
 core-platform-aflags += $(core_arm32-platform-aflags)
 core-platform-aflags += $(arm32-platform-aflags)
+endif
+
+# Provide default supported-ta-targets if not set by the platform config
+ifeq (,$(supported-ta-targets))
+supported-ta-targets = ta_arm32
+ifeq ($(CFG_ARM64_core),y)
+supported-ta-targets += ta_arm64
+endif
+endif
+
+ta-targets := $(if $(CFG_USER_TA_TARGETS),$(filter $(supported-ta-targets),$(CFG_USER_TA_TARGETS)),$(supported-ta-targets))
+unsup-targets := $(filter-out $(ta-targets),$(CFG_USER_TA_TARGETS))
+ifneq (,$(unsup-targets))
+$(error CFG_USER_TA_TARGETS contains unsupported value(s): $(unsup-targets). Valid values: $(supported-ta-targets))
 endif
 
 ifneq ($(filter ta_arm32,$(ta-targets)),)
@@ -151,8 +167,17 @@ ta_arm32-platform-cppflags += $(arm32-platform-cppflags)
 ta_arm32-platform-cflags += $(arm32-platform-cflags)
 ta_arm32-platform-cflags += $(platform-cflags-optimization)
 ta_arm32-platform-cflags += $(platform-cflags-debug-info)
-ta_arm32-platform-cflags += -fpie
-ta_arm32-platform-cflags += $(arm32-platform-cflags-generic)
+ta_arm32-platform-cflags += -fpic
+
+# Thumb mode doesn't support function graph tracing due to missing
+# frame pointer support required to trace function call chain. So
+# rather compile in ARM mode if function tracing is enabled.
+ifeq ($(CFG_TA_FTRACE_SUPPORT),y)
+ta_arm32-platform-cflags += $(arm32-platform-cflags-generic-arm)
+else
+ta_arm32-platform-cflags += $(arm32-platform-cflags-generic-thumb)
+endif
+
 ifeq ($(arm32-platform-hard-float-enabled),y)
 ta_arm32-platform-cflags += $(arm32-platform-cflags-hard-float)
 else
@@ -183,7 +208,7 @@ ta_arm64-platform-cppflags += $(arm64-platform-cppflags)
 ta_arm64-platform-cflags += $(arm64-platform-cflags)
 ta_arm64-platform-cflags += $(platform-cflags-optimization)
 ta_arm64-platform-cflags += $(platform-cflags-debug-info)
-ta_arm64-platform-cflags += -fpie
+ta_arm64-platform-cflags += -fpic
 ta_arm64-platform-cflags += $(arm64-platform-cflags-generic)
 ifeq ($(arm64-platform-hard-float-enabled),y)
 ta_arm64-platform-cflags += $(arm64-platform-cflags-hard-float)

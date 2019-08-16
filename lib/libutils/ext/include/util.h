@@ -49,9 +49,16 @@
 
 /* Round down the even multiple of size, size has to be a multiple of 2 */
 #define ROUNDDOWN(v, size) ((v) & ~((__typeof__(v))(size) - 1))
+
+/* Unsigned integer division with nearest rounding variant */
+#define UDIV_ROUND_NEAREST(x, y) \
+	(__extension__ ({ __typeof__(x) _x = (x); \
+	  __typeof__(y) _y = (y); \
+	  (_x + (_y / 2)) / _y; }))
 #else
 #define ROUNDUP(x, y)			((((x) + (y) - 1) / (y)) * (y))
 #define ROUNDDOWN(x, y)		(((x) / (y)) * (y))
+#define UDIV_ROUND_NEAREST(x, y)	(((x) + ((y) / 2)) / (y))
 #endif
 
 /* x has to be of an unsigned type */
@@ -117,5 +124,19 @@
 		\
 		_a > _b ? 1 : _a < _b ? -1 : 0; \
 	}))
+
+#ifndef ASM
+static inline uint64_t reg_pair_to_64(uint32_t reg0, uint32_t reg1)
+{
+	return (uint64_t)reg0 << 32 | reg1;
+}
+
+static inline void reg_pair_from_64(uint64_t val, uint32_t *reg0,
+				    uint32_t *reg1)
+{
+	*reg0 = val >> 32;
+	*reg1 = val;
+}
+#endif
 
 #endif /*UTIL_H*/

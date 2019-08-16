@@ -32,7 +32,11 @@
 #include <arm.h>
 #include <console.h>
 #include <drivers/gic.h>
+#ifdef CFG_PL011
+#include <drivers/pl011.h>
+#else
 #include <drivers/ns16550.h>
+#endif
 #include <io.h>
 #include <kernel/generic_boot.h>
 #include <kernel/misc.h>
@@ -71,10 +75,15 @@ static const struct thread_handlers handlers = {
 };
 
 static struct gic_data gic_data;
+#ifdef CFG_PL011
+static struct pl011_data console_data;
+#else
 static struct ns16550_data console_data;
+#endif
 
-register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE, CORE_MMU_DEVICE_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_DEVICE_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE,
+			CORE_MMU_PGDIR_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, GIC_BASE, CORE_MMU_PGDIR_SIZE);
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
@@ -94,12 +103,12 @@ void plat_cpu_reset_late(void)
 	if (!get_core_pos()) {
 #if defined(CFG_BOOT_SECONDARY_REQUEST)
 		/* set secondary entry address */
-		write32(__compiler_bswap32(TEE_LOAD_ADDR),
-				DCFG_BASE + DCFG_SCRATCHRW1);
+		io_write32(DCFG_BASE + DCFG_SCRATCHRW1,
+			   __compiler_bswap32(TEE_LOAD_ADDR));
 
 		/* release secondary cores */
-		write32(__compiler_bswap32(0x1 << 1), /* cpu1 */
-				DCFG_BASE + DCFG_CCSR_BRR);
+		io_write32(DCFG_BASE + DCFG_CCSR_BRR /* cpu1 */,
+			   __compiler_bswap32(0x1 << 1));
 		dsb();
 		sev();
 #endif
@@ -110,28 +119,32 @@ void plat_cpu_reset_late(void)
 		for (addr = CSU_BASE + CSU_CSL_START;
 			 addr != CSU_BASE + CSU_CSL_END;
 			 addr += 4)
-			write32(__compiler_bswap32(CSU_ACCESS_ALL), addr);
+			io_write32(addr, __compiler_bswap32(CSU_ACCESS_ALL));
 
 		/* restrict key preipherals from NS */
-		write32(__compiler_bswap32(CSU_ACCESS_SEC_ONLY),
-			CSU_BASE + CSU_CSL30);
-		write32(__compiler_bswap32(CSU_ACCESS_SEC_ONLY),
-			CSU_BASE + CSU_CSL37);
+		io_write32(CSU_BASE + CSU_CSL30,
+			   __compiler_bswap32(CSU_ACCESS_SEC_ONLY));
+		io_write32(CSU_BASE + CSU_CSL37,
+			   __compiler_bswap32(CSU_ACCESS_SEC_ONLY));
 
 		/* lock the settings */
 		for (addr = CSU_BASE + CSU_CSL_START;
-			 addr != CSU_BASE + CSU_CSL_END;
-			 addr += 4)
-			write32(read32(addr) |
-				__compiler_bswap32(CSU_SETTING_LOCK),
-				addr);
+		     addr != CSU_BASE + CSU_CSL_END;
+		     addr += 4)
+			io_setbits32(addr,
+				     __compiler_bswap32(CSU_SETTING_LOCK));
 	}
 }
 #endif
 
 void console_init(void)
 {
+#ifdef CFG_PL011
+	pl011_init(&console_data, CONSOLE_UART_BASE, CONSOLE_UART_CLK_IN_HZ,
+		   CONSOLE_BAUDRATE);
+#else
 	ns16550_init(&console_data, CONSOLE_UART_BASE);
+#endif
 	register_serial_console(&console_data.chip);
 }
 
@@ -179,6 +192,7 @@ int get_hw_unique_key(uint64_t smc_func_id, uint64_t in_key, uint64_t size);
 
 TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
+	TEE_Result res;
 	int ret = 0;
 	uint8_t hw_unq_key[sizeof(hwkey->data)] __aligned(64);
 
@@ -187,12 +201,12 @@ TEE_Result tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 
 	if (ret < 0) {
 		EMSG("\nH/W Unique key is not fetched from the platform.");
-		ret = TEE_ERROR_SECURITY;
+		res = TEE_ERROR_SECURITY;
 	} else {
 		memcpy(&hwkey->data[0], hw_unq_key, sizeof(hwkey->data));
-		ret = TEE_SUCCESS;
+		res = TEE_SUCCESS;
 	}
 
-	return ret;
+	return res;
 }
 #endif

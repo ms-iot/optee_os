@@ -111,7 +111,7 @@ static size_t probe_max_it(vaddr_t gicc_base __maybe_unused, vaddr_t gicd_base)
 		old_reg = read32(gicd_base + GICD_ISENABLER(i));
 		write32(0xffffffff, gicd_base + GICD_ISENABLER(i));
 		reg = read32(gicd_base + GICD_ISENABLER(i));
-		write32(old_reg, gicd_base + GICD_ICENABLER(i));
+		write32(~old_reg, gicd_base + GICD_ICENABLER(i));
 		for (b = NUM_INTS_PER_REG - 1; b >= 0; b--) {
 			if (BIT32(b) & reg) {
 				ret = i * NUM_INTS_PER_REG + b;
@@ -329,7 +329,7 @@ static void gic_it_raise_sgi(struct gic_data *gd, size_t it,
 static uint32_t gic_read_iar(struct gic_data *gd __maybe_unused)
 {
 #if defined(CFG_ARM_GICV3)
-	return read_icc_iar0();
+	return read_icc_iar1();
 #else
 	return read32(gd->gicc_base + GICC_IAR);
 #endif
@@ -338,7 +338,7 @@ static uint32_t gic_read_iar(struct gic_data *gd __maybe_unused)
 static void gic_write_eoir(struct gic_data *gd __maybe_unused, uint32_t eoir)
 {
 #if defined(CFG_ARM_GICV3)
-	write_icc_eoir0(eoir);
+	write_icc_eoir1(eoir);
 #else
 	write32(eoir, gd->gicc_base + GICC_EOIR);
 #endif

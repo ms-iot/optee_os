@@ -76,7 +76,7 @@ void imx_wdog_restart(void)
 }
 KEEP_PAGER(imx_wdog_restart);
 
-#ifdef CFG_DT
+#if defined(CFG_DT) && !defined(CFG_EXTERNAL_DTB_OVERLAY)
 static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
 {
 	enum teecore_memtypes mtype;
@@ -102,7 +102,7 @@ static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
 	};
 #endif
 
-	fdt = get_dt_blob();
+	fdt = get_dt();
 	if (!fdt) {
 		EMSG("No DTB\n");
 		return TEE_ERROR_NOT_SUPPORTED;
@@ -167,6 +167,9 @@ register_phys_mem(MEM_AREA_IO_SEC, WDOG_BASE, CORE_MMU_DEVICE_SIZE);
 static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
 {
 	*wdog_vbase = (vaddr_t)phys_to_virt(WDOG_BASE, MEM_AREA_IO_SEC);
+#if defined(CFG_IMX_WDOG_EXT_RESET)
+	ext_reset = true;
+#endif
 	return TEE_SUCCESS;
 }
 #endif
@@ -174,7 +177,8 @@ static TEE_Result imx_wdog_base(vaddr_t *wdog_vbase)
 static TEE_Result imx_wdog_init(void)
 {
 #if defined(PLATFORM_FLAVOR_mx7dsabresd) || \
-    defined(PLATFORM_FLAVOR_mx7dclsom)
+	defined(PLATFORM_FLAVOR_mx7dclsom)
+
 	ext_reset = true;
 #endif
 	return imx_wdog_base(&wdog_base);

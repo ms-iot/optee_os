@@ -24,20 +24,20 @@ build:
     - _make CFG_TEE_CORE_MALLOC_DEBUG=y
     - _make CFG_CORE_SANITIZE_UNDEFINED=y
     - _make CFG_CORE_SANITIZE_KADDRESS=y
+    - _make CFG_LOCKDEP=y
     - _make CFG_CRYPTO=n
     - _make CFG_CRYPTO_{AES,DES}=n
     - _make CFG_CRYPTO_{DSA,RSA,DH}=n
     - _make CFG_CRYPTO_{DSA,RSA,DH,ECC}=n
     - _make CFG_CRYPTO_{H,C,CBC_}MAC=n
     - _make CFG_CRYPTO_{G,C}CM=n
-    - _make CFG_CRYPTO_{MD5,SHA{1,224,256,384,512}}=n
+    - _make CFG_CRYPTO_{MD5,SHA{1,224,256,384,512,512_256}}=n
     - _make CFG_WITH_PAGER=y
     - _make CFG_WITH_PAGER=y CFG_WITH_LPAE=y
     - _make CFG_WITH_LPAE=y
     - _make CFG_RPMB_FS=y
     - _make CFG_RPMB_FS=y CFG_RPMB_TESTKEY=y
     - _make CFG_REE_FS=n CFG_RPMB_FS=y
-    - _make CFG_WITH_USER_TA=n CFG_CRYPTO=n CFG_SE_API=n CFG_PCSC_PASSTHRU_READER_DRV=y
     - _make CFG_WITH_PAGER=y CFG_WITH_LPAE=y CFG_RPMB_FS=y CFG_DT=y CFG_TEE_CORE_LOG_LEVEL=1 CFG_TEE_CORE_DEBUG=y CFG_CC_OPTIMIZE_FOR_SIZE=n CFG_DEBUG_INFO=y
     - _make CFG_WITH_PAGER=y CFG_WITH_LPAE=y CFG_RPMB_FS=y CFG_DT=y CFG_TEE_CORE_LOG_LEVEL=0 CFG_TEE_CORE_DEBUG=n DEBUG=0
     - _make CFG_BUILT_IN_ARGS=y CFG_PAGEABLE_ADDR=0 CFG_NS_ENTRY_ADDR=0 CFG_DT_ADDR=0 CFG_DT=y
@@ -63,6 +63,8 @@ build:
     - _make PLATFORM=imx-mx6qsabresd
     - _make PLATFORM=imx-mx6dlsabresd
     - _make PLATFORM=imx-mx7dsabresd
+    - _make PLATFORM=imx-imx8mmevk
+    - _make PLATFORM=imx-imx8mqevk
     - _make PLATFORM=k3-am65x
     - _make PLATFORM=k3-am65x CFG_ARM64_core=y
     - _make PLATFORM=ti-dra7xx
@@ -78,6 +80,7 @@ build:
     - _make PLATFORM=ls-ls1012afrwy
     - _make PLATFORM=ls-ls1088ardb
     - _make PLATFORM=ls-ls2088ardb
+    - _make PLATFORM=ls-lx2160ardb
     - _make PLATFORM=zynq7k-zc702
     - _make PLATFORM=zynqmp-zcu102
     - _make PLATFORM=zynqmp-zcu102 CFG_ARM64_core=y

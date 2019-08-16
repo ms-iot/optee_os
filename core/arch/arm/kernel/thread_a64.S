@@ -317,6 +317,7 @@ FUNC __thread_enter_user_mode , :
 	store_xregs sp, THREAD_CORE_LOCAL_X0, 0, 1
 	b eret_to_el0
 END_FUNC __thread_enter_user_mode
+KEEP_PAGER __thread_enter_user_mode
 
 /*
  * void thread_unwind_user_mode(uint32_t ret, uint32_t exit_status0,
@@ -694,7 +695,11 @@ eret_to_el0:
 #endif /*CFG_CORE_UNMAP_CORE_AT_EL0*/
 
 	eret
-
+	/*
+	 * Make sure that literals are placed before the
+	 * thread_excp_vect_end label.
+	 */
+	.pool
 	.global thread_excp_vect_end
 thread_excp_vect_end:
 END_FUNC thread_excp_vect

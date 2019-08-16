@@ -8,14 +8,14 @@
 #include <crypto/aes-gcm.h>
 #include <crypto/crypto.h>
 #include <kernel/panic.h>
-#include <mpalib.h>
 #include <stdlib.h>
 #include <string_ext.h>
 #include <string.h>
 #include <tee_api_types.h>
+#include <tee_api_defines_extensions.h>
 #include <tee/tee_cryp_utl.h>
 #include <tomcrypt.h>
-#include "tomcrypt_mpa.h"
+#include "tomcrypt_mp.h"
 #include <trace.h>
 #include <utee_defines.h>
 #include <util.h>
@@ -197,6 +197,7 @@ static TEE_Result tee_algo_to_ltc_hashindex(uint32_t algo, int *ltc_hashindex)
 		*ltc_hashindex = find_hash("sha512");
 		break;
 #endif
+	case TEE_ALG_RSASSA_PKCS1_V1_5:
 	case TEE_ALG_RSAES_PKCS1_V1_5:
 		/* invalid one. but it should not be used anyway */
 		*ltc_hashindex = -1;
@@ -419,120 +420,11 @@ TEE_Result crypto_hash_final(void *ctx, uint32_t algo, uint8_t *digest,
 
 #if defined(_CFG_CRYPTO_WITH_ACIPHER)
 
-#define LTC_VARIABLE_NUMBER         (50)
-
-#define LTC_MEMPOOL_U32_SIZE \
-	mpa_scratch_mem_size_in_U32(LTC_VARIABLE_NUMBER, \
-				    CFG_CORE_BIGNUM_MAX_BITS)
-
-#if defined(CFG_WITH_PAGER)
-#include <mm/tee_pager.h>
-#include <util.h>
-#include <mm/core_mmu.h>
-
-/* allocate pageable_zi vmem for mpa scratch memory pool */
-static struct mempool *get_mpa_scratch_memory_pool(void)
-{
-	size_t size;
-	void *data;
-
-	size = ROUNDUP((LTC_MEMPOOL_U32_SIZE * sizeof(uint32_t)),
-		        SMALL_PAGE_SIZE);
-	data = tee_pager_alloc(size, 0);
-	if (!data)
-		panic();
-
-	return mempool_alloc_pool(data, size, tee_pager_release_phys);
-}
-#else /* CFG_WITH_PAGER */
-static struct mempool *get_mpa_scratch_memory_pool(void)
-{
-	static uint32_t data[LTC_MEMPOOL_U32_SIZE] __aligned(__alignof__(long));
-
-	return mempool_alloc_pool(data, sizeof(data), NULL);
-}
-#endif
-
-static void tee_ltc_alloc_mpa(void)
-{
-	static mpa_scratch_mem_base mem;
-
-	/*
-	 * The default size (bits) of a big number that will be required it
-	 * equals the max size of the computation (for example 4096 bits),
-	 * multiplied by 2 to allow overflow in computation
-	 */
-	mem.bn_bits = CFG_CORE_BIGNUM_MAX_BITS * 2;
-	mem.pool = get_mpa_scratch_memory_pool();
-	if (!mem.pool)
-		panic();
-	init_mpa_tomcrypt(&mem);
-}
-
-size_t crypto_bignum_num_bytes(struct bignum *a)
-{
-	return mp_unsigned_bin_size(a);
-}
-
-size_t crypto_bignum_num_bits(struct bignum *a)
-{
-	return mp_count_bits(a);
-}
-
-int32_t crypto_bignum_compare(struct bignum *a, struct bignum *b)
-{
-	return mp_cmp(a, b);
-}
-
-void crypto_bignum_bn2bin(const struct bignum *from, uint8_t *to)
-{
-	mp_to_unsigned_bin((struct bignum *)from, to);
-}
-
-TEE_Result crypto_bignum_bin2bn(const uint8_t *from, size_t fromsize,
-			 struct bignum *to)
-{
-	if (mp_read_unsigned_bin(to, (uint8_t *)from, fromsize) != CRYPT_OK)
-		return TEE_ERROR_BAD_PARAMETERS;
-	return TEE_SUCCESS;
-}
-
-void crypto_bignum_copy(struct bignum *to, const struct bignum *from)
-{
-	mp_copy((void *)from, to);
-}
-
-struct bignum *crypto_bignum_allocate(size_t size_bits)
-{
-	size_t sz = mpa_StaticVarSizeInU32(size_bits) *	sizeof(uint32_t);
-	struct mpa_numbase_struct *bn = calloc(1, sz);
-
-	if (!bn)
-		return NULL;
-	bn->alloc = sz - MPA_NUMBASE_METADATA_SIZE_IN_U32 * sizeof(uint32_t);
-	return (struct bignum *)bn;
-}
-
-void crypto_bignum_free(struct bignum *s)
-{
-	free(s);
-}
-
-void crypto_bignum_clear(struct bignum *s)
-{
-	struct mpa_numbase_struct *bn = (struct mpa_numbase_struct *)s;
-
-	/* despite mpa_numbase_struct description, 'alloc' field a byte size */
-	memset(bn->d, 0, bn->alloc);
-}
-
 static bool bn_alloc_max(struct bignum **s)
 {
-	size_t sz = mpa_StaticVarSizeInU32(CFG_CORE_BIGNUM_MAX_BITS) *
-			sizeof(uint32_t) * 8;
+	*s = crypto_bignum_allocate(CFG_CORE_BIGNUM_MAX_BITS);
 
-	*s = crypto_bignum_allocate(sz);
-	return !!(*s);
+	return *s;
 }
 
 static TEE_Result __maybe_unused convert_ltc_verify_status(int ltc_res,
@@ -661,8 +553,7 @@ static TEE_Result rsadorep(rsa_key *ltc_key, const uint8_t *src,
 	 * required size of the out buffer without doing a partial decrypt.
 	 * We know the upper bound though.
 	 */
-	blen = (mpa_StaticTempVarSizeInU32(CFG_CORE_BIGNUM_MAX_BITS)) *
-	       sizeof(uint32_t);
+	blen = CFG_CORE_BIGNUM_MAX_BITS / sizeof(uint8_t);
 	buf = malloc(blen);
 	if (!buf) {
 		res = TEE_ERROR_OUT_OF_MEMORY;
@@ -925,6 +816,9 @@ TEE_Result crypto_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 	}
 
 	switch (algo) {
+	case TEE_ALG_RSASSA_PKCS1_V1_5:
+		ltc_rsa_algo = LTC_PKCS_1_V1_5_NA1;
+		break;
 	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5:
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA1:
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA224:
@@ -945,20 +839,22 @@ TEE_Result crypto_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 		goto err;
 	}
 
-	ltc_res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
-	if (ltc_res != CRYPT_OK) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto err;
-	}
+	if (ltc_rsa_algo != LTC_PKCS_1_V1_5_NA1) {
+		ltc_res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
+		if (ltc_res != CRYPT_OK) {
+			res = TEE_ERROR_BAD_PARAMETERS;
+			goto err;
+		}
 
-	res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(algo),
-				       &hash_size);
-	if (res != TEE_SUCCESS)
-		goto err;
+		res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(algo),
+					       &hash_size);
+		if (res != TEE_SUCCESS)
+			goto err;
 
-	if (msg_len != hash_size) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto err;
+		if (msg_len != hash_size) {
+			res = TEE_ERROR_BAD_PARAMETERS;
+			goto err;
+		}
 	}
 
 	mod_size = ltc_mp.unsigned_size((void *)(ltc_key.N));
@@ -1003,14 +899,16 @@ TEE_Result crypto_acipher_rsassa_verify(uint32_t algo,
 		.N = key->n
 	};
 
-	res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(algo),
-				       &hash_size);
-	if (res != TEE_SUCCESS)
-		goto err;
+	if (algo != TEE_ALG_RSASSA_PKCS1_V1_5) {
+		res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(algo),
+					       &hash_size);
+		if (res != TEE_SUCCESS)
+			goto err;
 
-	if (msg_len != hash_size) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		goto err;
+		if (msg_len != hash_size) {
+			res = TEE_ERROR_BAD_PARAMETERS;
+			goto err;
+		}
 	}
 
 	bigint_size = ltc_mp.unsigned_size(ltc_key.N);
@@ -1020,11 +918,16 @@ TEE_Result crypto_acipher_rsassa_verify(uint32_t algo,
 	}
 
 	/* Get the algorithm */
-	res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
-	if (res != TEE_SUCCESS)
-		goto err;
+	if (algo != TEE_ALG_RSASSA_PKCS1_V1_5) {
+		res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
+		if (res != TEE_SUCCESS)
+			goto err;
+	}
 
 	switch (algo) {
+	case TEE_ALG_RSASSA_PKCS1_V1_5:
+		ltc_rsa_algo = LTC_PKCS_1_V1_5_NA1;
+		break;
 	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5:
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA1:
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA224:
@@ -2786,9 +2689,7 @@ void crypto_aes_gcm_final(void *ctx)
 
 TEE_Result crypto_init(void)
 {
-#if defined(_CFG_CRYPTO_WITH_ACIPHER)
-	tee_ltc_alloc_mpa();
-#endif
+	init_mp_tomcrypt();
 	tee_ltc_reg_algs();
 
 	return TEE_SUCCESS;
@@ -2821,6 +2722,23 @@ TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 		return TEE_ERROR_GENERIC;
 	if (buf_compare_ct(digest, hash, sizeof(digest)) != 0)
 		return TEE_ERROR_SECURITY;
+	return TEE_SUCCESS;
+}
+#endif
+
+#if defined(CFG_CRYPTO_SHA512_256)
+TEE_Result hash_sha512_256_compute(uint8_t *digest, const uint8_t *data,
+		size_t data_size)
+{
+	hash_state hs;
+
+	if (sha512_256_init(&hs) != CRYPT_OK)
+		return TEE_ERROR_GENERIC;
+	if (sha512_256_process(&hs, data, data_size) != CRYPT_OK)
+		return TEE_ERROR_GENERIC;
+	if (sha512_256_done(&hs, digest) != CRYPT_OK)
+		return TEE_ERROR_GENERIC;
+
 	return TEE_SUCCESS;
 }
 #endif

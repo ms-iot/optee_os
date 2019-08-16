@@ -4,8 +4,9 @@
  */
 
 #include <assert.h>
-#include <keep.h>
 #include <initcall.h>
+#include <keep.h>
+#include <kernel/linker.h>
 #include <kernel/mutex.h>
 #include <kernel/panic.h>
 #include <kernel/refcount.h>
@@ -416,6 +417,11 @@ static TEE_Result mobj_reg_shm_get_cattr(struct mobj *mobj __unused,
 
 static bool mobj_reg_shm_matches(struct mobj *mobj, enum buf_is_attr attr);
 
+static uint64_t mobj_reg_shm_get_cookie(struct mobj *mobj)
+{
+	return to_mobj_reg_shm(mobj)->cookie;
+}
+
 static const struct mobj_ops mobj_reg_shm_ops __rodata_unpaged = {
 	.get_pa = mobj_reg_shm_get_pa,
 	.get_phys_offs = mobj_reg_shm_get_phys_offs,
@@ -423,6 +429,7 @@ static const struct mobj_ops mobj_reg_shm_ops __rodata_unpaged = {
 	.get_cattr = mobj_reg_shm_get_cattr,
 	.matches = mobj_reg_shm_matches,
 	.free = mobj_reg_shm_free,
+	.get_cookie = mobj_reg_shm_get_cookie,
 };
 
 static bool mobj_reg_shm_matches(struct mobj *mobj __maybe_unused,
@@ -441,7 +448,7 @@ static struct mobj_reg_shm *to_mobj_reg_shm(struct mobj *mobj)
 
 static struct mobj_reg_shm *to_mobj_reg_shm_may_fail(struct mobj *mobj)
 {
-	if (mobj->ops != &mobj_reg_shm_ops)
+	if (mobj && mobj->ops != &mobj_reg_shm_ops)
 		return NULL;
 
 	return container_of(mobj, struct mobj_reg_shm, mobj);
@@ -716,6 +723,7 @@ service_init(mobj_mapped_shm_init);
 struct mobj_shm {
 	struct mobj mobj;
 	paddr_t pa;
+	uint64_t cookie;
 };
 
 static struct mobj_shm *to_mobj_shm(struct mobj *mobj);
@@ -771,12 +779,18 @@ static void mobj_shm_free(struct mobj *mobj)
 	free(m);
 }
 
+static uint64_t mobj_shm_get_cookie(struct mobj *mobj)
+{
+	return to_mobj_shm(mobj)->cookie;
+}
+
 static const struct mobj_ops mobj_shm_ops __rodata_unpaged = {
 	.get_va = mobj_shm_get_va,
 	.get_pa = mobj_shm_get_pa,
 	.get_phys_offs = mobj_shm_get_phys_offs,
 	.matches = mobj_shm_matches,
 	.free = mobj_shm_free,
+	.get_cookie = mobj_shm_get_cookie,
 };
 
 static struct mobj_shm *to_mobj_shm(struct mobj *mobj)
@@ -785,7 +799,7 @@ static struct mobj_shm *to_mobj_shm(struct mobj *mobj)
 	return container_of(mobj, struct mobj_shm, mobj);
 }
 
-struct mobj *mobj_shm_alloc(paddr_t pa, size_t size)
+struct mobj *mobj_shm_alloc(paddr_t pa, size_t size, uint64_t cookie)
 {
 	struct mobj_shm *m;
 
@@ -799,6 +813,7 @@ struct mobj *mobj_shm_alloc(paddr_t pa, size_t size)
 	m->mobj.size = size;
 	m->mobj.ops = &mobj_shm_ops;
 	m->pa = pa;
+	m->cookie = cookie;
 
 	return &m->mobj;
 }
@@ -957,3 +972,24 @@ bool mobj_is_paged(struct mobj *mobj)
 	       mobj->ops == &mobj_seccpy_shm_ops;
 }
 #endif /*CFG_PAGED_USER_TA*/
+
+static TEE_Result mobj_init(void)
+{
+	mobj_sec_ddr = mobj_phys_alloc(tee_mm_sec_ddr.lo,
+				       tee_mm_sec_ddr.hi - tee_mm_sec_ddr.lo,
+				       OPTEE_SMC_SHM_CACHED, CORE_MEM_TA_RAM);
+	if (!mobj_sec_ddr)
+		panic("Failed to register secure ta ram");
+
+	mobj_tee_ram = mobj_phys_alloc(TEE_RAM_START,
+				       VCORE_UNPG_RW_PA + VCORE_UNPG_RW_SZ -
+						TEE_RAM_START,
+				       TEE_MATTR_CACHE_CACHED,
+				       CORE_MEM_TEE_RAM);
+	if (!mobj_tee_ram)
+		panic("Failed to register tee ram");
+
+	return TEE_SUCCESS;
+}
+
+driver_init_late(mobj_init);

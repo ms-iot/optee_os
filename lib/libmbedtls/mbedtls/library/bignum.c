@@ -58,6 +58,8 @@
 #define mbedtls_free       free
 #endif
 
+#include <mempool.h>
+
 /* Implementation that should never be optimized out by the compiler */
 static void mbedtls_mpi_zeroize( mbedtls_mpi_uint *v, size_t n ) {
     volatile mbedtls_mpi_uint *p = v; while( n-- ) *p++ = 0;
@@ -76,17 +78,42 @@ static void mbedtls_mpi_zeroize( mbedtls_mpi_uint *v, size_t n ) {
 #define BITS_TO_LIMBS(i)  ( (i) / biL + ( (i) % biL != 0 ) )
 #define CHARS_TO_LIMBS(i) ( (i) / ciL + ( (i) % ciL != 0 ) )
 
+void *mbedtls_mpi_mempool;
+
 /*
  * Initialize one MPI
  */
-void mbedtls_mpi_init( mbedtls_mpi *X )
+static void mpi_init( mbedtls_mpi *X, enum mbedtls_mpi_alloc_type alloc_type,
+		      mbedtls_mpi_uint *p, int sign, size_t alloc_size,
+                      size_t nblimbs)
 {
     if( X == NULL )
         return;
 
-    X->s = 1;
-    X->n = 0;
-    X->p = NULL;
+    X->s = sign;
+    X->alloc_type = alloc_type;
+    X->alloc_size = alloc_size;
+    X->n = nblimbs;
+    X->p = p;
+}
+
+void mbedtls_mpi_init( mbedtls_mpi *X )
+{
+    mpi_init(X, MBEDTLS_MPI_ALLOC_TYPE_MALLOC, NULL, 1, 0, 0);
+}
+
+void mbedtls_mpi_init_mempool( mbedtls_mpi *X )
+{
+    if( mbedtls_mpi_mempool )
+        mpi_init(X, MBEDTLS_MPI_ALLOC_TYPE_MEMPOOL, NULL, 1, 0, 0);
+    else
+        mbedtls_mpi_init( X );
+}
+
+void mbedtls_mpi_init_static( mbedtls_mpi *X , mbedtls_mpi_uint *p,
+                              int sign, size_t alloc_size, size_t nblimbs)
+{
+    mpi_init(X, MBEDTLS_MPI_ALLOC_TYPE_STATIC, p, sign, alloc_size, nblimbs);
 }
 
 /*
@@ -100,12 +127,22 @@ void mbedtls_mpi_free( mbedtls_mpi *X )
     if( X->p != NULL )
     {
         mbedtls_mpi_zeroize( X->p, X->n );
-        mbedtls_free( X->p );
+        switch (X->alloc_type) {
+        case MBEDTLS_MPI_ALLOC_TYPE_MALLOC:
+            mbedtls_free( X->p );
+            X->p = NULL;
+            break;
+        case MBEDTLS_MPI_ALLOC_TYPE_MEMPOOL:
+            mempool_free( mbedtls_mpi_mempool, X->p );
+            X->p = NULL;
+            break;
+        default:
+            break;
+        }
     }
 
     X->s = 1;
     X->n = 0;
-    X->p = NULL;
 }
 
 /*
@@ -118,21 +155,42 @@ int mbedtls_mpi_grow( mbedtls_mpi *X, size_t nblimbs )
     if( nblimbs > MBEDTLS_MPI_MAX_LIMBS )
         return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
 
-    if( X->n < nblimbs )
-    {
-        if( ( p = (mbedtls_mpi_uint*)mbedtls_calloc( nblimbs, ciL ) ) == NULL )
+    if( X->n >= nblimbs )
+        return( 0 );
+
+    switch( X->alloc_type ) {
+    case MBEDTLS_MPI_ALLOC_TYPE_MALLOC:
+        p = (mbedtls_mpi_uint*)mbedtls_calloc( nblimbs, ciL );
+        break;
+    case MBEDTLS_MPI_ALLOC_TYPE_MEMPOOL:
+        p = mempool_calloc( mbedtls_mpi_mempool, nblimbs, ciL );
+        break;
+    case MBEDTLS_MPI_ALLOC_TYPE_STATIC:
+        if( nblimbs > X->alloc_size )
             return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
-
-        if( X->p != NULL )
-        {
-            memcpy( p, X->p, X->n * ciL );
-            mbedtls_mpi_zeroize( X->p, X->n );
-            mbedtls_free( X->p );
-        }
-
-        X->n = nblimbs;
-        X->p = p;
+        memset( X->p + X->n, 0, (nblimbs - X->n) * ciL );
+	goto out;
+    default:
+        return( MBEDTLS_ERR_MPI_BAD_INPUT_DATA );
     }
+
+    if( p == NULL )
+        return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
+
+    if( X->p != NULL ) {
+        memcpy( p, X->p, X->n * ciL );
+        mbedtls_mpi_zeroize( X->p, X->n );
+    }
+
+
+    if( X->alloc_type == MBEDTLS_MPI_ALLOC_TYPE_MALLOC)
+        mbedtls_free( X->p );
+    else
+        mempool_free( mbedtls_mpi_mempool, X->p );
+
+    X->p = p;
+out:
+    X->n = nblimbs;
 
     return( 0 );
 }
@@ -158,18 +216,37 @@ int mbedtls_mpi_shrink( mbedtls_mpi *X, size_t nblimbs )
     if( i < nblimbs )
         i = nblimbs;
 
-    if( ( p = (mbedtls_mpi_uint*)mbedtls_calloc( i, ciL ) ) == NULL )
-        return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
+    switch (X->alloc_type) {
+    case MBEDTLS_MPI_ALLOC_TYPE_MALLOC:
+            p = (mbedtls_mpi_uint*)mbedtls_calloc( nblimbs, ciL );
+            break;
+    case MBEDTLS_MPI_ALLOC_TYPE_MEMPOOL:
+            p = mempool_calloc(mbedtls_mpi_mempool, nblimbs, ciL);
+            break;
+    case MBEDTLS_MPI_ALLOC_TYPE_STATIC:
+        if (nblimbs > X->alloc_size)
+            return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
+        mbedtls_mpi_zeroize(X->p + i, X->n - i);
+        goto out;
+
+    default:
+        return( MBEDTLS_ERR_MPI_BAD_INPUT_DATA );
+    }
+
 
     if( X->p != NULL )
     {
         memcpy( p, X->p, i * ciL );
         mbedtls_mpi_zeroize( X->p, X->n );
-        mbedtls_free( X->p );
+        if (X->alloc_type == MBEDTLS_MPI_ALLOC_TYPE_MALLOC)
+            mbedtls_free( X->p );
+        else
+            mempool_free( mbedtls_mpi_mempool, X->p );
     }
 
-    X->n = i;
     X->p = p;
+out:
+    X->n = i;
 
     return( 0 );
 }
@@ -431,7 +508,7 @@ int mbedtls_mpi_read_string( mbedtls_mpi *X, int radix, const char *s )
     if( radix < 2 || radix > 16 )
         return( MBEDTLS_ERR_MPI_BAD_INPUT_DATA );
 
-    mbedtls_mpi_init( &T );
+    mbedtls_mpi_init_mempool( &T );
 
     slen = strlen( s );
 
@@ -548,7 +625,7 @@ int mbedtls_mpi_write_string( const mbedtls_mpi *X, int radix,
     }
 
     p = buf;
-    mbedtls_mpi_init( &T );
+    mbedtls_mpi_init_mempool( &T );
 
     if( X->s == -1 )
         *p++ = '-';
@@ -970,7 +1047,7 @@ int mbedtls_mpi_sub_abs( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
     if( mbedtls_mpi_cmp_abs( A, B ) < 0 )
         return( MBEDTLS_ERR_MPI_NEGATIVE_VALUE );
 
-    mbedtls_mpi_init( &TB );
+    mbedtls_mpi_init_mempool( &TB );
 
     if( X == B )
     {
@@ -1176,7 +1253,7 @@ int mbedtls_mpi_mul_mpi( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
     size_t i, j;
     mbedtls_mpi TA, TB;
 
-    mbedtls_mpi_init( &TA ); mbedtls_mpi_init( &TB );
+    mbedtls_mpi_init_mempool( &TA ); mbedtls_mpi_init_mempool( &TB );
 
     if( X == A ) { MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TA, A ) ); A = &TA; }
     if( X == B ) { MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TB, B ) ); B = &TB; }
@@ -1328,8 +1405,9 @@ int mbedtls_mpi_div_mpi( mbedtls_mpi *Q, mbedtls_mpi *R, const mbedtls_mpi *A, c
     if( mbedtls_mpi_cmp_int( B, 0 ) == 0 )
         return( MBEDTLS_ERR_MPI_DIVISION_BY_ZERO );
 
-    mbedtls_mpi_init( &X ); mbedtls_mpi_init( &Y ); mbedtls_mpi_init( &Z );
-    mbedtls_mpi_init( &T1 ); mbedtls_mpi_init( &T2 );
+    mbedtls_mpi_init_mempool( &X ); mbedtls_mpi_init_mempool( &Y );
+    mbedtls_mpi_init_mempool( &Z ); mbedtls_mpi_init_mempool( &T1 );
+    mbedtls_mpi_init_mempool( &T2 );
 
     if( mbedtls_mpi_cmp_abs( A, B ) < 0 )
     {
@@ -1530,7 +1608,7 @@ int mbedtls_mpi_mod_int( mbedtls_mpi_uint *r, const mbedtls_mpi *A, mbedtls_mpi_
 /*
  * Fast Montgomery initialization (thanks to Tom St Denis)
  */
-static void mpi_montg_init( mbedtls_mpi_uint *mm, const mbedtls_mpi *N )
+void mbedtls_mpi_montg_init( mbedtls_mpi_uint *mm, const mbedtls_mpi *N )
 {
     mbedtls_mpi_uint x, m0 = N->p[0];
     unsigned int i;
@@ -1547,7 +1625,8 @@ static void mpi_montg_init( mbedtls_mpi_uint *mm, const mbedtls_mpi *N )
 /*
  * Montgomery multiplication: A = A * B * R^-1 mod N  (HAC 14.36)
  */
-static int mpi_montmul( mbedtls_mpi *A, const mbedtls_mpi *B, const mbedtls_mpi *N, mbedtls_mpi_uint mm,
+int mbedtls_mpi_montmul( mbedtls_mpi *A, const mbedtls_mpi *B,
+			 const mbedtls_mpi *N, mbedtls_mpi_uint mm,
                          const mbedtls_mpi *T )
 {
     size_t i, n, m;
@@ -1590,7 +1669,8 @@ static int mpi_montmul( mbedtls_mpi *A, const mbedtls_mpi *B, const mbedtls_mpi 
 /*
  * Montgomery reduction: A = A * R^-1 mod N
  */
-static int mpi_montred( mbedtls_mpi *A, const mbedtls_mpi *N, mbedtls_mpi_uint mm, const mbedtls_mpi *T )
+int mbedtls_mpi_montred( mbedtls_mpi *A, const mbedtls_mpi *N,
+			 mbedtls_mpi_uint mm, const mbedtls_mpi *T )
 {
     mbedtls_mpi_uint z = 1;
     mbedtls_mpi U;
@@ -1598,7 +1678,7 @@ static int mpi_montred( mbedtls_mpi *A, const mbedtls_mpi *N, mbedtls_mpi_uint m
     U.n = U.s = (int) z;
     U.p = &z;
 
-    return( mpi_montmul( A, &U, N, mm, T ) );
+    return( mbedtls_mpi_montmul( A, &U, N, mm, T ) );
 }
 
 /*
@@ -1623,9 +1703,9 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
     /*
      * Init temps and window size
      */
-    mpi_montg_init( &mm, N );
-    mbedtls_mpi_init( &RR ); mbedtls_mpi_init( &T );
-    mbedtls_mpi_init( &Apos );
+    mbedtls_mpi_montg_init( &mm, N );
+    mbedtls_mpi_init_mempool( &RR ); mbedtls_mpi_init_mempool( &T );
+    mbedtls_mpi_init_mempool( &Apos );
     memset( W, 0, sizeof( W ) );
 
     i = mbedtls_mpi_bitlen( E );
@@ -1675,13 +1755,13 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
     else
         MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &W[1], A ) );
 
-    MBEDTLS_MPI_CHK( mpi_montmul( &W[1], &RR, N, mm, &T ) );
+    MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( &W[1], &RR, N, mm, &T ) );
 
     /*
      * X = R^2 * R^-1 mod N = R mod N
      */
     MBEDTLS_MPI_CHK( mbedtls_mpi_copy( X, &RR ) );
-    MBEDTLS_MPI_CHK( mpi_montred( X, N, mm, &T ) );
+    MBEDTLS_MPI_CHK( mbedtls_mpi_montred( X, N, mm, &T ) );
 
     if( wsize > 1 )
     {
@@ -1694,7 +1774,7 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
         MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &W[j], &W[1]    ) );
 
         for( i = 0; i < wsize - 1; i++ )
-            MBEDTLS_MPI_CHK( mpi_montmul( &W[j], &W[j], N, mm, &T ) );
+            MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( &W[j], &W[j], N, mm, &T ) );
 
         /*
          * W[i] = W[i - 1] * W[1]
@@ -1704,7 +1784,7 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
             MBEDTLS_MPI_CHK( mbedtls_mpi_grow( &W[i], N->n + 1 ) );
             MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &W[i], &W[i - 1] ) );
 
-            MBEDTLS_MPI_CHK( mpi_montmul( &W[i], &W[1], N, mm, &T ) );
+            MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( &W[i], &W[1], N, mm, &T ) );
         }
     }
 
@@ -1741,7 +1821,7 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
             /*
              * out of window, square X
              */
-            MBEDTLS_MPI_CHK( mpi_montmul( X, X, N, mm, &T ) );
+            MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( X, X, N, mm, &T ) );
             continue;
         }
 
@@ -1759,12 +1839,12 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
              * X = X^wsize R^-1 mod N
              */
             for( i = 0; i < wsize; i++ )
-                MBEDTLS_MPI_CHK( mpi_montmul( X, X, N, mm, &T ) );
+                MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( X, X, N, mm, &T ) );
 
             /*
              * X = X * W[wbits] R^-1 mod N
              */
-            MBEDTLS_MPI_CHK( mpi_montmul( X, &W[wbits], N, mm, &T ) );
+            MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( X, &W[wbits], N, mm, &T ) );
 
             state--;
             nbits = 0;
@@ -1777,18 +1857,18 @@ int mbedtls_mpi_exp_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
      */
     for( i = 0; i < nbits; i++ )
     {
-        MBEDTLS_MPI_CHK( mpi_montmul( X, X, N, mm, &T ) );
+        MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( X, X, N, mm, &T ) );
 
         wbits <<= 1;
 
         if( ( wbits & ( one << wsize ) ) != 0 )
-            MBEDTLS_MPI_CHK( mpi_montmul( X, &W[1], N, mm, &T ) );
+            MBEDTLS_MPI_CHK( mbedtls_mpi_montmul( X, &W[1], N, mm, &T ) );
     }
 
     /*
      * X = A^E * R * R^-1 mod N = A^E mod N
      */
-    MBEDTLS_MPI_CHK( mpi_montred( X, N, mm, &T ) );
+    MBEDTLS_MPI_CHK( mbedtls_mpi_montred( X, N, mm, &T ) );
 
     if( neg && E->n != 0 && ( E->p[0] & 1 ) != 0 )
     {
@@ -1818,7 +1898,8 @@ int mbedtls_mpi_gcd( mbedtls_mpi *G, const mbedtls_mpi *A, const mbedtls_mpi *B 
     size_t lz, lzt;
     mbedtls_mpi TG, TA, TB;
 
-    mbedtls_mpi_init( &TG ); mbedtls_mpi_init( &TA ); mbedtls_mpi_init( &TB );
+    mbedtls_mpi_init_mempool( &TG ); mbedtls_mpi_init_mempool( &TA );
+    mbedtls_mpi_init_mempool( &TB );
 
     MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TA, A ) );
     MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TB, B ) );
@@ -1896,9 +1977,11 @@ int mbedtls_mpi_inv_mod( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
     if( mbedtls_mpi_cmp_int( N, 1 ) <= 0 )
         return( MBEDTLS_ERR_MPI_BAD_INPUT_DATA );
 
-    mbedtls_mpi_init( &TA ); mbedtls_mpi_init( &TU ); mbedtls_mpi_init( &U1 ); mbedtls_mpi_init( &U2 );
-    mbedtls_mpi_init( &G ); mbedtls_mpi_init( &TB ); mbedtls_mpi_init( &TV );
-    mbedtls_mpi_init( &V1 ); mbedtls_mpi_init( &V2 );
+    mbedtls_mpi_init_mempool( &TA ); mbedtls_mpi_init_mempool( &TU );
+    mbedtls_mpi_init_mempool( &U1 ); mbedtls_mpi_init_mempool( &U2 );
+    mbedtls_mpi_init_mempool( &G ); mbedtls_mpi_init_mempool( &TB );
+    mbedtls_mpi_init_mempool( &TV ); mbedtls_mpi_init_mempool( &V1 );
+    mbedtls_mpi_init_mempool( &V2 );
 
     MBEDTLS_MPI_CHK( mbedtls_mpi_gcd( &G, A, N ) );
 
@@ -2051,8 +2134,9 @@ static int mpi_miller_rabin( const mbedtls_mpi *X,
     size_t i, j, k, n, s;
     mbedtls_mpi W, R, T, A, RR;
 
-    mbedtls_mpi_init( &W ); mbedtls_mpi_init( &R ); mbedtls_mpi_init( &T ); mbedtls_mpi_init( &A );
-    mbedtls_mpi_init( &RR );
+    mbedtls_mpi_init_mempool( &W ); mbedtls_mpi_init_mempool( &R );
+    mbedtls_mpi_init_mempool( &T ); mbedtls_mpi_init_mempool( &A );
+    mbedtls_mpi_init_mempool( &RR );
 
     /*
      * W = |X| - 1
@@ -2095,8 +2179,9 @@ static int mpi_miller_rabin( const mbedtls_mpi *X,
                 MBEDTLS_MPI_CHK( mbedtls_mpi_shift_r( &A, j - k ) );
             }
 
-            if (count++ > 30) {
-                return MBEDTLS_ERR_MPI_NOT_ACCEPTABLE;
+            if (count++ > 300) {
+                ret = MBEDTLS_ERR_MPI_NOT_ACCEPTABLE;
+                goto cleanup;
             }
 
         } while ( mbedtls_mpi_cmp_mpi( &A, &W ) >= 0 ||
@@ -2191,7 +2276,7 @@ int mbedtls_mpi_gen_prime( mbedtls_mpi *X, size_t nbits, int dh_flag,
     if( nbits < 3 || nbits > MBEDTLS_MPI_MAX_BITS )
         return( MBEDTLS_ERR_MPI_BAD_INPUT_DATA );
 
-    mbedtls_mpi_init( &Y );
+    mbedtls_mpi_init_mempool( &Y );
 
     n = BITS_TO_LIMBS( nbits );
 
@@ -2289,8 +2374,10 @@ int mbedtls_mpi_self_test( int verbose )
     int ret, i;
     mbedtls_mpi A, E, N, X, Y, U, V;
 
-    mbedtls_mpi_init( &A ); mbedtls_mpi_init( &E ); mbedtls_mpi_init( &N ); mbedtls_mpi_init( &X );
-    mbedtls_mpi_init( &Y ); mbedtls_mpi_init( &U ); mbedtls_mpi_init( &V );
+    mbedtls_mpi_init_mempool( &A ); mbedtls_mpi_init_mempool( &E );
+    mbedtls_mpi_init_mempool( &N ); mbedtls_mpi_init_mempool( &X );
+    mbedtls_mpi_init_mempool( &Y ); mbedtls_mpi_init_mempool( &U );
+    mbedtls_mpi_init_mempool( &V );
 
     MBEDTLS_MPI_CHK( mbedtls_mpi_read_string( &A, 16,
         "EFE021C2645FD1DC586E69184AF4A31E" \

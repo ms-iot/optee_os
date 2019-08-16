@@ -174,12 +174,7 @@ void tzc_configure_region(uint8_t region, vaddr_t region_base, uint32_t attr)
 {
 	assert(tzc.base);
 
-	if (region >= tzc.num_regions) {
-		EMSG("region = %u, num_regions = %u", (uint32_t)region,
-			(uint32_t)tzc.num_regions);
-
-		panic();
-	}
+	assert(region < tzc.num_regions);
 
 	/*
 	 * For region 0, this high/low/size/en field is Read Only (RO).

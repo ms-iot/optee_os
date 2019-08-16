@@ -72,8 +72,8 @@ endif
 
 include core/core.mk
 
-# Platform config is supposed to assign the targets
-ta-targets ?= user_ta
+# Platform/arch config is supposed to assign the targets
+ta-targets ?= invalid
 default-user-ta-target ?= $(firstword $(ta-targets))
 
 ifeq ($(CFG_WITH_USER_TA),y)
@@ -105,5 +105,14 @@ clean:
 cscope:
 	@echo '  CSCOPE  .'
 	${q}rm -f cscope.*
-	${q}find $(PWD) -name "*.[chSs]" | grep -v "$(PWD)/out" > cscope.files
+	${q}find $(PWD) -name "*.[chSs]" | grep -v export-ta_ > cscope.files
 	${q}cscope -b -q -k
+
+.PHONY: checkpatch checkpatch-staging checkpatch-working
+checkpatch: checkpatch-staging checkpatch-working
+
+checkpatch-working:
+	${q}./scripts/checkpatch.sh
+
+checkpatch-staging:
+	${q}./scripts/checkpatch.sh --cached

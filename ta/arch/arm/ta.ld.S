@@ -19,8 +19,16 @@ OUTPUT_ARCH(aarch64)
 #define CFG_FTRACE_BUF_SIZE 2048
 #endif
 
+PHDRS {
+	exidx 0x70000001;
+	exec PT_LOAD FLAGS (5);
+	rwdata PT_LOAD FLAGS (6);
+	dyn PT_DYNAMIC;
+	cxx PT_GNU_EH_FRAME;
+}
+
 SECTIONS {
-	.ta_head : {*(.ta_head)}
+	.ta_head : ALIGN(4096) {*(.ta_head)} :exec
 	.text : {
 		__text_start = .;
 		*(.text .text.*)
@@ -32,24 +40,35 @@ SECTIONS {
 		*(.vfp11_veneer)
 		__text_end = .;
 	}
-        .plt : { *(.plt) }
+	.plt : { *(.plt) }
 
-	.eh_frame : { *(.eh_frame) }
+	.eh_frame : { *(.eh_frame) *(.eh_frame.*) }
 	.rodata : {
 		*(.gnu.linkonce.r.*)
 		*(.rodata .rodata.*)
 	}
 	/* .ARM.exidx is sorted, so has to go in its own output section.  */
-	.ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) }
-        .ctors : { *(.ctors) }
-        .dtors : { *(.dtors) }
+	.ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } :exec :exidx
+	.ctors : { *(.ctors) } :exec
+	.dtors : { *(.dtors) }
+	.init_array : {
+		PROVIDE_HIDDEN (__init_array_start = .);
+		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP (*(.init_array))
+		PROVIDE_HIDDEN (__init_array_end = .);
+	}
+	.fini_array : {
+		PROVIDE_HIDDEN (__fini_array_start = .);
+		KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
+		KEEP (*(.fini_array))
+		PROVIDE_HIDDEN (__fini_array_end = .);
+	}
 	.dynsym : { *(.dynsym) }
 	.dynstr : { *(.dynstr) }
 	.hash : { *(.hash) }
 
 	/* Page align to allow dropping execute bit for RW data */
-	. = ALIGN(4096);
-
+	.ta_info : ALIGN(4096) {*(.ta_info)} :rwdata
 	.got : { *(.got.plt) *(.got) }
 	.rel.text : { *(.rel.text) *(.rel.gnu.linkonce.t*) }
 	.rela.text : { *(.rela.text) *(.rela.gnu.linkonce.t*) }
@@ -72,9 +91,13 @@ SECTIONS {
 	.rela.bss : { *(.rela.bss) }
 	.rel.plt : { *(.rel.plt) }
 	.rela.plt : { *(.rela.plt) }
-	.dynamic : { *(.dynamic) }
+	.eh_frame_hdr : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) } :rwdata :cxx
+	.gcc_except_table : { *(.gcc_except_table .gcc_except_table.*) } :rwdata
+	.gnu_extab : { *(.gnu_extab*) }
 
-	.data : { *(.data .data.* .gnu.linkonce.d.*) }
+	.dynamic : { *(.dynamic) } :rwdata :dyn
+
+	.data : { *(.data .data.* .gnu.linkonce.d.*) } :rwdata
 	.bss : {
 		*(.bss .bss.* .gnu.linkonce.b.* COMMON)
 

@@ -840,6 +840,25 @@ static void copy_section_headers(struct ta_elf *elf)
 	}
 }
 
+static void set_ta_info(struct ta_elf *elf)
+{
+	struct segment *seg = NULL;
+	struct ta_info *info = NULL;
+	vaddr_t va;
+
+	TAILQ_FOREACH(seg, &elf->segs, link) {
+		if (seg->flags == (PF_R | PF_W)) {
+			va = elf->load_addr + seg->vaddr;
+
+			info = (struct ta_info *)va;
+			info->rva = elf->load_addr;
+		}
+	}
+
+	if (!info)
+		err(TEE_ERROR_ITEM_NOT_FOUND, "set_ta_info");
+}
+
 static void close_handle(struct ta_elf *elf)
 {
 	TEE_Result res = sys_close_ta_bin(elf->handle);
@@ -880,6 +899,7 @@ void ta_elf_load_main(const TEE_UUID *uuid, uint32_t *is_32bit,
 	add_dependencies(elf);
 	copy_section_headers(elf);
 	save_symtab(elf);
+	set_ta_info(elf);
 	close_handle(elf);
 
 	head = (struct ta_head *)elf->load_addr;

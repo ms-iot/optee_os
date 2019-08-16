@@ -12,10 +12,67 @@
 #include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
 #include <tee/cache.h>
+#include <kernel/panic.h>
 #include "io.h"
 
 #define ptov(a) ((vaddr_t)phys_to_virt((paddr_t)(a), MEM_AREA_IO_SEC))
 #define vtop(a) ((phys_addr_t *)virt_to_phys((void *)(a)))
+
+struct caam_memalign_info {
+	uint32_t magic;
+	void *alloc_addr;
+};
+
+static inline void *fsl_sec_memalign(size_t alignment, size_t size)
+{
+	// Allow for the actual allocation, plus the meta data header, plus enough overhead 
+	// to allow the alignment.
+	size_t total_size;
+	void *alloc_ptr;
+	void *data_ptr;
+	struct caam_memalign_info *mem_info;
+
+	total_size = size + sizeof(struct caam_memalign_info) + alignment;
+
+	alloc_ptr = malloc(total_size);
+	if (alloc_ptr == NULL)
+		return NULL;
+
+	// Leave space for the meta data
+	data_ptr = (void *)((uintptr_t)alloc_ptr + (uintptr_t)sizeof(struct caam_memalign_info));
+	
+	// Find the next aligned address
+	if(alignment != 0)
+		data_ptr = (void *)(((uintptr_t)data_ptr + (alignment - 1)) & (~(uintptr_t)(alignment - 1)));
+
+	// Stash the actual allocation information in the struct
+	mem_info = (struct caam_memalign_info *)((uintptr_t)data_ptr - sizeof(struct caam_memalign_info));
+	mem_info->magic = 0x1234;
+	mem_info->alloc_addr = alloc_ptr;
+
+	FMSG("Aligning 0x%x bytes by 0x%x", size, alignment);
+	FMSG("Allocd 0x%x bytes at 0x%lx, aligned to 0x%lx",total_size, (uintptr_t)alloc_ptr, (uintptr_t)data_ptr);
+	FMSG("Meta data at 0x%lx", (uintptr_t)mem_info);
+
+	return data_ptr;
+}
+
+static inline void fsl_sec_free(void *aligned_ptr)
+{
+	struct caam_memalign_info *mem_info;
+	void *alloc_ptr;
+
+	mem_info = (struct caam_memalign_info*)((uintptr_t)aligned_ptr - sizeof(struct caam_memalign_info));
+	alloc_ptr = mem_info->alloc_addr;
+	if (mem_info->magic != 0x1234)
+	{
+		FMSG("Bad magic! (0x%x)", mem_info->magic);
+		panic();
+	}
+	FMSG("Freeing 0x%lx, aligned to 0x%lx", (uintptr_t)alloc_ptr, (uintptr_t)aligned_ptr);
+	FMSG("Meta data at 0x%lx", (uintptr_t)mem_info);
+	free(alloc_ptr);
+}
 
 #ifdef CONFIG_PHYS_64BIT
 typedef uint64_t phys_addr_t;
@@ -46,14 +103,14 @@ typedef uint32_t phys_size_t;
  * These macros are for ARM-based SoCs.
  * Raw IO access is presumed to be in little-endian.
  */
-#define out8(a, v)	write8(v, a)
-#define out16(a, v)	write16(v, a)
-#define out32(a, v)	write32(v, a)
-#define out64(a, v)	write32(v, a)
-#define in8(a)		read8(a)
-#define in16(a)		read16(a)
-#define in32(a)		read32(a)
-#define in64(a)		read32(a)
+#define out8(a, v)	io_write8(a, v)
+#define out16(a, v)	io_write16(a, v)
+#define out32(a, v)	io_write32(a, v)
+#define out64(a, v)	io_write32(a, v)
+#define in8(a)		io_read8(a)
+#define in16(a)		io_read16(a)
+#define in32(a)		io_read32(a)
+#define in64(a)		io_read32(a)
 
 #define in_le16(a)	in16(a)
 #define in_le32(a)	in32(a)

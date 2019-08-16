@@ -205,10 +205,32 @@ CFG_WITH_USER_TA ?= y
 # By default, in-tree TAs are built using the first architecture specified in
 # $(ta-targets).
 
+# Address Space Layout Randomization for user-mode Trusted Applications
+#
+# When this flag is enabled, the ELF loader will introduce a random offset
+# when mapping the application in user space. ASLR makes the exploitation of
+# memory corruption vulnerabilities more difficult.
+CFG_TA_ASLR ?= n
+
+# How much ASLR may shift the base address (in pages). The base address is
+# randomly shifted by an integer number of pages comprised between these two
+# values. Bigger ranges are more secure because they make the addresses harder
+# to guess at the expense of using more memory for the page tables.
+CFG_TA_ASLR_MIN_OFFSET_PAGES ?= 0
+CFG_TA_ASLR_MAX_OFFSET_PAGES ?= 128
+
 # Load user TAs from the REE filesystem via tee-supplicant
-# There is currently no other alternative, but you may want to disable this in
-# case you implement your own TA store
 CFG_REE_FS_TA ?= y
+
+# Pre-authentication of TA binaries loaded from the REE filesystem
+#
+# - If CFG_REE_FS_TA_BUFFERED=y: load TA binary into a temporary buffer in the
+#   "Secure DDR" pool, check the signature, then process the file only if it is
+#   valid.
+# - If disabled: hash the binaries as they are being processed and verify the
+#   signature as a last step.
+CFG_REE_FS_TA_BUFFERED ?= $(CFG_REE_FS_TA)
+$(eval $(call cfg-depends-all,CFG_REE_FS_TA_BUFFERED,CFG_REE_FS_TA))
 
 # Support for loading user TAs from a special section in the TEE binary.
 # Such TAs are available even before tee-supplicant is available (hence their
@@ -317,6 +339,10 @@ CFG_BOOT_SECONDARY_REQUEST ?= n
 # Default heap size for Core, 64 kB
 CFG_CORE_HEAP_SIZE ?= 65536
 
+# Default size of nexus heap. 16 kB. Used only if CFG_VIRTUALIZATION
+# is enabled
+CFG_CORE_NEX_HEAP_SIZE ?= 16384
+
 # TA profiling.
 # When this option is enabled, OP-TEE can execute Trusted Applications
 # instrumented with GCC's -pg flag and will output profiling information
@@ -333,6 +359,16 @@ ifneq ($(CFG_TA_GPROF_SUPPORT),y)
 $(error Cannot instrument user libraries if user mode profiling is disabled)
 endif
 endif
+
+# Build libutee, libutils, libmpa/libmbedtls as shared libraries.
+# - Static libraries are still generated when this is enabled, but TAs will use
+# the shared libraries unless explicitly linked with the -static flag.
+# - Shared libraries are made of two files: for example, libutee is
+#   libutee.so and 527f1a47-b92c-4a74-95bd-72f19f4a6f74.ta. The '.so' file
+#   is a totally standard shared object, and should be used to link against.
+#   The '.ta' file is a signed version of the '.so' and should be installed
+#   in the same way as TAs so that they can be found at runtime.
+CFG_ULIBS_SHARED ?= n
 
 # CFG_GP_SOCKETS
 # Enable Global Platform Sockets support
@@ -397,6 +433,33 @@ CFG_TA_MBEDTLS ?= y
 # need to be called to test anything
 CFG_TA_MBEDTLS_SELF_TEST ?= y
 
+# By default use tomcrypt as the main crypto lib providing an implementation
+# for the API in <crypto/crypto.h>
+# CFG_CRYPTOLIB_NAME is used as libname and
+# CFG_CRYPTOLIB_DIR is used as libdir when compiling the library
+#
+# It's also possible to configure to use mbedtls instead of tomcrypt.
+# Then the variables should be assigned as "CFG_CRYPTOLIB_NAME=mbedtls" and
+# "CFG_CRYPTOLIB_DIR=lib/libmbedtls" respectively.
+CFG_CRYPTOLIB_NAME ?= tomcrypt
+CFG_CRYPTOLIB_DIR ?= core/lib/libtomcrypt
+
 # Enable TEE_ALG_RSASSA_PKCS1_V1_5 algorithm for signing with PKCS#1 v1.5 EMSA
-# # without ASN.1 around the hash.
+# without ASN.1 around the hash.
+ifeq ($(CFG_CRYPTOLIB_NAME),tomcrypt)
 CFG_CRYPTO_RSASSA_NA1 ?= y
+CFG_CORE_MBEDTLS_MPI ?= y
+endif
+
+# Enable virtualization support. OP-TEE will not work without compatible
+# hypervisor if this option is enabled.
+CFG_VIRTUALIZATION ?= n
+
+ifeq ($(CFG_VIRTUALIZATION),y)
+$(call force,CFG_CORE_RODATA_NOEXEC,y)
+$(call force,CFG_CORE_RWDATA_NOEXEC,y)
+
+# Default number of virtual guests
+CFG_VIRT_GUEST_COUNT ?= 2
+endif
+

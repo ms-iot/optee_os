@@ -36,11 +36,6 @@
 #define CORE_MMU_PGDIR_SIZE		(1 << CORE_MMU_PGDIR_SHIFT)
 #define CORE_MMU_PGDIR_MASK		(CORE_MMU_PGDIR_SIZE - 1)
 
-/* Devices are mapped using this granularity */
-#define CORE_MMU_DEVICE_SHIFT		CORE_MMU_PGDIR_SHIFT
-#define CORE_MMU_DEVICE_SIZE		(1 << CORE_MMU_DEVICE_SHIFT)
-#define CORE_MMU_DEVICE_MASK		(CORE_MMU_DEVICE_SIZE - 1)
-
 /* TA user space code, data, stack and heap are mapped using this granularity */
 #define CORE_MMU_USER_CODE_SHIFT	SMALL_PAGE_SHIFT
 #define CORE_MMU_USER_CODE_SIZE		(1 << CORE_MMU_USER_CODE_SHIFT)
@@ -95,6 +90,7 @@
  * MEM_AREA_TEE_RAM_RX:  core private read-only/executable memory (secure)
  * MEM_AREA_TEE_RAM_RO:  core private read-only/non-executable memory (secure)
  * MEM_AREA_TEE_RAM_RW:  core private read/write/non-executable memory (secure)
+ * MEM_AREA_NEX_RAM_RW: nexus private r/w/non-executable memory (secure)
  * MEM_AREA_TEE_COHERENT: teecore coherent RAM (secure, reserved to TEE)
  * MEM_AREA_TEE_ASAN: core address sanitizer RAM (secure, reserved to TEE)
  * MEM_AREA_TA_RAM:   Secure RAM where teecore loads/exec TA instances.
@@ -107,6 +103,7 @@
  * MEM_AREA_SHM_VASPACE: Virtual memory space for dynamic shared memory buffers
  * MEM_AREA_TA_VASPACE: TA va space, only used with phys_to_virt()
  * MEM_AREA_DDR_OVERALL: Overall DDR address range, candidate to dynamic shm.
+ * MEM_AREA_SEC_RAM_OVERALL: Whole secure RAM
  * MEM_AREA_MAXTYPE:  lower invalid 'type' value
  */
 enum teecore_memtypes {
@@ -115,6 +112,7 @@ enum teecore_memtypes {
 	MEM_AREA_TEE_RAM_RX,
 	MEM_AREA_TEE_RAM_RO,
 	MEM_AREA_TEE_RAM_RW,
+	MEM_AREA_NEX_RAM_RW,
 	MEM_AREA_TEE_COHERENT,
 	MEM_AREA_TEE_ASAN,
 	MEM_AREA_TA_RAM,
@@ -129,6 +127,7 @@ enum teecore_memtypes {
 	MEM_AREA_PAGER_VASPACE,
 	MEM_AREA_SDP_MEM,
 	MEM_AREA_DDR_OVERALL,
+	MEM_AREA_SEC_RAM_OVERALL,
 	MEM_AREA_MAXTYPE
 };
 
@@ -140,6 +139,7 @@ static inline const char *teecore_memtype_name(enum teecore_memtypes type)
 		[MEM_AREA_TEE_RAM_RX] = "TEE_RAM_RX",
 		[MEM_AREA_TEE_RAM_RO] = "TEE_RAM_RO",
 		[MEM_AREA_TEE_RAM_RW] = "TEE_RAM_RW",
+		[MEM_AREA_NEX_RAM_RW] = "NEX_RAM_RW",
 		[MEM_AREA_TEE_ASAN] = "TEE_ASAN",
 		[MEM_AREA_TEE_COHERENT] = "TEE_COHERENT",
 		[MEM_AREA_TA_RAM] = "TA_RAM",
@@ -153,7 +153,8 @@ static inline const char *teecore_memtype_name(enum teecore_memtypes type)
 		[MEM_AREA_TA_VASPACE] = "TA_VASPACE",
 		[MEM_AREA_PAGER_VASPACE] = "PAGER_VASPACE",
 		[MEM_AREA_SDP_MEM] = "SDP_MEM",
-		[MEM_AREA_DDR_OVERALL] = "DDR_OVERALL"
+		[MEM_AREA_DDR_OVERALL] = "DDR_OVERALL",
+		[MEM_AREA_SEC_RAM_OVERALL] = "SEC_RAM_OVERALL",
 	};
 
 	COMPILE_TIME_ASSERT(ARRAY_SIZE(names) == MEM_AREA_MAXTYPE);
@@ -211,6 +212,12 @@ struct core_mmu_phys_mem {
 #define register_phys_mem_ul(type, addr, size) \
 		__register_memory_ul(#addr, (type), (addr), (size), \
 				     phys_mem_map)
+
+/* Same as register_phys_mem() but with PGDIR_SIZE granularity */
+#define register_phys_mem_pgdir(type, addr, size) \
+	register_phys_mem(type, ROUNDDOWN(addr, CORE_MMU_PGDIR_SIZE), \
+		ROUNDUP(size + addr - ROUNDDOWN(addr, CORE_MMU_PGDIR_SIZE), \
+			CORE_MMU_PGDIR_SIZE))
 
 #ifdef CFG_SECURE_DATA_PATH
 #define register_sdp_mem(addr, size) \
@@ -301,6 +308,20 @@ static inline bool core_mmu_user_va_range_is_defined(void)
 #endif
 
 /*
+ * struct mmu_partition - stores MMU partition.
+ *
+ * Basically it	represent whole MMU mapping. It is possible
+ * to create multiple partitions, and change them in runtime,
+ * effectively changing how OP-TEE sees memory.
+ * This is opaque struct which is defined differently for
+ * v7 and LPAE MMUs
+ *
+ * This structure used mostly when virtualization is enabled.
+ * When CFG_VIRTUALIZATION==n only default partition exists.
+ */
+struct mmu_partition;
+
+/*
  * core_mmu_get_user_va_range() - Return range of user va space
  * @base:	Lowest user virtual address
  * @size:	Size in bytes of user address space
@@ -377,17 +398,22 @@ struct core_mmu_table_info {
 	unsigned level;
 	unsigned shift;
 	unsigned num_entries;
+#ifdef CFG_VIRTUALIZATION
+	struct mmu_partition *prtn;
+#endif
 };
 
 /*
  * core_mmu_find_table() - Locates a translation table
+ * @prtn:	MMU partition where search should be performed
  * @va:		Virtual address for the table to cover
  * @max_level:	Don't traverse beyond this level
  * @tbl_info:	Pointer to where to store properties.
  * @return true if a translation table was found, false on error
  */
-bool core_mmu_find_table(vaddr_t va, unsigned max_level,
-		struct core_mmu_table_info *tbl_info);
+bool core_mmu_find_table(struct mmu_partition *prtn, vaddr_t va,
+			 unsigned max_level,
+			 struct core_mmu_table_info *tbl_info);
 
 /*
  * core_mmu_entry_to_finer_grained() - divide mapping at current level into
@@ -577,12 +603,25 @@ bool core_mmu_nsec_ddr_is_defined(void);
 void core_mmu_set_discovered_nsec_ddr(struct core_mmu_phys_mem *start,
 				      size_t nelems);
 
+/* Initialize MMU partition */
+void core_init_mmu_prtn(struct mmu_partition *prtn, struct tee_mmap_region *mm);
+
 unsigned int asid_alloc(void);
 void asid_free(unsigned int asid);
 
 #ifdef CFG_SECURE_DATA_PATH
 /* Alloc and fill SDP memory objects table - table is NULL terminated */
 struct mobj **core_sdp_mem_create_mobjs(void);
+#endif
+
+#ifdef CFG_VIRTUALIZATION
+size_t core_mmu_get_total_pages_size(void);
+struct mmu_partition *core_alloc_mmu_prtn(void *tables);
+void core_free_mmu_prtn(struct mmu_partition *prtn);
+void core_mmu_set_prtn(struct mmu_partition *prtn);
+void core_mmu_set_default_prtn(void);
+
+void core_mmu_init_virtualization(void);
 #endif
 
 #endif /*ASM*/

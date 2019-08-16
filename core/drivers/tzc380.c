@@ -54,35 +54,40 @@ static struct tzc_instance tzc;
 
 static uint32_t tzc_read_build_config(vaddr_t base)
 {
-	return read32(base + BUILD_CONFIG_OFF);
+	return io_read32(base + BUILD_CONFIG_OFF);
 }
 
 static void tzc_write_action(vaddr_t base, enum tzc_action action)
 {
-	write32(action, base + ACTION_OFF);
+	io_write32(base + ACTION_OFF, action);
+}
+
+static uint32_t tzc_read_action(vaddr_t base)
+{
+	return io_read32(base + ACTION_OFF);
 }
 
 static void tzc_write_region_base_low(vaddr_t base, uint32_t region,
 				      uint32_t val)
 {
-	write32(val, base + REGION_SETUP_LOW_OFF(region));
+	io_write32(base + REGION_SETUP_LOW_OFF(region), val);
 }
 
 static void tzc_write_region_base_high(vaddr_t base, uint32_t region,
 				       uint32_t val)
 {
-	write32(val, base + REGION_SETUP_HIGH_OFF(region));
+	io_write32(base + REGION_SETUP_HIGH_OFF(region), val);
 }
 
 static uint32_t tzc_read_region_attributes(vaddr_t base, uint32_t region)
 {
-	return read32(base + REGION_ATTRIBUTES_OFF(region));
+	return io_read32(base + REGION_ATTRIBUTES_OFF(region));
 }
 
 static void tzc_write_region_attributes(vaddr_t base, uint32_t region,
 					uint32_t val)
 {
-	write32(val, base + REGION_ATTRIBUTES_OFF(region));
+	io_write32(base + REGION_ATTRIBUTES_OFF(region), val);
 }
 
 void tzc_init(vaddr_t base)
@@ -108,7 +113,7 @@ void tzc_init(vaddr_t base)
  */
 void tzc_security_inversion_en(vaddr_t base)
 {
-	write32(1, base + SECURITY_INV_EN_OFF);
+	io_write32(base + SECURITY_INV_EN_OFF, 1);
 }
 
 /*
@@ -137,18 +142,18 @@ void tzc_fail_dump(void)
 						      MEM_AREA_IO_SEC);
 
 	EMSG("Fail address Low 0x%" PRIx32,
-	     read32(base + FAIL_ADDRESS_LOW_OFF));
+	     io_read32(base + FAIL_ADDRESS_LOW_OFF));
 	EMSG("Fail address High 0x%" PRIx32,
-	     read32(base + FAIL_ADDRESS_HIGH_OFF));
-	EMSG("Fail Control 0x%" PRIx32, read32(base + FAIL_CONTROL_OFF));
-	EMSG("Fail Id 0x%" PRIx32, read32(base + FAIL_ID));
+	     io_read32(base + FAIL_ADDRESS_HIGH_OFF));
+	EMSG("Fail Control 0x%" PRIx32, io_read32(base + FAIL_CONTROL_OFF));
+	EMSG("Fail Id 0x%" PRIx32, io_read32(base + FAIL_ID));
 }
 
 void tzc_int_clear(void)
 {
 	vaddr_t base = core_mmu_get_va(tzc.base, MEM_AREA_IO_SEC);
 
-	write32(0, base + INT_CLEAR);
+	io_write32(base + INT_CLEAR, 0);
 }
 
 static uint32_t addr_low(vaddr_t addr)
@@ -204,16 +209,85 @@ void tzc_set_action(enum tzc_action action)
 	tzc_write_action(tzc.base, action);
 }
 
+uint32_t tzc_get_action(void)
+{
+	assert(tzc.base);
+
+	return tzc_read_action(tzc.base);
+}
+
+int tzc_auto_configure(vaddr_t addr, vaddr_t size, uint32_t attr,
+		       uint8_t region)
+{
+	uint64_t sub_region_size = 0;
+	uint64_t area = 0;
+	uint8_t lregion = region;
+	uint64_t region_size = 0;
+	vaddr_t sub_address = 0;
+	vaddr_t address = addr;
+	uint64_t lsize = size;
+	uint32_t mask = 0;
+	int i = 0;
+	uint8_t pow = TZC380_POW;
+
+	while (lsize != 0 && pow > 15) {
+		region_size = 1ULL << pow;
+
+		/* Case region fits alignment and covers requested area */
+		if ((address % region_size == 0) &&
+		    ((address + lsize) % region_size == 0)) {
+			tzc_configure_region(lregion, address,
+					     TZC_ATTR_REGION_SIZE(pow - 1) |
+					     TZC_ATTR_REGION_EN_MASK |
+					     attr);
+			lregion++;
+			address += region_size;
+			lsize -= region_size;
+			pow--;
+			continue;
+		}
+
+		/* Cover area using several subregions */
+		sub_region_size = region_size / 8;
+		if (address % sub_region_size == 0 &&
+		    lsize > 2 * sub_region_size) {
+			sub_address = (address / region_size) * region_size;
+			mask = 0;
+			for (i = 0; i < 8; i++) {
+				area = (i + 1) * sub_region_size;
+				if (sub_address + area <= address ||
+				    sub_address + area > address + lsize) {
+					mask |= TZC_ATTR_SUBREGION_DIS(i);
+				} else {
+					address += sub_region_size;
+					lsize -= sub_region_size;
+				}
+			}
+			tzc_configure_region(lregion, sub_address,
+					     TZC_ATTR_REGION_SIZE(pow - 1) |
+					     TZC_ATTR_REGION_EN_MASK |
+					     mask | attr);
+			lregion++;
+			pow--;
+			continue;
+		}
+		pow--;
+	}
+	assert(lsize == 0);
+	assert(address == addr + size);
+	return lregion;
+}
+
 #if TRACE_LEVEL >= TRACE_DEBUG
 
 static uint32_t tzc_read_region_base_low(vaddr_t base, uint32_t region)
 {
-	return read32(base + REGION_SETUP_LOW_OFF(region));
+	return io_read32(base + REGION_SETUP_LOW_OFF(region));
 }
 
 static uint32_t tzc_read_region_base_high(vaddr_t base, uint32_t region)
 {
-	return read32(base + REGION_SETUP_HIGH_OFF(region));
+	return io_read32(base + REGION_SETUP_HIGH_OFF(region));
 }
 
 #define	REGION_MAX	16
@@ -223,21 +297,21 @@ void tzc_dump_state(void)
 	uint32_t temp_32reg, temp_32reg_h;
 
 	DMSG("enter");
-	DMSG("security_inversion_en %x\n",
-	     read32(tzc.base + SECURITY_INV_EN_OFF));
+	DMSG("security_inversion_en %x",
+	     io_read32(tzc.base + SECURITY_INV_EN_OFF));
 	for (n = 0; n <= REGION_MAX; n++) {
 		temp_32reg = tzc_read_region_attributes(tzc.base, n);
 		if (!(temp_32reg & TZC_ATTR_REGION_EN_MASK))
 			continue;
 
-		DMSG("\n");
+		DMSG("");
 		DMSG("region %d", n);
 		temp_32reg = tzc_read_region_base_low(tzc.base, n);
 		temp_32reg_h = tzc_read_region_base_high(tzc.base, n);
 		DMSG("region_base: 0x%08x%08x", temp_32reg_h, temp_32reg);
 		temp_32reg = tzc_read_region_attributes(tzc.base, n);
 		DMSG("region sp: %x", temp_32reg >> TZC_ATTR_SP_SHIFT);
-		DMSG("region size: %x\n", (temp_32reg & TZC_REGION_SIZE_MASK) >>
+		DMSG("region size: %x", (temp_32reg & TZC_REGION_SIZE_MASK) >>
 				TZC_REGION_SIZE_SHIFT);
 	}
 	DMSG("exit");

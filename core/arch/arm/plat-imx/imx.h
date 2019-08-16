@@ -37,4 +37,10 @@ void imx_gpcv2_mask_all_irqs(void);
 void imx_gpcv2_mask_irq(uint32_t irq);
 void imx_gpcv2_unmask_irq(uint32_t irq);
 bool imx_gpcv2_irq_pending(uint32_t irq);
+
+#ifdef CFG_TZC380
+void imx_configure_tzasc(void);
+#else
+static inline void imx_configure_tzasc(void) {}
+#endif /* CFG_TZC380 */
 #endif

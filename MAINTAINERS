@@ -56,6 +56,12 @@ R:	Akshay Bhat <akshay.bhat@timesys.com> [@nodeax]
 S:	Maintained
 F:	core/arch/arm/plat-sam/
 
+Broadcom ns3
+R:	Sandeep Tripathy <sandeep.tripathy@broadcom.com> [@sandeepbrcm]
+L:	Broadcom <bcm-optee-feedback-list.pdl@broadcom.com>
+S:	Maintained
+F:	core/arch/arm/plat-bcm/
+
 HiSilicon D02
 R:	Linaro <op-tee@linaro.org>
 S:	Maintained
@@ -68,8 +74,15 @@ F:	core/arch/arm/plat-hikey/
 
 HiSilicon Poplar (Hi3798C V200)
 R:	Linaro <op-tee@linaro.org>
+R:	Igor Opaniuk <igor.opaniuk@gmail.com> [@igoropaniuk]
 S:	Maintained
 F:	core/arch/arm/plat-poplar/
+
+Hisilicon Hi3519AV100 family
+R:	Tao Zeng <prime.zeng@hisilicon.com>
+R:	Jerome FORISSIER <jerome.forissier@huawei.com>
+S:	Maintained
+F:	core/arch/arm/plat-hisilicon
 
 Marvell Armada 70x0, Armada 80x0, Armada 3700
 R:	Tao Lu <taolu@marvell.com> [@taovcu]
@@ -152,12 +165,16 @@ Xilinx Zynq UltraScale+ MPSOC
 S:	Orphan
 F:	core/arch/arm/plat-zynqmp/
 
+Virtualization support
+R:	Volodymyr Babchuk <vlad.babchuk@gmail.com>
+S:	Maintained
+F:	core/arch/arm/kernel/virtualization.c
+
 THE REST
 M:	Jerome Forissier <jerome.forissier@linaro.org> [@jforissier]
 M:	Jens Wiklander <jens.wiklander@linaro.org> [@jenswi-linaro]
 M:	Linaro <op-tee@linaro.org>
 R:	Etienne Carriere <etienne.carriere@linaro.org> [@etienne-lms]
-R:	Igor Opaniuk <igor.opaniuk@linaro.org> [@igoropaniuk]
 R:	Joakim Bech <joakim.bech@linaro.org> [@jbech-linaro]
 R:	Victor Chong <victor.chong@linaro.org> [@vchong]
 L:	tee-dev@lists.linaro.org

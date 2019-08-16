@@ -38,9 +38,9 @@
 #include <drivers/scif.h>
 #include <drivers/gic.h>
 
-register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, SCIF_REG_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
-register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, SCIF_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
+register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
 
 register_dynamic_shm(NSEC_DDR_0_BASE, NSEC_DDR_0_SIZE);
 register_dynamic_shm(NSEC_DDR_1_BASE, NSEC_DDR_1_SIZE);
@@ -53,7 +53,7 @@ register_dynamic_shm(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
 
 static void main_fiq(void);
 
-static const struct thread_handlers handlers = {
+static const struct thread_handlers handlers __nex_data = {
 	.std_smc = tee_entry_std,
 	.fast_smc = tee_entry_fast,
 	.nintr = main_fiq,
@@ -65,7 +65,7 @@ static const struct thread_handlers handlers = {
 	.system_reset = pm_do_nothing,
 };
 
-static struct scif_uart_data console_data;
+static struct scif_uart_data console_data __nex_bss;
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {

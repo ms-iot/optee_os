@@ -8,7 +8,6 @@ cflags-remove-bget_malloc.c-y += $(cflags_kasan)
 endif
 srcs-y += isdigit.c
 srcs-y += isxdigit.c
-srcs-y += malloc_lock.c
 srcs-y += qsort.c
 cflags-qsort.c-y += -Wno-inline
 cflags-remove-qsort.c-y += -Wcast-align
@@ -20,6 +19,13 @@ srcs-y += tolower.c
 srcs-y += isalpha.c
 srcs-y += isspace.c
 srcs-y += isupper.c
+srcs-y += isalnum.c
+srcs-y += iscntrl.c
+srcs-y += isgraph.c
+srcs-y += islower.c
+srcs-y += isprint.c
+srcs-y += ispunct.c
+srcs-y += toupper.c
 
 subdirs-y += newlib
 subdirs-$(arch_arm) += arch/$(ARCH)

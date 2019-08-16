@@ -192,7 +192,7 @@ static TEE_Result tee_svc_storage_read_head(struct tee_obj *o)
 	res = fops->read(o->fh, 0, &head, &bytes);
 	if (res != TEE_SUCCESS) {
 		if (res == TEE_ERROR_CORRUPT_OBJECT)
-			EMSG("Head corrupt\n");
+			EMSG("Head corrupt");
 		goto exit;
 	}
 
@@ -830,9 +830,8 @@ TEE_Result syscall_storage_obj_read(unsigned long obj, void *data, size_t len,
 	res = o->pobj->fops->read(o->fh, o->ds_pos + o->info.dataPosition,
 				  data, &bytes);
 	if (res != TEE_SUCCESS) {
-		EMSG("Error code=%x\n", (uint32_t)res);
 		if (res == TEE_ERROR_CORRUPT_OBJECT) {
-			EMSG("Object corrupt\n");
+			EMSG("Object corrupt");
 			tee_svc_storage_remove_corrupt_obj(sess, o);
 		}
 		goto exit;
@@ -926,16 +925,17 @@ TEE_Result syscall_storage_obj_trunc(unsigned long obj, size_t len)
 
 	off = sizeof(struct tee_svc_storage_head) + attr_size;
 	res = o->pobj->fops->truncate(o->fh, len + off);
-	if (res != TEE_SUCCESS) {
-		if (res == TEE_ERROR_CORRUPT_OBJECT) {
-			EMSG("Object corrupt\n");
-			res = tee_svc_storage_remove_corrupt_obj(sess, o);
-			if (res != TEE_SUCCESS)
-				goto exit;
-			res = TEE_ERROR_CORRUPT_OBJECT;
-			goto exit;
-		} else
-			res = TEE_ERROR_GENERIC;
+	switch (res) {
+	case TEE_SUCCESS:
+		o->info.dataSize = len;
+		break;
+	case TEE_ERROR_CORRUPT_OBJECT:
+		EMSG("Object corruption");
+		(void)tee_svc_storage_remove_corrupt_obj(sess, o);
+		break;
+	default:
+		res = TEE_ERROR_GENERIC;
+		break;
 	}
 
 exit:

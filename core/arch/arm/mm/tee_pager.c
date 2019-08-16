@@ -232,8 +232,8 @@ static uint32_t pager_lock_check_stack(size_t stack_size)
 		 * the thread.
 		 */
 		for (n = 0; n < stack_size; n += SMALL_PAGE_SIZE)
-			write8(1, (vaddr_t)buf + n);
-		write8(1, (vaddr_t)buf + stack_size - 1);
+			io_write8((vaddr_t)buf + n, 1);
+		io_write8((vaddr_t)buf + stack_size - 1, 1);
 	}
 
 	return pager_lock(NULL);
@@ -427,7 +427,7 @@ void tee_pager_early_init(void)
 	 * after end of memory.
 	 */
 	for (n = 0; n < ARRAY_SIZE(pager_tables); n++) {
-		if (!core_mmu_find_table(TEE_RAM_VA_START +
+		if (!core_mmu_find_table(NULL, TEE_RAM_VA_START +
 					 n * CORE_MMU_PGDIR_SIZE, UINT_MAX,
 					 &pager_tables[n].tbl_info))
 			panic("can't find mmu tables");

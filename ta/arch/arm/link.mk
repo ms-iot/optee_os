@@ -19,6 +19,9 @@ link-ldflags  = -pie
 link-ldflags += -T $(link-script-pp$(sm))
 link-ldflags += -Map=$(link-out-dir$(sm))/$(user-ta-uuid).map
 link-ldflags += --sort-section=alignment
+link-ldflags += -z max-page-size=4096 # OP-TEE always uses 4K alignment
+link-ldflags += --as-needed # Do not add dependency on unused shlib
+link-ldflags += $(link-ldflags$(sm))
 
 link-ldadd  = $(user-ta-ldadd) $(addprefix -L,$(libdirs))
 link-ldadd += --start-group $(addprefix -l,$(libnames)) --end-group

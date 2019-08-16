@@ -79,7 +79,7 @@ struct dt_descriptor {
 	int frag_id;
 };
 
-static struct dt_descriptor external_dt;
+static struct dt_descriptor external_dt __nex_bss;
 #endif
 
 #ifdef CFG_SECONDARY_INIT_CNTFRQ
@@ -347,8 +347,6 @@ static void init_runtime(unsigned long pageable_part)
 	 */
 	tee_pager_early_init();
 
-	thread_init_boot_thread();
-
 	init_asan();
 
 	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
@@ -461,16 +459,22 @@ static void init_runtime(unsigned long pageable_part)
 
 static void init_runtime(unsigned long pageable_part __unused)
 {
-	thread_init_boot_thread();
-
 	init_asan();
-	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
 
 	/*
-	 * Initialized at this stage in the pager version of this function
-	 * above
+	 * By default whole OP-TEE uses malloc, so we need to initialize
+	 * it early. But, when virtualization is enabled, malloc is used
+	 * only by TEE runtime, so malloc should be initialized later, for
+	 * every virtual partition separately. Core code uses nex_malloc
+	 * instead.
 	 */
-	teecore_init_ta_ram();
+#ifdef CFG_VIRTUALIZATION
+	nex_malloc_add_pool(__nex_heap_start, __nex_heap_end -
+					      __nex_heap_start);
+#else
+	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
+#endif
+
 	IMSG_RAW("\n");
 }
 #endif
@@ -499,6 +503,7 @@ void *get_embedded_dt(void)
 		checked = true;
 	}
 
+	IMSG("Embedded DTB found");
 	return embedded_secure_dtb;
 }
 #else
@@ -596,7 +601,7 @@ static int add_optee_dt_node(struct dt_descriptor *dt)
 	int ret;
 
 	if (fdt_path_offset(dt->blob, "/firmware/optee") >= 0) {
-		DMSG("OP-TEE Device Tree node already exists!\n");
+		DMSG("OP-TEE Device Tree node already exists!");
 		return 0;
 	}
 
@@ -632,7 +637,7 @@ static int dt_add_psci_node(struct dt_descriptor *dt)
 	int offs;
 
 	if (fdt_path_offset(dt->blob, "/psci") >= 0) {
-		DMSG("PSCI Device Tree node already exists!\n");
+		DMSG("PSCI Device Tree node already exists!");
 		return 0;
 	}
 
@@ -755,21 +760,28 @@ static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
 static int add_res_mem_dt_node(struct dt_descriptor *dt, const char *name,
 			       paddr_t pa, size_t size)
 {
-	int offs;
-	int ret;
-	int addr_size = 2;
-	int len_size = 2;
-	char subnode_name[80];
+	int offs = 0;
+	int ret = 0;
+	int addr_size = -1;
+	int len_size = -1;
+	bool found = true;
+	char subnode_name[80] = { 0 };
 
 	offs = fdt_path_offset(dt->blob, "/reserved-memory");
-	if (offs >= 0) {
-		addr_size = fdt_address_cells(dt->blob, offs);
-		if (addr_size < 0)
-			return -1;
-		len_size = fdt_size_cells(dt->blob, offs);
-		if (len_size < 0)
-			return -1;
-	} else {
+
+	if (offs < 0) {
+		found = false;
+		offs = 0;
+	}
+
+	len_size = fdt_size_cells(dt->blob, offs);
+	if (len_size < 0)
+		return -1;
+	addr_size = fdt_address_cells(dt->blob, offs);
+	if (addr_size < 0)
+		return -1;
+
+	if (!found) {
 		offs = add_dt_path_subnode(dt, "/", "reserved-memory");
 		if (offs < 0)
 			return -1;
@@ -847,7 +859,7 @@ static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
 		return NULL;
 
 	*nelems = n;
-	mem = calloc(n, sizeof(*mem));
+	mem = nex_calloc(n, sizeof(*mem));
 	if (!mem)
 		panic();
 
@@ -869,7 +881,7 @@ static int mark_static_shm_as_reserved(struct dt_descriptor *dt)
 
 	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &shm_start, &shm_end);
 	if (shm_start != shm_end)
-		return add_res_mem_dt_node(dt, "optee",
+		return add_res_mem_dt_node(dt, "optee_shm",
 					   virt_to_phys((void *)shm_start),
 					   shm_end - shm_start);
 
@@ -884,7 +896,6 @@ static void init_external_dt(unsigned long phys_dt)
 	int ret;
 
 	if (!phys_dt) {
-		EMSG("Device Tree missing");
 		/*
 		 * No need to panic as we're not using the DT in OP-TEE
 		 * yet, we're only adding some nodes for normal world use.
@@ -893,6 +904,7 @@ static void init_external_dt(unsigned long phys_dt)
 		 * initialize devices based on DT we'll likely panic
 		 * instead of returning here.
 		 */
+		IMSG("No non-secure external DT");
 		return;
 	}
 
@@ -918,6 +930,14 @@ static void init_external_dt(unsigned long phys_dt)
 		     phys_dt, ret);
 		panic();
 	}
+
+	IMSG("Non-secure external DT found");
+}
+
+static int mark_tzdram_as_reserved(struct dt_descriptor *dt)
+{
+	return add_res_mem_dt_node(dt, "optee_core", CFG_TZDRAM_START,
+				   CFG_TZDRAM_SIZE);
 }
 
 static void update_external_dt(void)
@@ -936,6 +956,9 @@ static void update_external_dt(void)
 
 	if (mark_static_shm_as_reserved(dt))
 		panic("Failed to config non-secure memory");
+
+	if (mark_tzdram_as_reserved(dt))
+		panic("Failed to config secure memory");
 
 	ret = fdt_pack(dt->blob);
 	if (ret < 0) {
@@ -992,12 +1015,27 @@ static void discover_nsec_memory(void)
 	/* Platform cannot define nsec_ddr && overall_ddr */
 	assert(phys_nsec_ddr_begin == phys_nsec_ddr_end);
 
-	mem = calloc(nelems, sizeof(*mem));
+	mem = nex_calloc(nelems, sizeof(*mem));
 	if (!mem)
 		panic();
 
 	memcpy(mem, phys_ddr_overall_begin, sizeof(*mem) * nelems);
 	core_mmu_set_discovered_nsec_ddr(mem, nelems);
+}
+
+void init_tee_runtime(void)
+{
+#ifdef CFG_VIRTUALIZATION
+	/* We need to initialize pool for every virtual guest partition */
+	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
+#endif
+
+#ifndef CFG_WITH_PAGER
+	/* Pager initializes TA RAM early */
+	teecore_init_ta_ram();
+#endif
+	if (init_teecore() != TEE_SUCCESS)
+		panic();
 }
 
 static void init_primary_helper(unsigned long pageable_part,
@@ -1015,6 +1053,9 @@ static void init_primary_helper(unsigned long pageable_part,
 	init_vfp_sec();
 	init_runtime(pageable_part);
 
+#ifndef CFG_VIRTUALIZATION
+	thread_init_boot_thread();
+#endif
 	thread_init_primary(generic_boot_get_handlers());
 	thread_init_per_cpu();
 	init_sec_mon(nsec_entry);
@@ -1027,10 +1068,15 @@ static void init_primary_helper(unsigned long pageable_part,
 
 	main_init_gic();
 	init_vfp_nsec();
-	if (init_teecore() != TEE_SUCCESS)
-		panic();
+#ifndef CFG_VIRTUALIZATION
+	init_tee_runtime();
+#endif
 	release_external_dt();
-	DMSG("Primary CPU switching to normal world boot\n");
+#ifdef CFG_VIRTUALIZATION
+	IMSG("Initializing virtualization support");
+	core_mmu_init_virtualization();
+#endif
+	DMSG("Primary CPU switching to normal world boot");
 }
 
 /* What this function is using is needed each time another CPU is started */
@@ -1054,7 +1100,7 @@ static void init_secondary_helper(unsigned long nsec_entry)
 	init_vfp_sec();
 	init_vfp_nsec();
 
-	DMSG("Secondary CPU Switching to normal world boot\n");
+	DMSG("Secondary CPU Switching to normal world boot");
 }
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)

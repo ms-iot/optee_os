@@ -144,19 +144,6 @@ static unsigned int fdt_create_phandle(void *fdt, int nodeoffset)
 }
 #endif
 
-#ifdef _NEED_FDT_SETPROP_PLACEHOLDER
-static int fdt_setprop_placeholder(void *fdt, int nodeoffset, const char *name,
-				   int len, void **prop_data)
-{
-	(void)fdt;
-	(void)nodeoffset;
-	(void)name;
-	(void)len;
-	(void)prop_data;
-	return -FDT_ERR_INTERNAL;
-}
-#endif
-
 static cyres_result cyres_result_from_riot(RIOT_STATUS status)
 {
 	// TODO fill out conversion

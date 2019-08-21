@@ -334,4 +334,9 @@
 
 /* End of definition of protocol for command OPTEE_RPC_CMD_SOCKET */
 
+/*
+ * Generic RPC PTA command
+ */
+#define OPTEE_MSG_RPC_CMD_GENERIC   50
+
 #endif /*__OPTEE_RPC_CMD_H*/

@@ -647,21 +647,17 @@ struct thread_param {
  * Allocates data for host application payload buffers.
  *
  * @size:	size in bytes of payload buffer
- * @cookie:	returned cookie used when freeing the buffer
- * @session:	session ID under which to allocate the buffer.
  *
  * @returns	mobj that describes allocated buffer or NULL on error
  */
-struct mobj *thread_rpc_alloc_host_payload(size_t size, uint64_t session);
+struct mobj *thread_rpc_alloc_host_payload(size_t size);
 
 /**
  * Free physical memory previously allocated with thread_rpc_alloc_host_payload()
  *
- * @cookie:	cookie received when allocating the buffer
  * @mobj:	mobj that describes the buffer
- * @session:    session ID under which the buffer was allocated.
  */
-void thread_rpc_free_host_payload(struct mobj *mobj, uint64_t session);
+void thread_rpc_free_host_payload(struct mobj *mobj);
 
 /**
  * Does an RPC using a preallocated argument buffer

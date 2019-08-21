@@ -4,23 +4,22 @@
 
 #include <kernel/msg_param.h>
 #include <kernel/pseudo_ta.h>
-#include <optee_msg_supplicant.h>
+#include <optee_rpc_cmd.h>
 #include <pta_rpc.h>
 #include <string.h>
 
 /* Send RPC to the rich OS */
-static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
+static TEE_Result pta_rpc_execute(void *sess_ctx __unused,
+                                  uint32_t param_types,
                                   TEE_Param params[TEE_NUM_PARAMS]) {
   TEE_Result result = TEE_SUCCESS;
-  bool mm_result;
 
-  uint64_t memory_object_cookie = 0;
   struct mobj *memory_object = NULL;
   uint32_t memory_object_size = 0;
   uint32_t memory_object_offset = 0;
   uint8_t *memory_object_va = NULL;
 
-  struct optee_msg_param rpc_msg_params[4] = {0};
+  struct thread_param rpc_msg_params[4] = {0};
 
   uint32_t pt_os;
   uint32_t pt_inout;
@@ -75,8 +74,7 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
   }
 
   /* Allocate a single memory object for both in/out, input and output data */
-  memory_object = thread_rpc_alloc_host_payload(
-      memory_object_size, &memory_object_cookie, (vaddr_t)sess_ctx);
+  memory_object = thread_rpc_alloc_host_payload(memory_object_size);
   if (memory_object == NULL) {
     EMSG("Failed to allocate memory object");
     result = TEE_ERROR_OUT_OF_MEMORY;
@@ -92,18 +90,11 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
   }
 
   /* RPC parameter 0: contains three values */
+  rpc_msg_params[0] = THREAD_PARAM_VALUE(IN,
+    params[0].value.a,  // RPC parameter 0: A -> RPC Type
+    0,                  // RPC parameter 0: A -> Unused
+    params[0].value.b); // RPC parameter 0: C -> RPC Key
   rpc_msg_params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-
-  /* RPC parameter 0: A -> RPC Type */
-  rpc_msg_params[0].u.value.a = params[0].value.a;
-
-  /* RPC parameter 0: B -> TA Session ID
-   * See the comment from pta_rpc_open_session
-   */
-  rpc_msg_params[0].u.value.b = (vaddr_t)sess_ctx;
-
-  /* RPC parameter 0: C -> RPC Key */
-  rpc_msg_params[0].u.value.c = params[0].value.b;
 
   /* Output the values of RPC parameter 0 to the console */
   FMSG("RPC context = %#x, type = %#x, TA session %#x",
@@ -113,48 +104,33 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
 
   /* RPC parameter 1: in/out data buffer */
   if (pt_inout == TEE_PARAM_TYPE_MEMREF_INOUT) {
-    mm_result = msg_param_init_memparam(
-        &rpc_msg_params[1], memory_object, memory_object_offset,
-        params[1].memref.size, memory_object_cookie, MSG_PARAM_MEM_DIR_INOUT);
+    rpc_msg_params[1] = THREAD_PARAM_MEMREF(INOUT,
+      memory_object,
+      memory_object_offset,
+      params[1].memref.size);
 
-    if (mm_result) {
-      memcpy(memory_object_va, params[1].memref.buffer, params[1].memref.size);
-      memory_object_offset += params[1].memref.size;
-    } else {
-      EMSG("msg_param_init_memparam failed for in/out data");
-      result = TEE_ERROR_GENERIC;
-      goto done;
-    }
+    memcpy(memory_object_va, params[1].memref.buffer, params[1].memref.size);
+    memory_object_offset += params[1].memref.size;
   }
 
   /* RPC parameter 2 - input data buffer */
   if (pt_in == TEE_PARAM_TYPE_MEMREF_INPUT) {
-    mm_result = msg_param_init_memparam(
-        &rpc_msg_params[2], memory_object, memory_object_offset,
-        params[2].memref.size, memory_object_cookie, MSG_PARAM_MEM_DIR_IN);
+    rpc_msg_params[2] = THREAD_PARAM_MEMREF(IN,
+      memory_object,
+      memory_object_offset,
+      params[2].memref.size);
 
-    if (mm_result) {
-      memcpy(memory_object_va + memory_object_offset, params[2].memref.buffer,
-             params[2].memref.size);
-      memory_object_offset += params[2].memref.size;
-    } else {
-      EMSG("msg_param_init_memparam failed for input data");
-      result = TEE_ERROR_GENERIC;
-      goto done;
-    }
+    memcpy(memory_object_va + memory_object_offset, params[2].memref.buffer,
+            params[2].memref.size);
+    memory_object_offset += params[2].memref.size;
   }
 
   /* RPC parameter 3 - output data buffer */
   if (pt_out == TEE_PARAM_TYPE_MEMREF_OUTPUT) {
-    mm_result = msg_param_init_memparam(
-        &rpc_msg_params[3], memory_object, memory_object_offset,
-        params[3].memref.size, memory_object_cookie, MSG_PARAM_MEM_DIR_OUT);
-
-    if (!mm_result) {
-      EMSG("msg_param_init_memparam failed for output data");
-      result = TEE_ERROR_GENERIC;
-      goto done;
-    }
+    rpc_msg_params[3] = THREAD_PARAM_MEMREF(OUT,
+      memory_object,
+      memory_object_offset,
+      params[3].memref.size);
   }
 
   /* Send RPC message to the rich OS */
@@ -165,7 +141,7 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
   if (result == TEE_SUCCESS) {
     /* Copy the in/out data */
     if (pt_inout == TEE_PARAM_TYPE_MEMREF_INOUT) {
-      size_t inout_buffer_size = msg_param_get_buf_size(&rpc_msg_params[1]);
+      size_t inout_buffer_size = rpc_msg_params[1].u.memref.size;
       assert(inout_buffer_size <= params[1].memref.size);
 
       if (inout_buffer_size != 0)
@@ -177,7 +153,7 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
 
     /* Copy the output data, if necessary */
     if (pt_out == TEE_PARAM_TYPE_MEMREF_OUTPUT) {
-      size_t out_buffer_size = msg_param_get_buf_size(&rpc_msg_params[3]);
+      size_t out_buffer_size = rpc_msg_params[3].u.memref.size;
       assert(out_buffer_size <= params[3].memref.size);
 
       if (params[3].memref.size != 0)
@@ -194,8 +170,7 @@ static TEE_Result pta_rpc_execute(void *sess_ctx, uint32_t param_types,
 
 done:
   if (memory_object != NULL) {
-    thread_rpc_free_host_payload(memory_object_cookie, memory_object,
-                                 (vaddr_t)sess_ctx);
+    thread_rpc_free_host_payload(memory_object);
   }
 
   return result;
@@ -224,19 +199,7 @@ static TEE_Result pta_rpc_invoke_command(void *sess_ctx, uint32_t cmd_id,
 static TEE_Result
 pta_rpc_open_session(uint32_t param_types __unused,
                      TEE_Param params[TEE_NUM_PARAMS] __unused,
-                     void **sess_ctx) {
-  /*
-   * When the rich OS opened a session to the caller TA, it received
-   * this value, that can be used as a "TA session ID".
-   */
-  *sess_ctx = tee_ta_get_calling_session();
-
-  /* Just TAs are allowed to use this PTA */
-  if (*sess_ctx == NULL) {
-    EMSG("Rejecting session opened from rich OS");
-    return TEE_ERROR_ACCESS_DENIED;
-  }
-
+                     void **sess_ctx __unused) {
   DMSG("RPC PTA open session succeeded");
   return TEE_SUCCESS;
 }

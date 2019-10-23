@@ -10,10 +10,14 @@ all: $(link-out-dir)/$(shlibname).so $(link-out-dir)/$(shlibname).dmp \
 	$(link-out-dir)/$(shlibname).stripped.so \
 	$(link-out-dir)/$(shlibuuid).elf \
 	$(link-out-dir)/$(shlibuuid).ta
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+all: $(link-out-dir)/$(shlibuuid).dig
+endif
 
 cleanfiles += $(link-out-dir)/$(shlibname).so
 cleanfiles += $(link-out-dir)/$(shlibname).dmp
 cleanfiles += $(link-out-dir)/$(shlibname).stripped.so
+cleanfiles += $(link-out-dir)/$(shlibuuid).dig
 cleanfiles += $(link-out-dir)/$(shlibuuid).elf
 cleanfiles += $(link-out-dir)/$(shlibuuid).ta
 
@@ -38,6 +42,14 @@ $(link-out-dir)/$(shlibname).dmp: $(link-out-dir)/$(shlibname).so
 $(link-out-dir)/$(shlibname).stripped.so: $(link-out-dir)/$(shlibname).so
 	@$(cmd-echo-silent) '  OBJCOPY $@'
 	$(q)$(OBJCOPY$(sm)) --strip-unneeded $< $@
+
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+$(link-out-dir)/$(shlibuuid).dig: $(link-out-dir)/$(shlibname).stripped.so \
+				$(TA_SIGN_KEY)
+	@$(cmd-echo-silent) '  MEASURE    $@'
+	$(q)$(SIGN) digest --key $(TA_SIGN_KEY) --uuid $(shlibuuid) \
+		--in $< --dig $@
+endif
 
 $(link-out-dir)/$(shlibuuid).elf: $(link-out-dir)/$(shlibname).so
 	@$(cmd-echo-silent) '  LN      $@'

@@ -126,11 +126,11 @@ static TEE_Result early_ta_get_tag(const struct user_ta_store_handle *h,
 	res = crypto_hash_init(ctx, TEE_ALG_SHA256);
 	if (res)
 		goto out;
-	res = crypto_hash_update(ctx, TEE_ALG_SHA256, h->early_ta->ta + h->offs,
+	res = crypto_hash_update(ctx, TEE_ALG_SHA256, h->early_ta->ta,
 				 h->early_ta->size);
 	if (res)
 		goto out;
-	res = crypto_hash_final(ctx, TEE_ALG_SHA256, tag, h->early_ta->size);
+	res = crypto_hash_final(ctx, TEE_ALG_SHA256, tag, *tag_len);
 out:
 	crypto_hash_free_ctx(ctx, TEE_ALG_SHA256);
 	return res;
@@ -230,6 +230,50 @@ static void early_ta_close(struct user_ta_store_handle *h)
 	free(h);
 }
 
+#ifdef CFG_ATTESTATION_MEASURE
+/*
+ * Early TAs do not include a signed header, and as such will have
+ * different measurements to a normal user TA.
+ */
+static TEE_Result early_ta_get_measurement(struct user_ta_store_handle *h,
+					   uint8_t *binary_measurement,
+					   size_t *measurement_len)
+{
+	return early_ta_get_tag(h, binary_measurement, measurement_len);
+}
+
+/*
+ * Early TAs are not signed, return a zeroed buffer to indicate this.
+ */
+static TEE_Result early_ta_get_signer(struct user_ta_store_handle *h __unused,
+				      uint8_t *signer_measurement,
+				      size_t *measurement_len)
+{
+	if (!signer_measurement ||
+	    *measurement_len < ATTESTATION_MEASUREMENT_SIZE) {
+		*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+	*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+
+	memset(signer_measurement, 0, *measurement_len);
+	return TEE_SUCCESS;
+}
+
+/*
+ * Early TAs are not versioned, return a zero to indicate this.
+ */
+static TEE_Result early_ta_get_version(struct user_ta_store_handle *h __unused,
+				       uint32_t *version)
+{
+	if (!version)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	*version = 0;
+	return TEE_SUCCESS;
+}
+#endif /* CFG_ATTESTATION_MEASURE */
+
 TEE_TA_REGISTER_TA_STORE(2) = {
 	.description = "early TA",
 	.open = early_ta_open,
@@ -237,6 +281,11 @@ TEE_TA_REGISTER_TA_STORE(2) = {
 	.get_tag = early_ta_get_tag,
 	.read = early_ta_read,
 	.close = early_ta_close,
+#ifdef CFG_ATTESTATION_MEASURE
+	.get_measurement = early_ta_get_measurement,
+	.get_version = early_ta_get_version,
+	.get_signer = early_ta_get_signer,
+#endif
 };
 
 static TEE_Result early_ta_init(void)

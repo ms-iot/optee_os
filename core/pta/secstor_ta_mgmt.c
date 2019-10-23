@@ -11,6 +11,7 @@
 #include <string.h>
 #include <tee_api_types.h>
 #include <crypto/crypto.h>
+#include <tee/attestation.h>
 #include <tee/uuid.h>
 #include <types_ext.h>
 #include <utee_defines.h>
@@ -125,6 +126,13 @@ static TEE_Result install_ta(struct shdr *shdr, const uint8_t *nw,
 		res = TEE_ERROR_SECURITY;
 		goto err_ta_finalize;
 	}
+
+#ifdef CFG_ATTESTATION_MEASURE
+	/* Store the measurement for future attestation */
+	res = tee_tadb_set_measurement(ta, buf, shdr->hash_size, hash_algo);
+	if (res)
+		goto err_ta_finalize;
+#endif /* CFG_ATTESTATION_MEASURE */
 
 	crypto_hash_free_ctx(hash_ctx, hash_algo);
 	free(buf);

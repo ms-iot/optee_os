@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <tee_api_defines_extensions.h>
+#include <tee/attestation.h>
 #include <tee/tadb.h>
 #include <tee/tee_fs.h>
 #include <tee/tee_fs_rpc.h>
@@ -41,6 +42,10 @@ struct tadb_entry {
 	uint8_t iv[TADB_IV_SIZE];
 	uint8_t tag[TADB_TAG_SIZE];
 	uint8_t key[TADB_KEY_SIZE];
+#ifdef CFG_ATTESTATION_MEASURE
+	uint8_t measurement[ATTESTATION_MEASUREMENT_SIZE];
+	uint32_t measurement_algo;
+#endif
 };
 
 struct tadb_header {
@@ -682,6 +687,45 @@ tee_tadb_ta_get_property(struct tee_tadb_ta_read *ta)
 {
 	return &ta->entry.prop;
 }
+
+#ifdef CFG_ATTESTATION_MEASURE
+TEE_Result tee_tadb_set_measurement(struct tee_tadb_ta_write *ta,
+				    uint8_t *measurement,
+				    size_t measurement_len,
+				    uint32_t algo)
+{
+	if (measurement_len != ATTESTATION_MEASUREMENT_SIZE ||
+	    algo != ATTESTATION_MEASUREMENT_ALGO)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	memcpy(ta->entry.measurement, measurement,
+	       ATTESTATION_MEASUREMENT_SIZE);
+	ta->entry.measurement_algo = ATTESTATION_MEASUREMENT_ALGO;
+
+	return TEE_SUCCESS;
+}
+
+TEE_Result tee_tadb_get_measurement(struct tee_tadb_ta_read *ta,
+				    uint8_t *measurement,
+				    size_t *measurement_len)
+{
+	if (!measurement || *measurement_len < ATTESTATION_MEASUREMENT_SIZE) {
+		*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+	*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+
+	memcpy(measurement, ta->entry.measurement,
+	       ATTESTATION_MEASUREMENT_SIZE);
+
+	return TEE_SUCCESS;
+}
+
+uint32_t tee_tadb_get_version(struct tee_tadb_ta_read *ta)
+{
+	return ta->entry.prop.version;
+}
+#endif /* CFG_ATTESTATION_MEASURE */
 
 TEE_Result tee_tadb_get_tag(struct tee_tadb_ta_read *ta, uint8_t *tag,
 			    unsigned int *tag_len)

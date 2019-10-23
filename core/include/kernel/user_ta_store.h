@@ -49,6 +49,28 @@ struct user_ta_store_ops {
 	 * Close a TA handle. Do nothing if @h == NULL.
 	 */
 	void (*close)(struct user_ta_store_handle *h);
+#ifdef CFG_ATTESTATION_MEASURE
+	/*
+	 * Return the measurement of the binary being loaded in the form of a
+	 * ATTESTATION_MEASUREMENT_ALGO hash.
+	 */
+	TEE_Result (*get_measurement)(struct user_ta_store_handle *h,
+				      uint8_t *binary_measurement,
+				      size_t *measurement_len);
+	/*
+	 * Return the measurement of the signing key used to validate the TA
+	 * in the form of a ATTESTATION_MEASUREMENT_ALGO hash.
+	 */
+	TEE_Result (*get_signer)(struct user_ta_store_handle *h,
+				 uint8_t *signer_measurement,
+				 size_t *measurement_len);
+	/*
+	 * Return the version of the binary as set in the shdr_bootstrap_ta
+	 * header.
+	 */
+	TEE_Result (*get_version)(struct user_ta_store_handle *h,
+				  uint32_t *version);
+#endif /* CFG_ATTESTATION_MEASURE */
 };
 
 #endif /*__KERNEL_USER_TA_STORE_H*/

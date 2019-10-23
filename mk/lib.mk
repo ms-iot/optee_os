@@ -30,6 +30,9 @@ lib-libfile	:= $(out-dir)/$(base-prefix)$(libdir)/lib$(libname).a
 ifeq ($(CFG_ULIBS_SHARED),y)
 lib-shlibfile	:= $(out-dir)/$(base-prefix)$(libdir)/lib$(libname).so
 lib-shlibstrippedfile := $(out-dir)/$(base-prefix)$(libdir)/lib$(libname).stripped.so
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+lib-shlibmeasurementfile := $(out-dir)/$(base-prefix)$(libdir)/lib$(libuuid).dig
+endif
 lib-shlibtafile	:= $(out-dir)/$(base-prefix)$(libdir)/$(libuuid).ta
 lib-libuuidln	:= $(out-dir)/$(base-prefix)$(libdir)/$(libuuid).elf
 lib-shlibfile-$(libname)-$(sm) := $(lib-shlibfile)
@@ -37,8 +40,8 @@ lib-libdir-$(libname)-$(sm) := $(out-dir)/$(base-prefix)$(libdir)
 lib-needed-so-files := $(foreach l,$(libl),$(lib-shlibfile-$(l)-$(sm)))
 lib-Ll-args := $(foreach l,$(libl),-L$(lib-libdir-$(l)-$(sm)) -l$(l))
 endif
-cleanfiles	:= $(lib-libfile) $(lib-shlibfile) $(lib-shlibstrippedfile) $(lib-shlibtafile) $(lib-libuuidln) $(cleanfiles)
-libfiles	:= $(lib-libfile) $(lib-shlibfile) $(lib-shlibstrippedfile) $(lib-shlibtafile) $(lib-libuuidln) $(libfiles)
+cleanfiles	:= $(lib-libfile) $(lib-shlibfile) $(lib-shlibstrippedfile) $(lib-shlibmeasurementfile) $(lib-shlibtafile) $(lib-libuuidln) $(cleanfiles)
+libfiles	:= $(lib-libfile) $(lib-shlibfile) $(lib-shlibstrippedfile) $(lib-shlibmeasurementfile) $(lib-shlibtafile) $(lib-libuuidln) $(libfiles)
 libdirs 	:= $(out-dir)/$(base-prefix)$(libdir) $(libdirs)
 libnames	:= $(libname) $(libnames)
 libdeps		:= $(lib-libfile) $(libdeps)
@@ -68,6 +71,13 @@ $(lib-shlibfile): $(objs) $(lib-needed-so-files)
 $(lib-shlibstrippedfile): $(lib-shlibfile)
 	@$(cmd-echo-silent) '  OBJCOPY $$@'
 	$$(q)$$(OBJCOPY$(sm)) --strip-unneeded $$< $$@
+
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+$(lib-shlibmeasurementfile): $(lib-shlibstrippedfile) $(TA_SIGN_KEY)
+	@$(cmd-echo-silent) '  MEASURE    $$@'
+	$$(q)$$(SIGN) digest --key $(TA_SIGN_KEY) --uuid $(libuuid) \
+		--in $$< --dig $$@
+endif
 
 $(lib-shlibtafile): $(lib-shlibstrippedfile) $(TA_SIGN_KEY)
 	@$(cmd-echo-silent) '  SIGN    $$@'

@@ -8,10 +8,14 @@ TA_SIGN_KEY ?= $(ta-dev-kit-dir$(sm))/keys/default_ta.pem
 all: $(link-out-dir$(sm))/$(user-ta-uuid).dmp \
 	$(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf \
 	$(link-out-dir$(sm))/$(user-ta-uuid).ta
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+all: $(link-out-dir$(sm))/$(user-ta-uuid).dig
+endif
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).elf
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).dmp
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).map
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf
+cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).dig
 cleanfiles += $(link-out-dir$(sm))/$(user-ta-uuid).ta
 cleanfiles += $(link-script-pp$(sm)) $(link-script-dep$(sm))
 
@@ -71,6 +75,14 @@ $(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf: \
 			$(link-out-dir$(sm))/$(user-ta-uuid).elf
 	@$(cmd-echo-silent) '  OBJCOPY $$@'
 	$(q)$(OBJCOPY$(sm)) --strip-unneeded $$< $$@
+
+ifeq ($(CFG_ATTESTATION_MEASURE),y)
+$(link-out-dir$(sm))/$(user-ta-uuid).dig: $(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf \
+				$(TA_SIGN_KEY)
+	@$(cmd-echo-silent) '  MEASURE $$@'
+	$(q)$(SIGN) digest --key $(TA_SIGN_KEY) --uuid $(user-ta-uuid) \
+		--in $$< --dig $$@
+endif
 
 $(link-out-dir$(sm))/$(user-ta-uuid).ta: \
 			$(link-out-dir$(sm))/$(user-ta-uuid).stripped.elf \

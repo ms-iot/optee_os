@@ -56,6 +56,17 @@ TEE_Result tee_tadb_ta_delete(const TEE_UUID *uuid);
 TEE_Result tee_tadb_ta_open(const TEE_UUID *uuid, struct tee_tadb_ta_read **ta);
 const struct tee_tadb_property *
 tee_tadb_ta_get_property(struct tee_tadb_ta_read *ta);
+
+#ifdef CFG_ATTESTATION_MEASURE
+TEE_Result tee_tadb_set_measurement(struct tee_tadb_ta_write *ta,
+				    uint8_t *measurement, size_t len,
+				    uint32_t algo);
+TEE_Result tee_tadb_get_measurement(struct tee_tadb_ta_read *ta,
+				    uint8_t *measurement,
+				    size_t *measurement_len);
+uint32_t tee_tadb_get_version(struct tee_tadb_ta_read *ta);
+#endif /*CFG_ATTESTATION_MEASURE*/
+
 TEE_Result tee_tadb_get_tag(struct tee_tadb_ta_read *ta, uint8_t *tag,
 			    unsigned int *tag_len);
 TEE_Result tee_tadb_ta_read(struct tee_tadb_ta_read *ta, void *buf,

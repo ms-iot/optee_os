@@ -14,7 +14,9 @@
 #include <signed_hdr.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ta_pub_key.h>
 #include <tee_api_types.h>
+#include <tee/attestation.h>
 #include <tee/uuid.h>
 #include <utee_defines.h>
 
@@ -26,6 +28,7 @@ struct ree_fs_ta_handle {
 	struct shdr *shdr; /* Verified secure copy of @nw_ta's signed header */
 	void *hash_ctx;
 	uint32_t hash_algo;
+	uint32_t ta_version; /* copied from shdr_bootstrap_ta if available */
 };
 
 /*
@@ -161,7 +164,19 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		if (res != TEE_SUCCESS)
 			goto error_free_hash;
 		offs += sizeof(bs_hdr);
+
+		handle->ta_version = bs_hdr.ta_version;
 	}
+#ifdef CFG_ATTESTATION_MEASURE
+	if (shdr->img_type != SHDR_BOOTSTRAP_TA) {
+		/*
+		 * Attestation requires a version for the TA. The default value
+		 * of 0 is acceptable, but a legacy TA's version is undefined.
+		 */
+		res = TEE_ERROR_NOT_SUPPORTED;
+		goto error_free_hash;
+	}
+#endif
 
 	if (ta_size != offs + shdr->img_size) {
 		res = TEE_ERROR_SECURITY;
@@ -275,6 +290,80 @@ static void ree_fs_ta_close(struct user_ta_store_handle *h)
 	free(handle);
 }
 
+#ifdef CFG_ATTESTATION_MEASURE
+/*
+ * Buffered TAs get the measurement directly from buf_ta_get_tag()
+ */
+#ifndef CFG_REE_FS_TA_BUFFERED
+static TEE_Result ree_fs_ta_get_measurement(struct user_ta_store_handle *h,
+					    uint8_t *binary_measurement,
+					    size_t *measurement_len)
+{
+	struct ree_fs_ta_handle *handle = (struct ree_fs_ta_handle *)h;
+
+	if (handle->hash_algo != ATTESTATION_MEASUREMENT_ALGO)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	return ree_fs_ta_get_tag(h, binary_measurement, measurement_len);
+}
+#endif /* CFG_REE_FS_TA_BUFFERED */
+
+static TEE_Result ree_fs_ta_get_signer(struct user_ta_store_handle *h __unused,
+				       uint8_t *signer_measurement,
+				       size_t *measurement_len)
+{
+	uint32_t hash_algo = ATTESTATION_MEASUREMENT_ALGO;
+	void *hash_ctx = NULL;
+	TEE_Result res = TEE_SUCCESS;
+
+	if (!signer_measurement ||
+	    *measurement_len < ATTESTATION_MEASUREMENT_SIZE) {
+		*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+	*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+
+	res = crypto_hash_alloc_ctx(&hash_ctx, hash_algo);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_init(hash_ctx, hash_algo);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_update(hash_ctx, hash_algo,
+				 (uint8_t *)&ta_pub_key_exponent,
+				 sizeof(ta_pub_key_exponent));
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_update(hash_ctx, hash_algo,
+				 (uint8_t *)ta_pub_key_modulus,
+				 ta_pub_key_modulus_size);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_final(hash_ctx, hash_algo,
+				signer_measurement,
+				ATTESTATION_MEASUREMENT_SIZE);
+error_free_hash:
+	crypto_hash_free_ctx(hash_ctx, hash_algo);
+	return res;
+}
+
+static TEE_Result ree_fs_ta_get_version(struct user_ta_store_handle *h,
+					uint32_t *version)
+{
+	struct ree_fs_ta_handle *handle = (struct ree_fs_ta_handle *)h;
+
+	if (!version)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	*version = handle->ta_version;
+	return TEE_SUCCESS;
+}
+#endif /* CFG_ATTESTATION_MEASURE */
+
 #ifndef CFG_REE_FS_TA_BUFFERED
 TEE_TA_REGISTER_TA_STORE(9) = {
 	.description = "REE",
@@ -283,6 +372,11 @@ TEE_TA_REGISTER_TA_STORE(9) = {
 	.get_tag = ree_fs_ta_get_tag,
 	.read = ree_fs_ta_read,
 	.close = ree_fs_ta_close,
+#ifdef CFG_ATTESTATION_MEASURE
+	.get_measurement = ree_fs_ta_get_measurement,
+	.get_version = ree_fs_ta_get_version,
+	.get_signer = ree_fs_ta_get_signer,
+#endif
 };
 #endif
 
@@ -409,6 +503,40 @@ static void buf_ta_close(struct user_ta_store_handle *h)
 	free(handle);
 }
 
+#ifdef CFG_ATTESTATION_MEASURE
+static TEE_Result buf_ta_get_measurement(struct user_ta_store_handle *h,
+					 uint8_t *measurement,
+					 size_t *measurement_len)
+{
+	struct buf_ree_fs_ta_handle *handle = (struct buf_ree_fs_ta_handle *)h;
+	struct ree_fs_ta_handle *ree_fs_handle =
+					(struct ree_fs_ta_handle *)(handle->h);
+
+	if (ree_fs_handle->hash_algo != ATTESTATION_MEASUREMENT_ALGO)
+		return TEE_ERROR_NOT_SUPPORTED;
+
+	return buf_ta_get_tag(h, measurement, measurement_len);
+}
+
+static TEE_Result buf_ta_get_signer(struct user_ta_store_handle *h,
+				    uint8_t *signer_measurement,
+				    size_t *measurement_len)
+{
+	struct buf_ree_fs_ta_handle *handle = (struct buf_ree_fs_ta_handle *)h;
+
+	return ree_fs_ta_get_signer(handle->h, signer_measurement,
+				    measurement_len);
+}
+
+static TEE_Result buf_ta_get_version(struct user_ta_store_handle *h,
+				     uint32_t *version)
+{
+	struct buf_ree_fs_ta_handle *handle = (struct buf_ree_fs_ta_handle *)h;
+
+	return ree_fs_ta_get_version(handle->h, version);
+}
+#endif /* CFG_ATTESTATION_MEASURE */
+
 TEE_TA_REGISTER_TA_STORE(9) = {
 	.description = "REE [buffered]",
 	.open = buf_ta_open,
@@ -416,6 +544,11 @@ TEE_TA_REGISTER_TA_STORE(9) = {
 	.get_tag = buf_ta_get_tag,
 	.read = buf_ta_read,
 	.close = buf_ta_close,
+#ifdef CFG_ATTESTATION_MEASURE
+	.get_measurement = buf_ta_get_measurement,
+	.get_version = buf_ta_get_version,
+	.get_signer = buf_ta_get_signer,
+#endif
 };
 
 #endif /* CFG_REE_FS_TA_BUFFERED */

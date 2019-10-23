@@ -208,12 +208,131 @@ static void ta_bin_close(void *ptr)
 	free(binh);
 }
 
+#ifdef CFG_ATTESTATION_MEASURE
+/*
+ * User TAs are measured by repeatedly hashing the measurements of each
+ * component together. The measurement starts by copying the initial hash
+ * of the TA binary used for verification. The hash of each subsequent
+ * shared library is combined with the existing measurement.
+ *
+ * The order in which the binaries are loaded is important, re-ordering the
+ * loads will result in a different measurement.
+ *
+ * A static snapshot of the measurement is taken when the first session to a
+ * TA is opened. Any subsequent library loads during runtime will still be
+ * measured in the dynamic measurement, but will not be reflected in the
+ * static measurement.
+ */
+static TEE_Result update_measurements(const struct user_ta_store_ops *ta_store,
+				      struct user_ta_store_handle *handle,
+				      struct user_ta_ctx *utc)
+{
+	TEE_Result res = TEE_SUCCESS;
+	size_t buffer_len = 0;
+	void *hash_ctx = NULL;
+	uint8_t hash[ATTESTATION_MEASUREMENT_SIZE] = {0};
+	struct tee_attestation_data *attestation = &utc->attestation_data;
+
+	DMSG("Measuring ta %pUl ", (void *)&utc->ctx.uuid);
+	if (attestation->is_measured)
+		EMSG("Warning: Measuring dynamic libraries with attestation!");
+
+	/*
+	 * If this is the first elf to be hashed, i.e. if the current
+	 * hash is zero, set the TA hash to the hash of this ELF. Initialize
+	 * constant measurement fields now.
+	 */
+	if (!memcmp(attestation->dynamic_measurement, hash, sizeof(hash))) {
+		buffer_len = sizeof(attestation->signer_measurement);
+		res = ta_store->get_signer(handle,
+					   attestation->signer_measurement,
+					   &buffer_len);
+		if (res)
+			return res;
+
+		res = ta_store->get_version(handle, &attestation->ta_version);
+		if (res)
+			return res;
+
+		buffer_len = sizeof(attestation->dynamic_measurement);
+		res = ta_store->get_measurement(handle,
+						 attestation->dynamic_measurement,
+						 &buffer_len);
+		DMSG("Initial measurement:");
+		DHEXDUMP(attestation->dynamic_measurement,
+			 sizeof(attestation->dynamic_measurement));
+		DMSG("Signer:");
+		DHEXDUMP(attestation->signer_measurement,
+			 sizeof(attestation->signer_measurement));
+		DMSG("Version:");
+		DHEXDUMP(&attestation->ta_version, sizeof(attestation->ta_version));
+		return res;
+	}
+
+	EMSG("Extending measurement");
+	DMSG("Initial measurement:");
+	DHEXDUMP(attestation->dynamic_measurement, sizeof(attestation->dynamic_measurement));
+
+	/* get hash for the elf that was just loaded */
+	buffer_len = sizeof(hash);
+	res = ta_store->get_measurement(handle, hash, &buffer_len);
+	if (res)
+		goto end;
+
+	res = crypto_hash_alloc_ctx(&hash_ctx, ATTESTATION_MEASUREMENT_ALGO);
+	if (res)
+		goto end;
+
+	res = crypto_hash_init(hash_ctx, ATTESTATION_MEASUREMENT_ALGO);
+	if (res)
+		goto end;
+
+	/* hash the existing value */
+	res = crypto_hash_update(hash_ctx, ATTESTATION_MEASUREMENT_ALGO,
+				 attestation->dynamic_measurement,
+				 sizeof(attestation->dynamic_measurement));
+	if (res)
+		goto end;
+
+	/* add the new value */
+	res = crypto_hash_update(hash_ctx, ATTESTATION_MEASUREMENT_ALGO,
+				 hash, sizeof(hash));
+	if (res)
+		goto end;
+
+	/* and write back to the TA hash */
+	res = crypto_hash_final(hash_ctx, ATTESTATION_MEASUREMENT_ALGO,
+				attestation->dynamic_measurement,
+				sizeof(attestation->dynamic_measurement));
+	if (res)
+		goto end;
+
+end:
+	if (hash_ctx)
+		crypto_hash_free_ctx(hash_ctx, ATTESTATION_MEASUREMENT_ALGO);
+
+	DMSG("Updated measurement:");
+	DHEXDUMP(attestation->dynamic_measurement,
+		 sizeof(attestation->dynamic_measurement));
+	DMSG("Signer:");
+	DHEXDUMP(attestation->signer_measurement,
+		 sizeof(attestation->signer_measurement));
+	DMSG("Version:");
+	DHEXDUMP(&attestation->ta_version,
+		 sizeof(attestation->ta_version));
+	return res;
+}
+#endif /* CFG_ATTESTATION_MEASURE */
+
 static TEE_Result system_open_ta_binary(struct system_ctx *ctx,
 					uint32_t param_types,
 					TEE_Param params[TEE_NUM_PARAMS])
 {
 	TEE_Result res = TEE_SUCCESS;
 	struct bin_handle *binh = NULL;
+#ifdef CFG_ATTESTATION_MEASURE
+	struct user_ta_ctx *caller_context = NULL;
+#endif
 	int h = 0;
 	TEE_UUID *uuid = NULL;
 	uint8_t tag[FILE_TAG_SIZE] = { 0 };
@@ -260,6 +379,13 @@ static TEE_Result system_open_ta_binary(struct system_ctx *ctx,
 	h = handle_get(&ctx->db, binh);
 	if (h < 0)
 		goto err_oom;
+
+#ifdef CFG_ATTESTATION_MEASURE
+	caller_context = to_user_ta_ctx(tee_ta_get_calling_session()->ctx);
+	res = update_measurements(binh->op, binh->h, caller_context);
+	if (res)
+		goto err;
+#endif
 
 	return TEE_SUCCESS;
 err_oom:

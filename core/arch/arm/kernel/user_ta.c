@@ -146,6 +146,10 @@ static TEE_Result user_ta_enter(TEE_ErrorOrigin *err,
 	usr_params = (struct utee_params *)usr_stack;
 	init_utee_param(usr_params, param, param_va);
 
+#ifdef CFG_ATTESTATION_MEASURE
+	assert(utc->attestation_data.is_measured);
+#endif
+
 	res = thread_enter_user_mode(func, tee_svc_kaddr_to_uref(session),
 				     (vaddr_t)usr_params, cmd, usr_stack,
 				     utc->entry_func, utc->is_32bit,
@@ -276,6 +280,25 @@ static TEE_Result user_ta_enter_open_session(struct tee_ta_session *s,
 			return res;
 		}
 		utc->is_initializing = false;
+#ifdef CFG_ATTESTATION_MEASURE
+		/*
+		 * Capture a static snapshot of the TA before the first
+		 * session begins executing code. Subsequent calls to dlopen
+		 * and related will update the dynamic measurement but not
+		 * this static version.
+		 */
+		assert(!utc->attestation_data.is_measured);
+
+		utc->attestation_data.is_measured = true;
+		memcpy(utc->attestation_data.static_measurement,
+		       utc->attestation_data.dynamic_measurement,
+		       sizeof(utc->attestation_data.dynamic_measurement));
+
+		DMSG("Static measurement of user TA %pUl done:",
+		     (void *)&utc->ctx.uuid);
+		DHEXDUMP(utc->attestation_data.static_measurement,
+			 sizeof(utc->attestation_data.static_measurement));
+#endif /* CFG_ATTESTATION_MEASURE */
 	}
 
 	return user_ta_enter(eo, s, UTEE_ENTRY_FUNC_OPEN_SESSION, 0, param);

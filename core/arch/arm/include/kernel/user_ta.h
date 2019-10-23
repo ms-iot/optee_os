@@ -12,6 +12,7 @@
 #include <mm/tee_mm.h>
 #include <scattered_array.h>
 #include <tee_api_types.h>
+#include <tee/attestation.h>
 #include <types_ext.h>
 #include <util.h>
 
@@ -40,6 +41,7 @@ SLIST_HEAD(load_seg_head, load_seg);
  * @ta_time_offs:	Time reference used by the TA
  * @areas:		Memory areas registered by pager
  * @vfp:		State of VFP registers
+ * @attestation_data:	Measurements of this TA used for attestation
  * @ctx:		Generic TA context
  */
 struct user_ta_ctx {
@@ -63,6 +65,9 @@ struct user_ta_ctx {
 	struct tee_pager_area_head *areas;
 #if defined(CFG_WITH_VFP)
 	struct thread_user_vfp_state vfp;
+#endif
+#ifdef CFG_ATTESTATION_MEASURE
+	struct tee_attestation_data attestation_data;
 #endif
 	struct tee_ta_ctx ctx;
 

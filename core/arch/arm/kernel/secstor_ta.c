@@ -7,6 +7,8 @@
 #include <kernel/user_ta.h>
 #include <kernel/user_ta_store.h>
 #include <initcall.h>
+#include <crypto/crypto.h>
+#include <ta_pub_key.h>
 
 static TEE_Result secstor_ta_open(const TEE_UUID *uuid,
 				  struct user_ta_store_handle **handle)
@@ -77,6 +79,73 @@ static void secstor_ta_close(struct user_ta_store_handle *h)
 	tee_tadb_ta_close(ta);
 }
 
+#ifdef CFG_ATTESTATION_MEASURE
+static TEE_Result secstor_ta_get_measurement(struct user_ta_store_handle *h,
+					     uint8_t *binary_measurement,
+					     size_t *measurement_len)
+{
+	struct tee_tadb_ta_read *ta = (struct tee_tadb_ta_read *)h;
+
+	return tee_tadb_get_measurement(ta, binary_measurement,
+					measurement_len);
+}
+
+static TEE_Result secstor_ta_get_signer(struct user_ta_store_handle *h __unused,
+					uint8_t *signer_measurement,
+					size_t *measurement_len)
+{
+	uint32_t hash_algo = ATTESTATION_MEASUREMENT_ALGO;
+	void *hash_ctx = NULL;
+	TEE_Result res = TEE_SUCCESS;
+
+	if (!signer_measurement ||
+	    *measurement_len < ATTESTATION_MEASUREMENT_SIZE) {
+		*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+	*measurement_len = ATTESTATION_MEASUREMENT_SIZE;
+
+	res = crypto_hash_alloc_ctx(&hash_ctx, hash_algo);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_init(hash_ctx, hash_algo);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_update(hash_ctx, hash_algo,
+				 (uint8_t *)&ta_pub_key_exponent,
+				 sizeof(ta_pub_key_exponent));
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_update(hash_ctx, hash_algo,
+				 (uint8_t *)ta_pub_key_modulus,
+				 ta_pub_key_modulus_size);
+	if (res != TEE_SUCCESS)
+		goto error_free_hash;
+
+	res = crypto_hash_final(hash_ctx, hash_algo,
+				signer_measurement,
+				ATTESTATION_MEASUREMENT_SIZE);
+error_free_hash:
+	crypto_hash_free_ctx(hash_ctx, hash_algo);
+	return res;
+}
+
+static TEE_Result secstor_ta_get_version(struct user_ta_store_handle *h,
+					 uint32_t *version)
+{
+	struct tee_tadb_ta_read *ta = (struct tee_tadb_ta_read *)h;
+
+	if (!version)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	*version = tee_tadb_get_version(ta);
+	return TEE_SUCCESS;
+}
+#endif /* CFG_ATTESTATION_MEASURE */
+
 TEE_TA_REGISTER_TA_STORE(4) = {
 	.description = "Secure Storage TA",
 	.open = secstor_ta_open,
@@ -84,4 +153,9 @@ TEE_TA_REGISTER_TA_STORE(4) = {
 	.get_tag = secstor_ta_get_tag,
 	.read = secstor_ta_read,
 	.close = secstor_ta_close,
+#ifdef CFG_ATTESTATION_MEASURE
+	.get_measurement = secstor_ta_get_measurement,
+	.get_version = secstor_ta_get_version,
+	.get_signer = secstor_ta_get_signer,
+#endif
 };

@@ -51,6 +51,12 @@ SECTIONS {
 	.ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } :exec :exidx
 	.ctors : { *(.ctors) } :exec
 	.dtors : { *(.dtors) }
+	.dynsym : { *(.dynsym) }
+	.dynstr : { *(.dynstr) }
+	.hash : { *(.hash) }
+
+	/* Page align to allow dropping execute bit for RW data */
+	.ta_info : ALIGN(4096) {*(.ta_info)} :rwdata
 	.init_array : {
 		PROVIDE_HIDDEN (__init_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*)))
@@ -63,12 +69,6 @@ SECTIONS {
 		KEEP (*(.fini_array))
 		PROVIDE_HIDDEN (__fini_array_end = .);
 	}
-	.dynsym : { *(.dynsym) }
-	.dynstr : { *(.dynstr) }
-	.hash : { *(.hash) }
-
-	/* Page align to allow dropping execute bit for RW data */
-	.ta_info : ALIGN(4096) {*(.ta_info)} :rwdata
 	.got : { *(.got.plt) *(.got) }
 	.rel.text : { *(.rel.text) *(.rel.gnu.linkonce.t*) }
 	.rela.text : { *(.rela.text) *(.rela.gnu.linkonce.t*) }
